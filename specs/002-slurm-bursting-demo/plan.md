@@ -1,0 +1,152 @@
+# Implementation Plan: Secure Slurm Bursting Demonstration
+
+**Branch**: `main` | **Date**: 2026-10-07 |
+**Spec**: [spec.md](./spec.md)
+
+**Input**: Feature specification from `specs/002-slurm-bursting-demo/spec.md`
+
+## Summary
+
+Build a single-region Azure demonstration with two peered virtual networks, a private CycleCloud
+8.9.3 host, an AlmaLinux HPC external Slurm scheduler, a Windows administration host, Azure
+Bastion, private Key Vault access, private DNS, and 90-day audit retention. Terraform calls pinned
+Azure Verified Modules directly for every Azure resource. Chef Local converges the CycleCloud and
+scheduler guests. A narrowly scoped Python processor discovers the installed Slurm project,
+transforms its cluster template into a headless definition with guarded atomic writes, and fails
+closed when the pinned product combination is incompatible. The acceptance path submits one job
+from the scheduler and observes one transient remote compute node.
+
+## Technical Context
+
+**Language/Version**: Terraform >= 1.9 and < 2.0; HCL; Chef Infra Client pinned during
+implementation; Python 3 from the pinned CycleCloud image
+
+**Primary Dependencies**: AzureRM and AzAPI providers; direct pinned calls to Azure Verified
+Modules; CycleCloud 8.9.3; the Slurm project installed with the pinned CycleCloud image; Chef Local;
+CycleCloud CLI and `azslurm`; pytest and Bandit for the fallback processor
+
+**Storage**: Key Vault for credentials and certificates; scheduler-hosted NFS for `/sched` and
+`/shared`; Log Analytics with 90-day retention; local configuration files managed by Chef
+
+**Testing**: `terraform fmt -check`, `terraform validate`, TFLint, Checkov, reviewed Terraform
+plan; Cookstyle, Chef unit tests, Test Kitchen and InSpec with a second-converge no-change gate;
+pytest and Bandit; end-to-end Slurm burst-job validation
+
+**Target Platform**: One Azure region; Azure CycleCloud 8.9.3 Marketplace VM; supported AlmaLinux
+HPC scheduler and compute-node image; supported Windows Server administration VM
+
+**Project Type**: Infrastructure as code plus guest configuration management and one guarded
+configuration-file processor
+
+**Performance Goals**: Complete provisioning in at most 90 minutes; private UI inspection in at
+most 5 minutes; one-node burst job output in at most 15 minutes under normal capacity
+
+**Constraints**: AVM-only Azure resources; no direct Azure resource blocks or custom Terraform
+modules; no public VM, CycleCloud, or Key Vault ingress; latest supported release selected during
+planning and pinned; one compute node for acceptance; no HA, DR, or scale testing; configuration
+must be non-interactive and idempotent; secrets must not appear in outputs or logs
+
+**Scale/Scope**: One resource group, two VNETs, bidirectional peering, dedicated workload and
+access subnets, one CycleCloud VM, one scheduler VM, one Windows VM, one Bastion host, one Key
+Vault, one Log Analytics workspace, one headless cluster, one demonstration user, and at most one
+burst node during acceptance
+
+## Constitution Check
+
+*GATE: Passed before Phase 0 research. Re-checked after Phase 1 design.*
+
+| Principle | Design evidence | Status |
+|---|---|---|
+| Compliance-preserving legacy operation | New isolated demonstration scope; no mutation or deletion of retained legacy resources; plan review blocks replacement and destruction. | PASS |
+| Terraform infrastructure and managed node configuration | Terraform owns Azure resources only. Chef Local owns guest state. Python is limited to one node-consumed template, documents its exception, validates before atomic replacement, and performs no Azure operations. | PASS |
+| Azure Verified Modules only | Every Azure resource is created through a pinned published AVM called directly from the root configuration. No direct resource blocks and no custom Terraform modules are planned. | PASS |
+| Security without exception | Private ingress, Bastion, Key Vault private endpoint, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
+| Reliable, idempotent, validated change | Terraform, Chef, and Python each have syntax, security, idempotency, failure, and review gates. The exact plan is applied only after validation. | PASS |
+| Scope constraints | Single-instance design; no HA, DR, or multi-node scaling capability is introduced. | PASS |
+
+### Pre-design gate
+
+Research confirmed published AVMs cover the required resource types. CycleCloud 8.9.3 is the
+pinned current GA release. Public documentation does not certify every 8.9.3, Slurm project, and
+AlmaLinux image combination, so deployment includes a fail-closed compatibility preflight that
+discovers the installed project/template and validates the selected image before transformation.
+This is an operational gate, not an unresolved requirement.
+
+### Post-design gate
+
+The data model, contracts, and quickstart retain the separation between Azure control-plane
+resources, Chef-managed guest configuration, and the permitted Python file processor. No Phase 1
+artifact introduces direct resources, custom Terraform modules, public management ingress,
+unvalidated deployment, HA, DR, or additional scale. All gates remain PASS.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/002-slurm-bursting-demo/
+├── plan.md
+├── research.md
+├── data-model.md
+├── quickstart.md
+├── contracts/
+│   ├── infrastructure.md
+│   ├── node-configuration.md
+│   └── headless-template-processor.md
+└── tasks.md
+```
+
+### Source Code (repository root)
+
+```text
+terraform/
+├── versions.tf
+├── providers.tf
+├── variables.tf
+├── locals.tf
+├── network.tf
+├── security.tf
+├── compute.tf
+├── monitoring.tf
+├── outputs.tf
+└── environments/
+    └── demo.tfvars.example
+
+chef/
+├── cookbooks/
+│   ├── cyclecloud_node/
+│   │   ├── attributes/
+│   │   ├── recipes/
+│   │   ├── templates/
+│   │   └── test/
+│   └── slurm_scheduler/
+│       ├── attributes/
+│       ├── recipes/
+│       ├── templates/
+│       └── test/
+├── policyfiles/
+├── test/
+│   └── integration/
+└── kitchen.yml
+
+tools/
+└── headless_template/
+    ├── pyproject.toml
+    ├── src/
+    │   └── headless_template/
+    └── tests/
+
+tests/
+├── terraform/
+├── policy/
+└── end-to-end/
+```
+
+**Structure Decision**: Keep three explicit ownership boundaries. Root Terraform files directly
+compose pinned AVM calls and contain no reusable custom modules. Chef cookbooks converge guest
+state. The Python package has one configuration-file transformation responsibility and no Azure
+SDK dependency. Test directories mirror those boundaries and add one end-to-end acceptance path.
+
+## Complexity Tracking
+
+No constitution violations require justification.
