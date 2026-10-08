@@ -47,6 +47,7 @@
       ],
       "settings": {
         "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+        "rubocop.path": "/home/vscode/.local/bin/cookstyle",
         "terraform.languageServer.enable": true,
         "terminal.integrated.defaultProfile.linux": "bash"
       }

@@ -21,6 +21,7 @@ python3 -m venv .venv
 BUNDLE_GEMFILE=chef/Gemfile bundle config set --local path "$PWD/.bundle"
 BUNDLE_GEMFILE=chef/Gemfile bundle config set --local clean true
 BUNDLE_GEMFILE=chef/Gemfile bundle install --jobs 4 --retry 3
+BUNDLE_GEMFILE=chef/Gemfile bundle binstubs cookstyle --path "$HOME/.local/bin" --force
 
 terraform -chdir=terraform init -backend=false
 printf '%s\n' \
