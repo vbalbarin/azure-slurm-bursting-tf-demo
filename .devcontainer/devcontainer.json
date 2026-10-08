@@ -37,6 +37,8 @@
     "vscode": {
       "extensions": [
         "chef-software.chef",
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
         "hashicorp.terraform",
         "ms-azuretools.vscode-azureterraform",
         "ms-python.python",
