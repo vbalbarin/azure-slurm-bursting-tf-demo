@@ -8,6 +8,8 @@ the reviewed Terraform plan or environment-specific runbook.
 - Authorized Azure subscription and Entra operator group
 - Distinct source and burst regions with required services, global peering, quota, capacity, and
   availability for their pinned SKUs and images
+- Exact scheduler and burst-compute image URNs selected independently, with a shared AlmaLinux
+  family and major release
 - Terraform and project validation tools at the pinned versions
 - Accepted CycleCloud Marketplace terms for pinned version 8.9.3
 - Approved private CIDRs for `vnet-source` and `vnet-burst`
@@ -38,7 +40,9 @@ Expected outcome:
 ## 2. Create and review the plan
 
 Initialize the `terraform/` root with the approved backend and environment inputs, then create a
-saved plan.
+saved plan. Supply the protected preflight JSON as `PREFLIGHT_RESULTS_FILE`; provisioning must
+reject it if either role-specific image differs from the Terraform inventory or compatibility did
+not validate.
 
 Review must confirm:
 
@@ -48,6 +52,8 @@ Review must confirm:
 - Exactly two VNETs and the required bidirectional peerings are planned.
 - The VNETs are placed in the approved distinct source and burst regions and use global peering.
 - Exactly three persistent VMs and one Bastion host are planned.
+- The scheduler VM uses only the source-region scheduler image; the CycleCloud node array uses only
+  the independently pinned burst-compute image.
 - No unintended replacement or destruction appears.
 - Sensitive values are redacted and absent from outputs.
 
@@ -60,8 +66,9 @@ Apply only the saved plan from step 2. Do not regenerate it between approval and
 Expected outcome:
 
 - Provisioning completes within 90 minutes.
-- Inventory reports private names, private addresses, pinned versions, cluster name, and validation
-  references, source region, and burst region without secret values.
+- Inventory reports private names, private addresses, both role-specific image URNs, image
+  compatibility, pinned versions, cluster name, validation references, source region, and burst
+  region without secret values.
 - Public-inbound probes to all hosts, CycleCloud, and Key Vault fail.
 - Private DNS resolves CycleCloud and Key Vault from authorized network locations.
 
@@ -76,6 +83,8 @@ Expected outcome:
 - Second run reports zero updates.
 - CycleCloud reports version 8.9.3.
 - Installed Slurm project and Slurm versions match recorded inventory.
+- The scheduler reports the pinned standard AlmaLinux image, and the generated node array reports
+  the pinned AlmaLinux HPC burst image.
 - The headless template satisfies the
   [processor contract](./contracts/headless-template-processor.md).
 - Scheduler identities, services, `/sched`, `/shared`, and external integration satisfy the

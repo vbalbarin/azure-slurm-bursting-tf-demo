@@ -13,6 +13,7 @@ default['cyclecloud']['inventory_path'] = '/var/lib/cyclecloud/slurm-versions.js
 default['cyclecloud']['credential_file'] = '/run/cyclecloud/credentials'
 default['cyclecloud']['burst_region'] = nil
 default['cyclecloud']['burst_vm_size'] = nil
+default['cyclecloud']['burst_image_urn'] = nil
 default['cyclecloud']['scheduler_private_address'] = nil
 default['cyclecloud']['idle_timeout_minutes'] = 10
 default['cyclecloud']['policy_revision'] = '0.1.0'

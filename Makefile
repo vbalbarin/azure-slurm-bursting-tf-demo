@@ -1,6 +1,6 @@
-.PHONY: validate terraform-fmt terraform-init terraform-validate terraform-test policy-test python-test python-type python-security chef-style chef-unit chef-integration
+.PHONY: validate terraform-fmt terraform-init terraform-validate terraform-test policy-test end-to-end-unit python-test python-type python-security chef-style chef-unit chef-integration
 
-validate: terraform-fmt terraform-validate terraform-test policy-test python-type python-security python-test
+validate: terraform-fmt terraform-validate terraform-test policy-test end-to-end-unit python-type python-security python-test
 
 terraform-fmt:
 	terraform -chdir=terraform fmt -check -recursive
@@ -20,6 +20,9 @@ terraform-test: terraform-init
 
 policy-test:
 	python3 -m pytest tests/policy
+
+end-to-end-unit:
+	python3 -m pytest tests/end-to-end/test_preflight.py tests/end-to-end/test_verify_inventory.py
 
 python-test:
 	PYTHONPATH=tools/headless_template/src python3 -m pytest tools/headless_template/tests

@@ -20,9 +20,15 @@ variables {
   }
   scheduler_image = {
     publisher = "almalinux"
-    offer     = "almalinux-hpc"
+    offer     = "almalinux-x86_64"
     sku       = "9-gen2"
-    version   = "9.5.20250121"
+    version   = "9.8.2026100501"
+  }
+  burst_compute_image = {
+    publisher = "almalinux"
+    offer     = "almalinux-hpc"
+    sku       = "9-hpc-gen2"
+    version   = "9.8.202608110"
   }
   windows_image = {
     publisher = "MicrosoftWindowsServer"
@@ -30,8 +36,8 @@ variables {
     sku       = "2025-datacenter-azure-edition"
     version   = "latest"
   }
-  cyclecloud_vm_size = "Standard_D4s_v5"
-  scheduler_vm_size  = "Standard_D4s_v5"
+  cyclecloud_vm_size = "Standard_D4s_v6"
+  scheduler_vm_size  = "Standard_D4s_v6"
   windows_vm_size    = "Standard_D2s_v5"
   burst_vm_size      = "Standard_HB120rs_v3"
   cluster_name       = "demo-cluster"
@@ -60,5 +66,15 @@ run "cross_region_topology" {
   assert {
     condition     = local.names.log_analytics == "demo-logs"
     error_message = "Exactly one named Log Analytics workspace must be composed."
+  }
+
+  assert {
+    condition     = output.inventory.versions.scheduler_image == "almalinux:almalinux-x86_64:9-gen2:9.8.2026100501"
+    error_message = "Inventory must record the persistent scheduler image by role."
+  }
+
+  assert {
+    condition     = output.inventory.versions.burst_compute_image == "almalinux:almalinux-hpc:9-hpc-gen2:9.8.202608110"
+    error_message = "Inventory must record the independently pinned burst-compute image."
   }
 }

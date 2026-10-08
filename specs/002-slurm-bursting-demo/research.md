@@ -35,23 +35,31 @@ the bounded demonstration.
 
 **Decision**: Pin Azure CycleCloud `8.9.3`, the current generally available release identified
 during planning. Discover the Slurm project installed with that image, record its exact version,
-and require its template and selected AlmaLinux HPC image to pass a compatibility preflight before
-configuration proceeds.
+and independently pin the scheduler to
+`almalinux:almalinux-x86_64:9-gen2:9.8.2026100501` and burst compute to
+`almalinux:almalinux-hpc:9-hpc-gen2:9.8.202608110`. Require both role-specific images, assigned VM
+sizes, and the discovered project template to pass compatibility preflight before configuration
+proceeds.
 
 **Rationale**: The specification requires current GA selection during planning and reproducible
-deployment afterward. Microsoft documents external schedulers and AlmaLinux HPC, but its public
-headless walkthrough uses an older fixed release combination. Failing closed on the actual pinned
-image and installed project avoids silently combining unsupported versions.
+deployment afterward. The general-purpose scheduler size and HB-series burst size have different
+image support requirements even though both roles require a compatible AlmaLinux 9 family.
+Microsoft documents external schedulers and AlmaLinux HPC, but its public headless walkthrough
+uses an older fixed release combination. Failing closed on both actual pinned images, their
+assigned regions and VM sizes, and the installed project avoids silently combining unsupported
+versions.
 
 **Alternatives considered**: Resolving "latest" during every deployment was rejected as
-non-reproducible. Pinning the older walkthrough combination was rejected because it violates the
-clarified current-release requirement. Automatically substituting a different Slurm project was
-rejected because it would bypass compatibility review.
+non-reproducible. Reusing the HPC image for the general-purpose scheduler was rejected because
+image support is VM-size-specific. Pinning the older walkthrough combination was rejected because
+it violates the clarified current-release requirement. Automatically substituting another image,
+VM size, or Slurm project was rejected because it would bypass compatibility review.
 
 **Sources**:
 
 - <https://learn.microsoft.com/azure/cyclecloud/release-notes?view=cyclecloud-8>
 - <https://learn.microsoft.com/azure/cyclecloud/how-to/bursting/setup-instructions-for-cloud-bursting?view=cyclecloud-8>
+- <https://learn.microsoft.com/azure/virtual-machines/sizes/high-performance-compute/azure-hpc-vm-images>
 - <https://github.com/Azure/cyclecloud-slurm/releases>
 
 ## Cross-region topology

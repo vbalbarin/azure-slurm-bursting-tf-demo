@@ -9,6 +9,7 @@ describe 'cyclecloud_node::default' do
     'cluster_name' => 'demo',
     'burst_region' => 'westus3',
     'burst_vm_size' => 'Standard_HB120rs_v3',
+    'burst_image_urn' => 'almalinux:almalinux-hpc:9-hpc-gen2:9.8.202608110',
     'scheduler_private_address' => '10.10.0.4',
   }
   let(:chef_run) { chef_runner.converge('cyclecloud_node::default') }
@@ -20,6 +21,11 @@ describe 'cyclecloud_node::default' do
 
   it { is_expected.to install_rpm_package('cyclecloud').with(version: '8.9.3') }
   it { is_expected.to run_execute('generate-validated-headless-template') }
+  it do
+    is_expected.to render_file(
+      '/opt/cycle/jetpack/system/projects/slurm/templates/slurm-headless.txt.overrides'
+    ).with_content('ImageName = almalinux:almalinux-hpc:9-hpc-gen2:9.8.202608110')
+  end
   it { is_expected.to create_template('/etc/cyclecloud/slurm-cluster.properties').with(mode: '0600') }
   it { is_expected.to run_execute('import-headless-slurm-cluster') }
 end

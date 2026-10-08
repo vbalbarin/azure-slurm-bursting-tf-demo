@@ -19,9 +19,16 @@ cyclecloud_image = {
 
 scheduler_image = {
   publisher = "almalinux"
-  offer     = "almalinux-hpc"
+  offer     = "almalinux-x86_64"
   sku       = "9-gen2"
-  version   = "9.5.20250121"
+  version   = "9.8.2026100501"
+}
+
+burst_compute_image = {
+  publisher = "almalinux"
+  offer     = "almalinux-hpc"
+  sku       = "9-hpc-gen2"
+  version   = "9.8.202608110"
 }
 
 windows_image = {
@@ -31,8 +38,8 @@ windows_image = {
   version   = "latest"
 }
 
-cyclecloud_vm_size = "Standard_D4s_v5"
-scheduler_vm_size  = "Standard_D4s_v5"
+cyclecloud_vm_size = "Standard_D4s_v6"
+scheduler_vm_size  = "Standard_D4s_v6"
 windows_vm_size    = "Standard_D2s_v5"
 burst_vm_size      = "Standard_HB120rs_v3"
 cluster_name       = "cross-region-demo"

@@ -25,13 +25,9 @@ output "inventory" {
     }
     key_vault_private_name = "${local.names.key_vault}.${local.private_dns_zones.key_vault}"
     versions = {
-      cyclecloud = local.cyclecloud_version
-      scheduler_image = join(":", [
-        var.scheduler_image.publisher,
-        var.scheduler_image.offer,
-        var.scheduler_image.sku,
-        var.scheduler_image.version
-      ])
+      cyclecloud          = local.cyclecloud_version
+      scheduler_image     = local.scheduler_image_urn
+      burst_compute_image = local.burst_compute_image_urn
       windows_image = join(":", [
         var.windows_image.publisher,
         var.windows_image.offer,

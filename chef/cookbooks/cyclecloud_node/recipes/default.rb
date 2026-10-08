@@ -1,6 +1,6 @@
 require 'json'
 
-required = %w(package_uri private_name certificate_secret_id cluster_name burst_region burst_vm_size scheduler_private_address)
+required = %w(package_uri private_name certificate_secret_id cluster_name burst_region burst_vm_size burst_image_urn scheduler_private_address)
 missing = required.select { |key| node['cyclecloud'][key].nil? || node['cyclecloud'][key].to_s.empty? }
 raise "Missing required CycleCloud attributes: #{missing.join(', ')}" unless missing.empty?
 

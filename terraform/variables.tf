@@ -98,13 +98,43 @@ variable "cyclecloud_image" {
 }
 
 variable "scheduler_image" {
-  description = "Pinned supported AlmaLinux HPC image metadata."
+  description = "Exact-version AlmaLinux image for the persistent source-region scheduler."
   type = object({
     publisher = string
     offer     = string
     sku       = string
     version   = string
   })
+
+  validation {
+    condition = (
+      lower(var.scheduler_image.publisher) == "almalinux" &&
+      lower(var.scheduler_image.offer) == "almalinux-x86_64" &&
+      can(regex("^9-gen[12]$", lower(var.scheduler_image.sku))) &&
+      can(regex("^9\\.[0-9]+\\.[0-9]+$", var.scheduler_image.version))
+    )
+    error_message = "scheduler_image must be an exact-version AlmaLinux 9 standard x86_64 image."
+  }
+}
+
+variable "burst_compute_image" {
+  description = "Exact-version AlmaLinux HPC image for transient burst compute."
+  type = object({
+    publisher = string
+    offer     = string
+    sku       = string
+    version   = string
+  })
+
+  validation {
+    condition = (
+      lower(var.burst_compute_image.publisher) == "almalinux" &&
+      lower(var.burst_compute_image.offer) == "almalinux-hpc" &&
+      can(regex("^9-hpc-gen[12]$", lower(var.burst_compute_image.sku))) &&
+      can(regex("^9\\.[0-9]+\\.[0-9]+$", var.burst_compute_image.version))
+    )
+    error_message = "burst_compute_image must be an exact-version AlmaLinux 9 HPC image."
+  }
 }
 
 variable "windows_image" {

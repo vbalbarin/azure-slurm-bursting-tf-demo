@@ -17,6 +17,9 @@ Terraform, Chef, the template processor, and acceptance tests must share.
 | `cyclecloud_version` | Exactly `8.9.3` for this feature baseline |
 | `slurm_project_version` | Discovered from pinned CycleCloud image and recorded before convergence |
 | `slurm_version` | Discovered from the selected project template |
+| `scheduler_image` | Exact-version AlmaLinux image validated in `source_region` against the scheduler VM size |
+| `burst_compute_image` | Independent exact-version AlmaLinux HPC image validated in `burst_region` against the burst VM size |
+| `image_compatibility` | Validated common OS family and major release plus role-specific architecture and VM-generation compatibility |
 | `cluster_name` | Stable across CycleCloud, scheduler, storage, inventory, and tests |
 | `state` | `planned`, `validated`, `provisioned`, `configured`, `verified`, `failed`, `retired` |
 
@@ -90,7 +93,9 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
 | `cyclecloud_host` | Exactly one Administrative Host with CycleCloud role |
 | `partition` | One acceptance partition |
 | `shared_paths` | Exactly `/sched` and `/shared` from scheduler |
-| `compute_image` | Same supported OS family as scheduler |
+| `scheduler_image` | Pinned standard AlmaLinux image assigned only to the persistent scheduler |
+| `compute_image` | Independently pinned AlmaLinux HPC image with the same supported OS family and major release as the scheduler |
+| `image_compatibility` | `validated` only after role, region, VM-size, architecture, VM generation, family, and major-release checks pass |
 | `return_proxy` | Disabled while direct peering is healthy |
 | `max_acceptance_nodes` | Exactly one |
 | `idle_timeout` | Positive operator-configurable duration |
@@ -142,3 +147,5 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
    if the last valid destination would be lost on failure.
 7. The scheduler and persistent administration resources are in `source_region`; every acceptance
    compute node is in the distinct `burst_region`.
+8. Scheduler and burst-compute image URNs are distinct, exact-version values assigned only to
+   their intended roles and validated against their respective regions and VM sizes.

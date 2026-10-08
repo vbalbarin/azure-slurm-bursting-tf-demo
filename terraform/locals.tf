@@ -1,6 +1,18 @@
 locals {
   resource_group_name = "rg-${var.environment_name}-slurm"
   cyclecloud_version  = "8.9.3"
+  scheduler_image_urn = join(":", [
+    var.scheduler_image.publisher,
+    var.scheduler_image.offer,
+    var.scheduler_image.sku,
+    var.scheduler_image.version
+  ])
+  burst_compute_image_urn = join(":", [
+    var.burst_compute_image.publisher,
+    var.burst_compute_image.offer,
+    var.burst_compute_image.sku,
+    var.burst_compute_image.version
+  ])
   # tflint-ignore: terraform_unused_declarations
   max_burst_nodes = 1
 

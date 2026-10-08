@@ -26,7 +26,7 @@ The converged node must:
 
 The converged node must:
 
-1. Use the pinned supported AlmaLinux HPC image.
+1. Use the pinned standard AlmaLinux scheduler image validated for its source-region VM size.
 2. Define Slurm UID/GID `11100` and Munge UID/GID `11101`, rejecting conflicting identities.
 3. Install the exact Slurm version discovered from the selected project.
 4. Export `/sched` and `/shared` over only the required private network paths.
@@ -35,6 +35,15 @@ The converged node must:
    URL, cluster name, and scheduler config directory.
 7. Disable return proxy for healthy direct peering and use scheduler NFS for both shared paths.
 8. Start and enable only the required Munge, NFS, and Slurm services after configuration validates.
+
+## Burst compute outcome
+
+The generated node array must:
+
+1. Use the independently pinned AlmaLinux HPC image validated for the burst region and compute VM
+   size.
+2. Match the scheduler image's AlmaLinux family and major release.
+3. Receive the exact pinned image URN rather than resolving `latest` at node creation.
 
 ## Sensitive-data contract
 

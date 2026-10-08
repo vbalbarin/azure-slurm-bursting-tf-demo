@@ -266,9 +266,9 @@ Task T048: Private-administration acceptance procedure
 
 ## Phase 8: Convergence
 
-- [ ] T057 Define separate exact-version `scheduler_image` and `burst_compute_image` inputs, role-specific validation, and example values in `terraform/variables.tf` and `terraform/environments/demo.tfvars.example` per FR-005 and FR-034 (missing)
-- [ ] T058 Wire the pinned burst-compute image through CycleCloud Chef attributes and the generated burst node-array configuration while retaining the scheduler image only for the source-region scheduler VM per FR-018 and FR-034 (missing)
-- [ ] T059 Extend `tests/end-to-end/preflight.sh` to validate each role's image in its assigned region against its assigned VM size and to fail on incompatible AlmaLinux family or major-release combinations without substitution per FR-032, FR-034, and SC-012 (partial)
-- [ ] T060 Add Terraform, Chef template, and preflight tests that prove independent scheduler and burst-compute image pins, correct role wiring, and explicit rejection of missing, unavailable, size-incompatible, or OS-incompatible image combinations per FR-034 and SC-012 (partial)
-- [ ] T061 Record both role-specific image URNs and compatibility results in Terraform inventory, shared schemas, inventory verification, and acceptance evidence per FR-027, FR-034, and SC-010 (partial)
-- [ ] T062 Align `research.md`, `data-model.md`, `contracts/node-configuration.md`, `quickstart.md`, and operator documentation with the separate scheduler and burst-compute image decision and its fail-stop validation procedure per the plan product-compatibility decision (partial)
+- [X] T057 Define separate exact-version `scheduler_image` and `burst_compute_image` inputs, role-specific validation, and example values in `terraform/variables.tf` and `terraform/environments/demo.tfvars.example` per FR-005 and FR-034 (missing)
+- [X] T058 Wire the pinned burst-compute image through CycleCloud Chef attributes and the generated burst node-array configuration while retaining the scheduler image only for the source-region scheduler VM per FR-018 and FR-034 (missing)
+- [X] T059 Extend `tests/end-to-end/preflight.sh` to validate each role's image in its assigned region against its assigned VM size and to fail on incompatible AlmaLinux family or major-release combinations without substitution per FR-032, FR-034, and SC-012 (partial)
+- [X] T060 Add Terraform, Chef template, and preflight tests that prove independent scheduler and burst-compute image pins, correct role wiring, and explicit rejection of missing, unavailable, size-incompatible, or OS-incompatible image combinations per FR-034 and SC-012 (partial)
+- [X] T061 Record both role-specific image URNs and compatibility results in Terraform inventory, shared schemas, inventory verification, and acceptance evidence per FR-027, FR-034, and SC-010 (partial)
+- [X] T062 Align `research.md`, `data-model.md`, `contracts/node-configuration.md`, `quickstart.md`, and operator documentation with the separate scheduler and burst-compute image decision and its fail-stop validation procedure per the plan product-compatibility decision (partial)

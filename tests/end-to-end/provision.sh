@@ -9,9 +9,11 @@ done
 : "${TFVARS_FILE:?TFVARS_FILE is required}"
 : "${PLAN_FILE:?PLAN_FILE is required}"
 : "${APPROVAL_FILE:?APPROVAL_FILE is required}"
+: "${PREFLIGHT_RESULTS_FILE:?PREFLIGHT_RESULTS_FILE is required}"
 : "${EVIDENCE_DIR:?EVIDENCE_DIR is required}"
 
 [[ -f "$TFVARS_FILE" ]] || { echo "TFVARS_FILE does not exist" >&2; exit 2; }
+[[ -f "$PREFLIGHT_RESULTS_FILE" ]] || { echo "PREFLIGHT_RESULTS_FILE does not exist" >&2; exit 2; }
 [[ "$PLAN_FILE" != *.tfvars* ]] || { echo "PLAN_FILE must not be a variable file" >&2; exit 2; }
 mkdir -p "$EVIDENCE_DIR"
 
@@ -45,7 +47,18 @@ elapsed_minutes="$(( ($(date +%s) - start_epoch + 59) / 60 ))"
 
 terraform -chdir=terraform output -json inventory |
   jq --arg digest "$plan_digest" --arg approval "$approval_reference" \
-    '.validation.plan_digest = $digest | .validation.approval_reference = $approval' \
+    --slurpfile preflight "$PREFLIGHT_RESULTS_FILE" \
+    'if $preflight[0].images.compatibility.status != "validated" then
+       error("Preflight image compatibility was not validated")
+     elif .versions.scheduler_image != $preflight[0].images.scheduler.urn then
+       error("Scheduler image differs from preflight evidence")
+     elif .versions.burst_compute_image != $preflight[0].images.burst_compute.urn then
+       error("Burst-compute image differs from preflight evidence")
+     else
+       .image_compatibility = $preflight[0].images.compatibility |
+       .validation.plan_digest = $digest |
+       .validation.approval_reference = $approval
+     end' \
     >"$EVIDENCE_DIR/inventory.json"
 
 jq -n \

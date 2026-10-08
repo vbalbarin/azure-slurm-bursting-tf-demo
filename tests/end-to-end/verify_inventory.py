@@ -17,6 +17,7 @@ def validate(inventory: dict[str, object]) -> None:
         "cluster_name",
         "private_hosts",
         "versions",
+        "image_compatibility",
         "validation",
     }
     missing = required - inventory.keys()
@@ -34,6 +35,36 @@ def validate(inventory: dict[str, object]) -> None:
         "windows_admin",
     }:
         raise ValueError("Inventory must contain exactly the three persistent hosts")
+    versions = inventory["versions"]
+    if not isinstance(versions, dict):
+        raise ValueError("Inventory versions must be an object")
+    required_images = {"scheduler_image", "burst_compute_image", "windows_image"}
+    if not required_images.issubset(versions):
+        raise ValueError("Inventory must contain every role-specific image")
+    scheduler_image = str(versions["scheduler_image"])
+    burst_compute_image = str(versions["burst_compute_image"])
+    scheduler_match = re.fullmatch(
+        r"almalinux:almalinux-x86_64:(\d+)-gen[12]:\d+\.\d+\.\d+",
+        scheduler_image,
+    )
+    burst_match = re.fullmatch(
+        r"almalinux:almalinux-hpc:(\d+)-hpc-gen[12]:\d+\.\d+\.\d+",
+        burst_compute_image,
+    )
+    if not scheduler_match or not burst_match:
+        raise ValueError("Inventory contains an invalid role-specific image")
+    if scheduler_image == burst_compute_image:
+        raise ValueError("Scheduler and burst compute images must be independently pinned")
+    if scheduler_match.group(1) != burst_match.group(1):
+        raise ValueError("Scheduler and burst compute operating-system majors differ")
+    compatibility = inventory["image_compatibility"]
+    if (
+        not isinstance(compatibility, dict)
+        or compatibility.get("status") != "validated"
+        or compatibility.get("os_family") != "almalinux"
+        or str(compatibility.get("os_major")) != scheduler_match.group(1)
+    ):
+        raise ValueError("Inventory image compatibility evidence is invalid")
     validation = inventory["validation"]
     if not isinstance(validation, dict) or not re.fullmatch(
         r"[a-f0-9]{64}", str(validation.get("plan_digest", ""))

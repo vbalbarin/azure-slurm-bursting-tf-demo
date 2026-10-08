@@ -10,6 +10,7 @@
     "cluster_name",
     "private_hosts",
     "versions",
+    "image_compatibility",
     "validation"
   ],
   "properties": {
@@ -31,8 +32,30 @@
     },
     "versions": {
       "type": "object",
-      "required": ["cyclecloud"],
-      "properties": {"cyclecloud": {"const": "8.9.3"}}
+      "additionalProperties": false,
+      "required": ["cyclecloud", "scheduler_image", "burst_compute_image", "windows_image"],
+      "properties": {
+        "cyclecloud": {"const": "8.9.3"},
+        "scheduler_image": {
+          "type": "string",
+          "pattern": "^almalinux:almalinux-x86_64:9-gen[12]:9\\.[0-9]+\\.[0-9]+$"
+        },
+        "burst_compute_image": {
+          "type": "string",
+          "pattern": "^almalinux:almalinux-hpc:9-hpc-gen[12]:9\\.[0-9]+\\.[0-9]+$"
+        },
+        "windows_image": {"type": "string", "minLength": 1}
+      }
+    },
+    "image_compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "os_family", "os_major"],
+      "properties": {
+        "status": {"const": "validated"},
+        "os_family": {"const": "almalinux"},
+        "os_major": {"const": "9"}
+      }
     },
     "validation": {
       "type": "object",

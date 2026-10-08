@@ -106,7 +106,8 @@ configuration.
 The approved design includes:
 
 - Azure CycleCloud `8.9.3`, pinned during planning
-- AlmaLinux HPC external Slurm scheduler
+- External Slurm scheduler on an exact-version standard AlmaLinux image
+- Independently pinned AlmaLinux HPC image for burst compute
 - Windows administration host
 - Azure Bastion
 - Azure Key Vault with public network access disabled
@@ -181,9 +182,15 @@ endpoint. A failed validation, review, digest comparison, or approval check bloc
 
 1. Copy `terraform/environments/demo.tfvars.example` to a protected, ignored `.tfvars` file and
    supply the approved subscription, tenant, distinct source/burst regions, CIDRs, Entra group,
-   pinned images, SKUs, and versioned Key Vault references.
-2. Run `tests/end-to-end/preflight.sh`; stop on unsupported services, quota, images, Marketplace
-   terms, global peering, or regional capacity. Never substitute another region automatically.
+   exact scheduler and burst-compute image versions, VM SKUs, and versioned Key Vault references.
+2. Export `SCHEDULER_URN` for the source-region standard AlmaLinux image and
+   `BURST_COMPUTE_URN` for the burst-region AlmaLinux HPC image, then run
+   `tests/end-to-end/preflight.sh`. Preserve its JSON output as compatibility evidence and pass its
+   protected path to provisioning as `PREFLIGHT_RESULTS_FILE`. Provisioning rejects evidence whose
+   role-specific URNs differ from the Terraform inventory. Stop on an unavailable or
+   VM-size-incompatible image, mismatched AlmaLinux major release, unsupported service, quota,
+   Marketplace terms, global peering, or regional capacity. Never substitute another image, SKU,
+   or region automatically.
 3. Run `make validate`, create and approve the saved plan as described above, then run
    `tests/end-to-end/provision.sh` to apply that exact digest and produce secret-free inventory.
 4. Use Bastion to run `chef/bin/converge-cyclecloud.sh` and

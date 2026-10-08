@@ -8,6 +8,7 @@
 
 [[nodearray burst]]
     MachineType = <%= node['cyclecloud']['burst_vm_size'] %>
+    ImageName = <%= node['cyclecloud']['burst_image_urn'] %>
     MaxCoreCount = 1
     ReturnProxy = false
     [[[configuration]]]

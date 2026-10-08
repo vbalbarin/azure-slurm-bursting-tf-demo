@@ -11,7 +11,8 @@
 | Source and burst CIDRs | Private and non-overlapping |
 | Operator group object IDs | Existing Entra groups; no individual broad grants |
 | CycleCloud version/image | Pinned to the planning decision and accepted Marketplace terms |
-| AlmaLinux HPC image | Pinned and compatible with discovered Slurm project |
+| Scheduler image | Exact-version standard AlmaLinux image available in the source region and compatible with the scheduler VM size |
+| Burst-compute image | Independent exact-version AlmaLinux HPC image available in the burst region and compatible with the burst VM size |
 | Windows image | Pinned supported Windows Server image |
 | VM sizes | Available in region and meet vendor minimums |
 | Cluster name and idle timeout | Stable valid name and positive duration |
@@ -39,11 +40,14 @@ Deployment is blocked unless:
 - No direct resource block or local Terraform module is present.
 - Review finds no unintended replacement or deletion.
 - Public-IP and public-Key-Vault assertions pass.
+- Preflight proves each role-specific image exists in its assigned region, supports its assigned VM
+  size's architecture and VM generation, and shares a compatible AlmaLinux family and major
+  release with the other role.
 - The exact reviewed saved plan is applied.
 
 ## Failure behavior
 
-Identical or unsupported regions, unavailable image/SKU/quota/capacity, unavailable global
-peering, overlapping CIDR, denied Marketplace terms, absent AVM, or failed validation returns a
-nonzero result before apply. The process must not substitute a different version, region, topology,
-or public endpoint automatically.
+Identical or unsupported regions, unavailable or role-incompatible image/SKU/quota/capacity,
+cross-role OS incompatibility, unavailable global peering, overlapping CIDR, denied Marketplace
+terms, absent AVM, or failed validation returns a nonzero result before apply. The process must not
+substitute a different version, image, region, topology, or public endpoint automatically.
