@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Slurm bursting audit evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["retention_days", "validation_results", "plan_reference", "events"],
+  "properties": {
+    "retention_days": {"const": 90},
+    "validation_results": {"type": "object"},
+    "plan_reference": {
+      "type": "object",
+      "required": ["digest", "approval"],
+      "properties": {
+        "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "approval": {"type": "string", "minLength": 1}
+      }
+    },
+    "events": {
+      "type": "object",
+      "required": ["access", "configuration", "cluster"],
+      "properties": {
+        "access": {"type": "array"},
+        "configuration": {"type": "array"},
+        "cluster": {"type": "array"}
+      }
+    }
+  }
+}

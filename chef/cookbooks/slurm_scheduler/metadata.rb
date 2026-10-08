@@ -1,0 +1,7 @@
+name 'slurm_scheduler'
+maintainer 'Project maintainers'
+license 'MIT'
+description 'Converges the external Slurm scheduler'
+version '0.1.0'
+chef_version '>= 18.8.54'
+supports 'almalinux', '>= 9.0'

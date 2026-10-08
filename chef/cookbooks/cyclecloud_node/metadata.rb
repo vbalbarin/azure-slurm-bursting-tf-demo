@@ -1,0 +1,7 @@
+name 'cyclecloud_node'
+maintainer 'Project maintainers'
+license 'MIT'
+description 'Converges private Azure CycleCloud for external Slurm'
+version '0.1.0'
+chef_version '>= 18.8.54'
+supports 'almalinux', '>= 9.0'

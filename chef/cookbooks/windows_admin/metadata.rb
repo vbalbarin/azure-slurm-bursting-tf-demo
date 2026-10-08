@@ -1,0 +1,7 @@
+name 'windows_admin'
+maintainer 'Project maintainers'
+license 'MIT'
+description 'Converges private CycleCloud administration trust on Windows'
+version '0.1.0'
+chef_version '>= 18.8.54'
+supports 'windows', '>= 2022.0'

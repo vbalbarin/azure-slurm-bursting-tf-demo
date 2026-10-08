@@ -1,0 +1,41 @@
+---
+driver:
+  name: azurerm
+
+provisioner:
+  name: chef_zero
+  product_name: chef
+  product_version: 18.8.54
+
+verifier:
+  name: inspec
+
+platforms:
+  - name: almalinux-9
+  - name: windows-2025
+
+suites:
+  - name: cyclecloud
+    includes:
+      - almalinux-9
+    run_list:
+      - recipe[cyclecloud_node::default]
+    verifier:
+      inspec_tests:
+        - test/integration/cyclecloud
+  - name: scheduler
+    includes:
+      - almalinux-9
+    run_list:
+      - recipe[slurm_scheduler::default]
+    verifier:
+      inspec_tests:
+        - test/integration/scheduler
+  - name: windows-admin
+    includes:
+      - windows-2025
+    run_list:
+      - recipe[windows_admin::default]
+    verifier:
+      inspec_tests:
+        - test/integration/windows_admin

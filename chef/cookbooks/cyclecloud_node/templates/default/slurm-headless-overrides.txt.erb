@@ -1,0 +1,21 @@
+[parameters]
+    [[[parameter Region]]]
+        DefaultValue = <%= node['cyclecloud']['burst_region'] %>
+    [[[parameter SchedulerAddress]]]
+        DefaultValue = <%= node['cyclecloud']['scheduler_private_address'] %>
+    [[[parameter IdleTimeout]]]
+        DefaultValue = <%= node['cyclecloud']['idle_timeout_minutes'] %>
+
+[[nodearray burst]]
+    MachineType = <%= node['cyclecloud']['burst_vm_size'] %>
+    MaxCoreCount = 1
+    ReturnProxy = false
+    [[[configuration]]]
+        slurm.user.name = slurm
+        slurm.user.uid = 11100
+        slurm.user.gid = 11100
+        munge.user.name = munge
+        munge.user.uid = 11101
+        munge.user.gid = 11101
+        shared.sched = <%= node['cyclecloud']['scheduler_private_address'] %>:/sched
+        shared.data = <%= node['cyclecloud']['scheduler_private_address'] %>:/shared

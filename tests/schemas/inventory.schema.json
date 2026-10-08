@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Slurm bursting environment inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "environment_name",
+    "source_region",
+    "burst_region",
+    "cluster_name",
+    "private_hosts",
+    "versions",
+    "validation"
+  ],
+  "properties": {
+    "environment_name": {"type": "string", "pattern": "^[a-z][a-z0-9-]+$"},
+    "source_region": {"type": "string", "minLength": 1},
+    "burst_region": {"type": "string", "minLength": 1},
+    "cluster_name": {"type": "string", "minLength": 1},
+    "private_hosts": {
+      "type": "object",
+      "required": ["cyclecloud", "scheduler", "windows_admin"],
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "private_address"],
+        "properties": {
+          "name": {"type": "string"},
+          "private_address": {"type": "string"}
+        }
+      }
+    },
+    "versions": {
+      "type": "object",
+      "required": ["cyclecloud"],
+      "properties": {"cyclecloud": {"const": "8.9.3"}}
+    },
+    "validation": {
+      "type": "object",
+      "required": ["plan_digest", "approval_reference"],
+      "properties": {
+        "plan_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "approval_reference": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

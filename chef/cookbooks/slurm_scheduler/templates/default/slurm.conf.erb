@@ -1,0 +1,11 @@
+ClusterName=<%= node['slurm']['cluster_name'] %>
+SlurmctldHost=<%= node['slurm']['scheduler_private_address'] %>
+StateSaveLocation=/sched/slurmctld
+SlurmdSpoolDir=/var/spool/slurmd
+SlurmctldPort=6817
+SlurmdPort=6818
+SlurmUser=slurm
+ReturnToService=2
+SchedulerType=sched/backfill
+SelectType=select/cons_tres
+PartitionName=<%= node['slurm']['partition'] %> Nodes=burst-[1] Default=YES MaxTime=INFINITE State=UP

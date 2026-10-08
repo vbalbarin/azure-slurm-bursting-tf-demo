@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "headless-template"
+version = "0.1.0"
+description = "Guarded CycleCloud Slurm headless-template processor"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+headless-template = "headless_template.cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "bandit==1.8.3",
+  "mypy==1.15.0",
+  "pytest==8.3.5"
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+packages = ["headless_template"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = []

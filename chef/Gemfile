@@ -1,0 +1,9 @@
+source 'https://rubygems.org'
+
+gem 'chef', '19.3.15'
+gem 'chefspec', '9.3.8'
+gem 'cookstyle', '9.0.0'
+gem 'inspec-bin', '7.0.107'
+gem 'kitchen-azurerm', '2.4.0'
+gem 'kitchen-inspec', '3.1.0'
+gem 'test-kitchen', '4.1.5'

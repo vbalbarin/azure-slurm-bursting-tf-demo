@@ -1,0 +1,7 @@
+CycleCloudUrl=<%= node['slurm']['cyclecloud_url'] %>
+ClusterName=<%= node['slurm']['cluster_name'] %>
+SchedulerConfigDir=/etc/slurm
+ReturnProxyEnabled=false
+SharedSched=<%= node['slurm']['scheduler_private_address'] %>:/sched
+SharedData=<%= node['slurm']['scheduler_private_address'] %>:/shared
+CredentialFile=<%= node['slurm']['credential_file'] %>

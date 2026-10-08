@@ -1,0 +1,4 @@
+# Azure Verified Modules are consumed from the Terraform registry at exact,
+# reviewed semantic versions rather than Git commit sources.
+skip-check:
+  - CKV_TF_1
