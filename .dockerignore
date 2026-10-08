@@ -1,0 +1,14 @@
+.bundle/
+.devcontainer/
+.git/
+.github/
+.specify/
+.terraform/
+.venv/
+**/__pycache__/
+*.log*
+*.tfplan
+*.tfstate*
+*.tfvars
+!*.tfvars.example
+tests/evidence/

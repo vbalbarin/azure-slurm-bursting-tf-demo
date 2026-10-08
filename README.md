@@ -7,10 +7,33 @@ infrastructure nodes with Chef Local, and validates changes before deployment.
 The project is currently in the specification and design phase. Implementation will follow the
 approved Spec Kit artifacts under [`specs/002-slurm-bursting-demo/`](specs/002-slurm-bursting-demo/).
 
+## Development container
+
+Open the repository in VS Code and select **Dev Containers: Reopen in Container**. The image build
+installs operating-system prerequisites as root inside the disposable image; the
+[`post-create.sh`](.devcontainer/post-create.sh) setup then runs as the non-root `vscode` user and
+installs pinned Python and Ruby dependencies into workspace-local `.venv/` and `.bundle/`
+directories. No host-level `sudo` access is required.
+
+The container pins Terraform, TFLint, Azure CLI, PowerShell, Ruby, Chef Infra Client, ChefSpec,
+Cookstyle, Test Kitchen, InSpec, Checkov, pytest, mypy, and Bandit. Run:
+
+```text
+make validate
+make chef-style
+make chef-unit
+```
+
+`make chef-integration` creates Azure Test Kitchen resources and therefore still requires an
+authorized `az login`, an approved subscription, accepted product terms, and protected
+environment inputs. The container deliberately does not mount host Azure credentials or accept
+Chef licensing terms automatically.
+
 ## Goals
 
-- Simulate an on-premises Slurm scheduler and a remote Azure CycleCloud environment with two
-  peered virtual networks.
+- Place the Slurm scheduler and administration plane in a configurable Azure source region and
+  burst compute into a separately configurable Azure region with less constrained capacity.
+- Connect the two regional virtual networks through private cross-region peering.
 - Use only pinned AVM modules for Azure resources.
 - Keep all VM and service management paths private through Azure Bastion and private endpoints.
 - Configure the CycleCloud and scheduler hosts through idempotent Chef Local policies.
@@ -29,6 +52,7 @@ The approved design includes:
 - Azure Bastion
 - Azure Key Vault with public network access disabled
 - Private DNS and bidirectional VNET peering
+- Independently selectable source and burst regions with fail-closed regional-capacity preflight
 - Log Analytics with 90-day audit retention
 - Chef Local for guest configuration
 - A guarded Python processor for the CycleCloud headless-template transformation
@@ -76,6 +100,61 @@ Spec Kit artifacts govern implementation:
 
 No deployment should proceed unless the exact configuration passes the validation gates defined in
 the constitution and implementation plan.
+
+### Reviewed-plan gate
+
+1. Run the repository validation targets against the exact commit and environment inputs intended
+   for deployment.
+2. Create a saved plan with `terraform -chdir=terraform plan -out=<approved-plan-path>`; never
+   place the plan in source control.
+3. Record `sha256sum <approved-plan-path>` and have an authorized reviewer confirm AVM-only
+   composition, the distinct source and burst regions, no public management endpoints, no
+   unintended replacement or deletion, and redacted sensitive values.
+4. Record the reviewer approval reference beside the digest in the protected evidence location.
+5. Apply only with `terraform -chdir=terraform apply <approved-plan-path>`.
+
+Any change to Terraform, providers, modules, input values, backend/state context, Chef policy, or
+the template processor invalidates the applicable validation evidence and saved-plan approval.
+Regenerate and review the plan rather than substituting a region, SKU, image, topology, or public
+endpoint. A failed validation, review, digest comparison, or approval check blocks deployment.
+
+### End-to-end operator workflow
+
+1. Copy `terraform/environments/demo.tfvars.example` to a protected, ignored `.tfvars` file and
+   supply the approved subscription, tenant, distinct source/burst regions, CIDRs, Entra group,
+   pinned images, SKUs, and versioned Key Vault references.
+2. Run `tests/end-to-end/preflight.sh`; stop on unsupported services, quota, images, Marketplace
+   terms, global peering, or regional capacity. Never substitute another region automatically.
+3. Run `make validate`, create and approve the saved plan as described above, then run
+   `tests/end-to-end/provision.sh` to apply that exact digest and produce secret-free inventory.
+4. Use Bastion to run `chef/bin/converge-cyclecloud.sh` and
+   `chef/bin/converge-scheduler.sh` twice. The second run must report zero resources updated.
+5. From the Windows administration VM reached through Bastion, run
+   `tests/end-to-end/verify_private_administration.ps1`. The private CycleCloud URL must resolve,
+   present the trusted Key Vault certificate, and show the imported cluster without public access.
+6. On the scheduler, run `tests/end-to-end/run_burst_demo.sh`. The output must identify one node
+   in the configured burst region within 15 minutes and that node must disappear after idle
+   timeout while the source-region scheduler remains healthy.
+7. Run `tests/end-to-end/collect_audit_evidence.sh`, validate inventory, and create a second
+   unchanged Terraform plan. Any drift, secret leak, failed private probe, or non-idempotent result
+   blocks completion.
+
+Do not manually patch a node or bypass compatibility, identity, certificate, connectivity,
+secret-access, idempotency, or reviewed-plan failures. Correct the input or implementation and
+restart the invalidated gate.
+
+### Private CycleCloud administration
+
+Connect to the Windows administration VM only through Azure Bastion. Browse to the
+`cyclecloud_private_url` from the generated inventory and authenticate with the authorized
+CycleCloud application identity whose credential is retrieved through approved Key Vault access.
+Confirm the certificate names the private endpoint and chains to the trusted private issuer before
+opening the configured cluster. Use the cluster page to inspect its configuration and transient
+node state. A public client must not resolve or connect to this endpoint.
+
+If access fails, verify the private DNS links to both VNETs, global peering, NSG port 443, the
+installed issuer chain, certificate expiration/name, and authorized application identity. Do not
+enable public access as a workaround.
 
 ## Repository Status
 

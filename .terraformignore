@@ -1,0 +1,12 @@
+.git/
+.github/
+.specify/
+.terraform/
+*.tfstate*
+*.tfvars
+!*.tfvars.example
+*.tfplan
+.venv/
+__pycache__/
+specs/
+tests/

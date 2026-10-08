@@ -22,6 +22,8 @@ terraform.rc
 # Chef
 .kitchen/
 .chef/
+.bundle/
+vendor/bundle/
 Berksfile.lock
 
 # Python
@@ -32,8 +34,15 @@ __pycache__/
 .ruff_cache/
 .venv/
 venv/
+dist/
+*.egg-info/
+.coverage
+htmlcov/
 
 # Editors and operating systems
 .DS_Store
+Thumbs.db
+*.tmp
+*.swp
 .idea/
 .vscode/
