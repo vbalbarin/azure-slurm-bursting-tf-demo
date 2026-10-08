@@ -85,8 +85,15 @@ variable "cyclecloud_image" {
   })
 
   validation {
-    condition     = var.cyclecloud_image.version == "8.9.3"
-    error_message = "CycleCloud must be pinned to version 8.9.3."
+    condition = (
+      var.cyclecloud_image.publisher == "azurecyclecloud" &&
+      var.cyclecloud_image.offer == "azure-cyclecloud" &&
+      var.cyclecloud_image.sku == "cyclecloud8-gen2" &&
+      var.cyclecloud_image.version == "8.9.320260827" &&
+      var.cyclecloud_image.plan_name == "cyclecloud8-gen2" &&
+      var.cyclecloud_image.product == "azure-cyclecloud"
+    )
+    error_message = "CycleCloud must use the pinned 8.9.3 Gen2 Marketplace image and matching plan."
   }
 }
 

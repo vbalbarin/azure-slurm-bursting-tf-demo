@@ -13,9 +13,9 @@ variables {
   cyclecloud_image = {
     publisher = "azurecyclecloud"
     offer     = "azure-cyclecloud"
-    sku       = "cyclecloud-8"
-    version   = "8.9.3"
-    plan_name = "cyclecloud-8"
+    sku       = "cyclecloud8-gen2"
+    version   = "8.9.320260827"
+    plan_name = "cyclecloud8-gen2"
     product   = "azure-cyclecloud"
   }
   scheduler_image = {
