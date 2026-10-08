@@ -7,14 +7,16 @@
 
 ## Summary
 
-Build a single-region Azure demonstration with two peered virtual networks, a private CycleCloud
-8.9.3 host, an AlmaLinux HPC external Slurm scheduler, a Windows administration host, Azure
-Bastion, private Key Vault access, private DNS, and 90-day audit retention. Terraform calls pinned
-Azure Verified Modules directly for every Azure resource. Chef Local converges the CycleCloud and
-scheduler guests. A narrowly scoped Python processor discovers the installed Slurm project,
-transforms its cluster template into a headless definition with guarded atomic writes, and fails
-closed when the pinned product combination is incompatible. The acceptance path submits one job
-from the scheduler and observes one transient remote compute node.
+Build a cross-region Azure demonstration with a source-region management VNET and a burst-region
+compute VNET connected by bidirectional global peering. The source region hosts private CycleCloud
+8.9.3, an AlmaLinux HPC external Slurm scheduler, a Windows administration host, Bastion, private
+Key Vault access, private DNS, and 90-day audit retention; the separately selected burst region
+hosts transient compute. Terraform calls pinned Azure Verified Modules directly for every Azure
+resource. Chef Local converges the CycleCloud and scheduler guests. A narrowly scoped Python
+processor discovers the installed Slurm project, transforms its cluster template into a headless
+definition with guarded atomic writes, and fails closed when the pinned product or regional
+combination is incompatible. The acceptance path submits one job in the source region and proves
+that one transient compute node executed it in the burst region.
 
 ## Technical Context
 
@@ -32,8 +34,9 @@ CycleCloud CLI and `azslurm`; pytest and Bandit for the fallback processor
 plan; Cookstyle, Chef unit tests, Test Kitchen and InSpec with a second-converge no-change gate;
 pytest and Bandit; end-to-end Slurm burst-job validation
 
-**Target Platform**: One Azure region; Azure CycleCloud 8.9.3 Marketplace VM; supported AlmaLinux
-HPC scheduler and compute-node image; supported Windows Server administration VM
+**Target Platform**: Two distinct operator-selected Azure regions connected by global VNET
+peering; Azure CycleCloud 8.9.3 Marketplace VM; supported AlmaLinux HPC scheduler and
+compute-node image; supported Windows Server administration VM
 
 **Project Type**: Infrastructure as code plus guest configuration management and one guarded
 configuration-file processor
@@ -42,14 +45,17 @@ configuration-file processor
 most 5 minutes; one-node burst job output in at most 15 minutes under normal capacity
 
 **Constraints**: AVM-only Azure resources; no direct Azure resource blocks or custom Terraform
-modules; no public VM, CycleCloud, or Key Vault ingress; latest supported release selected during
-planning and pinned; one compute node for acceptance; no HA, DR, or scale testing; configuration
-must be non-interactive and idempotent; secrets must not appear in outputs or logs
+modules; no public VM, CycleCloud, or Key Vault ingress; explicit distinct source and burst regions
+with no automatic substitution; latest release supported by both regions selected during planning
+and pinned; one compute node for acceptance; no HA, DR, region failover, dynamic region ranking, or
+scale testing; configuration must be non-interactive and idempotent; secrets must not appear in
+outputs or logs
 
-**Scale/Scope**: One resource group, two VNETs, bidirectional peering, dedicated workload and
-access subnets, one CycleCloud VM, one scheduler VM, one Windows VM, one Bastion host, one Key
+**Scale/Scope**: One resource group spanning two regions, two VNETs, bidirectional global peering,
+dedicated management and burst-workload subnets, one source-region CycleCloud VM, one
+source-region scheduler VM, one source-region Windows VM, one source-region Bastion host, one Key
 Vault, one Log Analytics workspace, one headless cluster, one demonstration user, and at most one
-burst node during acceptance
+burst-region node during acceptance
 
 ## Constitution Check
 
@@ -62,7 +68,7 @@ burst node during acceptance
 | Azure Verified Modules only | Every Azure resource is created through a pinned published AVM called directly from the root configuration. No direct resource blocks and no custom Terraform modules are planned. | PASS |
 | Security without exception | Private ingress, Bastion, Key Vault private endpoint, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
 | Reliable, idempotent, validated change | Terraform, Chef, and Python each have syntax, security, idempotency, failure, and review gates. The exact plan is applied only after validation. | PASS |
-| Scope constraints | Single-instance design; no HA, DR, or multi-node scaling capability is introduced. | PASS |
+| Scope constraints | Two-region placement is a required demonstration behavior, not HA or DR; the design remains single-instance and introduces no failover or multi-node scaling capability. | PASS |
 
 ### Pre-design gate
 
@@ -70,7 +76,9 @@ Research confirmed published AVMs cover the required resource types. CycleCloud 
 pinned current GA release. Public documentation does not certify every 8.9.3, Slurm project, and
 AlmaLinux image combination, so deployment includes a fail-closed compatibility preflight that
 discovers the installed project/template and validates the selected image before transformation.
-This is an operational gate, not an unresolved requirement.
+The preflight also validates both explicit regions, global peering support, images, SKUs, quota,
+and burst capacity without choosing a substitute region. These are operational gates, not
+unresolved requirements.
 
 ### Post-design gate
 

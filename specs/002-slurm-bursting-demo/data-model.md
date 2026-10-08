@@ -11,7 +11,8 @@ Terraform, Chef, the template processor, and acceptance tests must share.
 | `environment_name` | Unique naming prefix; Azure-safe lowercase value |
 | `subscription_id` | Existing authorized subscription |
 | `tenant_id` | Entra tenant containing operator identities |
-| `region` | One region supporting every selected service, image, and SKU |
+| `source_region` | Azure region hosting management and scheduler resources; required and distinct from `burst_region` |
+| `burst_region` | Azure region hosting transient compute; required and distinct from `source_region` |
 | `resource_group_name` | One feature-owned resource group |
 | `cyclecloud_version` | Exactly `8.9.3` for this feature baseline |
 | `slurm_project_version` | Discovered from pinned CycleCloud image and recorded before convergence |
@@ -30,10 +31,11 @@ operator action.
 
 | Field | Rules |
 |---|---|
-| `name` | Exactly `vnet-onpremises` or `vnet-remote` |
+| `name` | Exactly `vnet-source` or `vnet-burst` |
+| `region` | Equals the environment's corresponding `source_region` or `burst_region` |
 | `address_space` | Private, non-overlapping CIDR |
 | `subnets` | Dedicated workload/access/private-endpoint roles as required |
-| `peer_site` | The other Network Site; peering is bidirectional |
+| `peer_site` | The other Regional Network Site; global peering is bidirectional |
 | `private_dns_links` | Required zones linked to each VNET that consumes them |
 | `approved_flows` | Least-privilege source, destination, protocol, and port tuples |
 
@@ -114,6 +116,7 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
 | `requested_nodes` | Exactly one |
 | `state` | `queued`, `configuring`, `running`, `completed`, `failed` |
 | `execution_node` | One CycleCloud-created remote node |
+| `execution_region` | Equals Demonstration Environment `burst_region` |
 | `output_path` | File under demonstration user's shared home |
 | `output_evidence` | Contains remote node name |
 
@@ -137,3 +140,5 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
 5. Guest state cannot enter `converged` without native validation and second-run idempotency.
 6. A headless definition cannot become `valid` if the source combination fails compatibility or
    if the last valid destination would be lost on failure.
+7. The scheduler and persistent administration resources are in `source_region`; every acceptance
+   compute node is in the distinct `burst_region`.

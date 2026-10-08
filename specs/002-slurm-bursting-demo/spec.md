@@ -6,12 +6,13 @@
 
 **Status**: Draft
 
-**Input**: User description: "Create a secure Azure demonstration environment for Slurm bursting
-with simulated on-premises and remote networks, CycleCloud, an AlmaLinux scheduler, a Windows
-access host, Bastion, centralized secrets, automated headless-cluster preparation, and VM
-configuration consistent with the repository README. Use Chef Local for CycleCloud and scheduler
-configuration, prefer CycleCloud's own parser for the headless template, and use a guarded Python
-helper when no suitable native parser exists."
+**Input**: User description: "Create a secure cross-region Azure demonstration environment for
+Slurm bursting from a scheduler and administration plane in one configurable Azure region to
+transient compute in a separately configurable Azure region with less constrained capacity. Use
+CycleCloud, an AlmaLinux scheduler, a Windows access host, Bastion, centralized secrets, automated
+headless-cluster preparation, and VM configuration consistent with the repository README. Use
+Chef Local for CycleCloud and scheduler configuration, prefer CycleCloud's own parser for the
+headless template, and use a guarded Python helper when no suitable native parser exists."
 
 ## Clarifications
 
@@ -28,14 +29,17 @@ helper when no suitable native parser exists."
   certificate stored in Key Vault and install its trust chain on the Windows administration host.
 - Q: How long should security, administrative, and cluster lifecycle audit records be retained
   after the demonstration? → A: Retain them for 90 days.
+- Q: Which source topology should the demonstration implement? → A: Implement Azure-region-to-
+  Azure-region bursting only; an existing on-premises source is a future extension.
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Provision a Secure Demonstration Environment (Priority: P1)
 
-As an infrastructure operator, I can provision an isolated demonstration environment containing
-simulated on-premises and remote networks, protected administrative access, and the required
-hosts so that I have a safe foundation for demonstrating cloud bursting.
+As an infrastructure operator, I can provision an isolated demonstration environment spanning a
+configurable Azure source region and a separately configurable Azure burst region, with protected
+administrative access and the required hosts, so that I have a safe foundation for demonstrating
+capacity-aware cross-region cloud bursting.
 
 **Why this priority**: The network, access, host, and secret-management foundation is required
 before the Slurm integration can be configured or tested.
@@ -47,9 +51,10 @@ public internet.
 
 **Acceptance Scenarios**:
 
-1. **Given** an authorized operator and an empty target scope, **When** the environment is
-   provisioned, **Then** the simulated on-premises and remote networks, bidirectional connectivity,
-   protected access service, secret store, and three requested hosts are available.
+1. **Given** an authorized operator, two approved Azure regions, and an empty target scope,
+   **When** the environment is provisioned, **Then** the source-region and burst-region networks,
+   bidirectional private cross-region connectivity, protected access service, secret store, and
+   three requested hosts are available.
 2. **Given** the provisioned environment, **When** an unauthorized internet client attempts to
    connect directly to a VM, **Then** the connection is denied.
 3. **Given** an authorized administrator, **When** the administrator uses the protected access
@@ -90,9 +95,9 @@ omits built-in scheduler and login resources, and can be accepted as a headless 
 
 ### User Story 3 - Demonstrate an End-to-End Burst Job (Priority: P1)
 
-As a demonstration user, I can submit a simple Slurm job from the simulated on-premises scheduler
-and observe it execute on a dynamically created remote compute node so that cloud bursting is
-proven end to end.
+As a demonstration user, I can submit a simple Slurm job from the scheduler in the Azure source
+region and observe it execute on a dynamically created compute node in the selected Azure burst
+region so that cross-region cloud bursting is proven end to end.
 
 **Why this priority**: A completed remote job is the principal business outcome and the clearest
 evidence that the environment works.
@@ -138,6 +143,10 @@ headless cluster and its nodes.
 
 - The selected Azure region does not offer a required VM image, VM size, current supported
   CycleCloud release, or Azure service capability.
+- The source and burst regions are identical, or either region lacks a required service, image,
+  SKU, quota, or capacity.
+- Global peering is unavailable between the selected regions or measured cross-region latency is
+  unsuitable for the scheduler, shared-storage, or cluster-management path.
 - The latest generally available CycleCloud release is incompatible with the Slurm project or
   operating-system image selected for the scheduler.
 - A matching Slurm cluster template cannot be discovered or parsed for the installed release.
@@ -162,16 +171,17 @@ headless cluster and its nodes.
 ### Functional Requirements
 
 - **FR-001**: The environment MUST provide two non-overlapping virtual networks named
-  `vnet-onpremises` and `vnet-remote` that represent the local and remote sites.
-- **FR-002**: The two networks MUST have bidirectional private connectivity and MUST resolve the
-  private names required by the scheduler, CycleCloud service, Windows host, and compute nodes.
+  `vnet-source` and `vnet-burst` in two distinct, independently configurable Azure regions.
+- **FR-002**: The two networks MUST have bidirectional private cross-region connectivity over the
+  Azure backbone and MUST resolve the private names required by the scheduler, CycleCloud service,
+  Windows host, and compute nodes.
 - **FR-003**: The environment MUST separate host, protected-access, and workload traffic into
   appropriately sized subnets and restrict each subnet to documented required flows.
 - **FR-004**: During planning, the latest generally available CycleCloud release supported in the
-  selected region and compatible with the selected Slurm project MUST be selected, recorded, and
-  pinned. Every deployment of this feature MUST use that exact version.
-- **FR-005**: The simulated on-premises network MUST contain one supported AlmaLinux HPC scheduler
-  host and one supported Windows administration host.
+  selected source and burst regions and compatible with the selected Slurm project MUST be
+  selected, recorded, and pinned. Every deployment of this feature MUST use that exact version.
+- **FR-005**: The source-region network MUST contain one supported AlmaLinux HPC scheduler host and
+  one supported Windows administration host.
 - **FR-006**: The Windows host MUST be able to access the CycleCloud application over private
   networking, and the CycleCloud application MUST NOT be directly reachable from the public
   internet. The application MUST present a certificate valid for its private name, with the
@@ -223,6 +233,13 @@ headless cluster and its nodes.
 - **FR-024**: The demonstration MUST begin with a single remote compute node per test job and MUST
   remove the node after an operator-configurable idle period; high availability, disaster recovery,
   and additional scale testing are out of scope.
+- **FR-031**: The source and burst regions MUST be explicit inputs, MUST be different, and MUST be
+  recorded in inventory and acceptance evidence.
+- **FR-032**: Deployment MUST fail before apply when either selected region lacks required
+  capabilities, images, SKUs, quota, or approved cross-region connectivity; it MUST NOT silently
+  select another region.
+- **FR-033**: The acceptance job's evidence MUST prove that the scheduler ran in the source region
+  and the transient execution node ran in the selected burst region.
 - **FR-025**: Every infrastructure change MUST comply with the current project constitution,
   including exclusive use of pinned Azure Verified Modules and successful validation and change
   review before deployment.
@@ -256,8 +273,9 @@ fallback processing with documented justification (FR-029 and FR-030).
 
 - **Demonstration Environment**: The complete isolated Azure scope, including region, resource
   names, selected versions, validation status, and lifecycle state.
-- **Network Site**: A simulated site with an address range, subnets, private name-resolution rules,
-  approved traffic flows, and a peering relationship to the other site.
+- **Regional Network Site**: An Azure source or burst region with an address range, subnets,
+  private name-resolution rules, approved traffic flows, and a global-peering relationship to the
+  other region.
 - **Administrative Host**: A Linux or Windows host identified by role, private name, private
   address, operating-system image, access policy, and credential references.
 - **Secret**: A password, private key, certificate, or service credential with an owner, intended
@@ -288,6 +306,9 @@ fallback processing with documented justification (FR-029 and FR-030).
   fallback is required.
 - **SC-005**: An authorized user can submit a one-node demonstration job and receive output naming
   the remote execution node within 15 minutes under normal regional capacity conditions.
+- **SC-011**: Every successful acceptance run records two distinct configured Azure regions and
+  proves that the scheduler and transient execution node ran in their assigned source and burst
+  regions respectively.
 - **SC-006**: The demonstration job succeeds on its first submission in at least 9 of 10 clean
   environment test runs, excluding documented external regional-capacity failures.
 - **SC-007**: Every credential and private key required by the environment is centrally protected,
@@ -304,14 +325,20 @@ fallback processing with documented justification (FR-029 and FR-030).
 
 ## Assumptions
 
-- The target Azure subscription, region, naming prefix, and authorized operator identities will be
-  supplied during planning or deployment; one resource group and one region are sufficient for
-  this non-high-availability demonstration.
+- The target Azure subscription, distinct source and burst regions, naming prefix, and authorized
+  operator identities will be supplied during planning or deployment; one resource group spanning
+  both regions is sufficient for this non-high-availability demonstration.
 - Non-overlapping private address ranges and cost-conscious VM sizes will be selected during
   planning based on regional availability and the minimum supported product requirements.
-- "Most current release" means the latest generally available CycleCloud release supported in the
-  selected region and compatible with the selected Slurm project when planning occurs; preview
-  releases are excluded. The selected version remains pinned for all deployments of this feature.
+- "Most current release" means the latest generally available CycleCloud release supported across
+  both selected regions and compatible with the selected Slurm project when planning occurs;
+  preview releases are excluded. The selected version remains pinned for all deployments.
+- The source region hosts the scheduler, Windows administration host, Bastion, CycleCloud, Key
+  Vault private endpoint, and management services; the burst region hosts transient compute.
+- Region selection is explicit and operator-approved. Automatic region discovery, ranking,
+  failover, and substitution are out of scope.
+- Existing on-premises scheduler connectivity is a future extension and is not implemented by
+  this feature.
 - The latest supported AlmaLinux HPC image is preferred for the scheduler and matching compute
   nodes. The latest supported Windows Server image is sufficient for the administration host.
 - Azure regional capacity, an authorized subscription, required service quotas, and controlled

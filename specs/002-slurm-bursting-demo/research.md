@@ -54,6 +54,31 @@ rejected because it would bypass compatibility review.
 - <https://learn.microsoft.com/azure/cyclecloud/how-to/bursting/setup-instructions-for-cloud-bursting?view=cyclecloud-8>
 - <https://github.com/Azure/cyclecloud-slurm/releases>
 
+## Cross-region topology
+
+**Decision**: Place CycleCloud, the external scheduler, Windows administration, Bastion, and the
+management private endpoints in an explicit source region. Place transient Slurm compute in a
+different explicit burst region. Connect `vnet-source` and `vnet-burst` with bidirectional global
+VNET peering and link the required private DNS zones to both networks.
+
+**Rationale**: Cross-region placement demonstrates the intended capacity strategy: retain the
+scheduler and administration plane in one Azure region while consuming compute from another
+operator-approved region with less constrained capacity. Global VNET peering keeps traffic on the
+Microsoft backbone, and one Bastion deployment can administer VMs across supported peered VNETs.
+Explicit inputs keep the deployment reproducible and auditable.
+
+**Alternatives considered**: A simulated on-premises source was deferred as a future extension.
+Single-region placement was rejected because it does not demonstrate regional capacity mobility.
+Automatic region ranking, failover, and substitution were rejected because they would add
+unrequired control-plane logic, weaken plan reproducibility, and blur the boundary between a
+bounded demonstration and a production capacity broker.
+
+**Sources**:
+
+- <https://learn.microsoft.com/azure/networking/design-guide/cross-region>
+- <https://learn.microsoft.com/azure/bastion/vnet-peering>
+- <https://learn.microsoft.com/azure/cyclecloud/>
+
 ## Headless template transformation
 
 **Decision**: Use the installed CycleCloud and project CLIs for discovery, fetch, import, and

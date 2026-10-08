@@ -6,10 +6,11 @@ the reviewed Terraform plan or environment-specific runbook.
 ## Prerequisites
 
 - Authorized Azure subscription and Entra operator group
-- Region with quota and availability for all pinned SKUs and images
+- Distinct source and burst regions with required services, global peering, quota, capacity, and
+  availability for their pinned SKUs and images
 - Terraform and project validation tools at the pinned versions
 - Accepted CycleCloud Marketplace terms for pinned version 8.9.3
-- Approved private CIDRs for `vnet-onpremises` and `vnet-remote`
+- Approved private CIDRs for `vnet-source` and `vnet-burst`
 - Approved sensitive input channel for required bootstrap credentials and certificate material
 
 Review [research.md](./research.md), [data-model.md](./data-model.md), and all files under
@@ -45,6 +46,7 @@ Review must confirm:
 - No direct Azure resource or local custom Terraform module exists.
 - No VM, CycleCloud endpoint, or Key Vault public endpoint is planned.
 - Exactly two VNETs and the required bidirectional peerings are planned.
+- The VNETs are placed in the approved distinct source and burst regions and use global peering.
 - Exactly three persistent VMs and one Bastion host are planned.
 - No unintended replacement or destruction appears.
 - Sensitive values are redacted and absent from outputs.
@@ -59,7 +61,7 @@ Expected outcome:
 
 - Provisioning completes within 90 minutes.
 - Inventory reports private names, private addresses, pinned versions, cluster name, and validation
-  references without secret values.
+  references, source region, and burst region without secret values.
 - Public-inbound probes to all hosts, CycleCloud, and Key Vault fail.
 - Private DNS resolves CycleCloud and Key Vault from authorized network locations.
 
@@ -101,7 +103,8 @@ Expected outcome within 15 minutes under normal regional capacity:
 1. The job moves from queued to configuring/running.
 2. One remote CycleCloud compute node appears.
 3. The job completes on that node.
-4. Output under the user's shared home names the execution node.
+4. Output under the user's shared home names the execution node and proves it is in the configured
+   burst region while the scheduler remains in the configured source region.
 5. After the configured idle timeout, the compute node is removed.
 
 ## 7. Verify audit evidence and convergence

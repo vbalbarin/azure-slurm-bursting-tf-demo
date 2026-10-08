@@ -33,5 +33,7 @@
 
 - Validation completed on 2026-10-07; all 16 quality checks passed on the first specification
   iteration.
+- Cross-region scope update validated on 2026-10-07; source and burst regions are explicit,
+  distinct, testable, and bounded without introducing automatic failover or region selection.
 - Azure, CycleCloud, Chef Local, and the conditional Python fallback are explicit stakeholder and
   governance constraints rather than implementation design introduced by this specification.

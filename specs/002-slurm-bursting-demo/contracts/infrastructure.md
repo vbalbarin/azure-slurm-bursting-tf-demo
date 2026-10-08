@@ -6,8 +6,9 @@
 |---|---|
 | Environment name | Azure-safe naming prefix |
 | Subscription and tenant | Authorized target and Entra tenant |
-| Region | Supports pinned images, SKUs, Bastion, private endpoints, and Log Analytics |
-| On-premises and remote CIDRs | Private and non-overlapping |
+| Source region | Hosts management and scheduler resources; differs from burst region and supports all pinned persistent services, images, and SKUs |
+| Burst region | Hosts transient compute; differs from source region and supports the pinned compute image, SKU, quota, and global peering |
+| Source and burst CIDRs | Private and non-overlapping |
 | Operator group object IDs | Existing Entra groups; no individual broad grants |
 | CycleCloud version/image | Pinned to the planning decision and accepted Marketplace terms |
 | AlmaLinux HPC image | Pinned and compatible with discovered Slurm project |
@@ -19,13 +20,15 @@
 ## Guarantees
 
 1. Every Azure resource is created by a direct pinned AVM call.
-2. The two named VNETs have non-overlapping ranges and bidirectional peering.
+2. `vnet-source` and `vnet-burst` have non-overlapping ranges in distinct recorded regions and
+   bidirectional global peering.
 3. Hosts, CycleCloud, and Key Vault have no public inbound endpoint.
 4. Bastion is the administrative ingress path.
 5. Key Vault public access is disabled; its private DNS resolves from both consuming networks.
 6. NSG rules are explicit, least privilege, and default deny for unsolicited cross-subnet traffic.
 7. Diagnostic destinations retain required records for 90 days.
-8. Outputs contain inventory identifiers and private addresses but no secret values.
+8. Outputs contain inventory identifiers, private addresses, source and burst regions, but no
+   secret values.
 
 ## Validation contract
 
@@ -40,6 +43,7 @@ Deployment is blocked unless:
 
 ## Failure behavior
 
-Unsupported region, unavailable image/SKU, overlapping CIDR, denied Marketplace terms, absent AVM,
-or failed validation returns a nonzero result before apply. The process must not substitute a
-different version, region, topology, or public endpoint automatically.
+Identical or unsupported regions, unavailable image/SKU/quota/capacity, unavailable global
+peering, overlapping CIDR, denied Marketplace terms, absent AVM, or failed validation returns a
+nonzero result before apply. The process must not substitute a different version, region, topology,
+or public endpoint automatically.
