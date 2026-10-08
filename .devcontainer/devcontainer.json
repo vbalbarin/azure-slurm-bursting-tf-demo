@@ -25,9 +25,14 @@
   },
   "remoteUser": "vscode",
   "containerEnv": {
+    "EVIDENCE_DIR": "/evidence/quickstart",
+    "EVIDENCE_ROOT": "/evidence",
     "PIP_DISABLE_PIP_VERSION_CHECK": "1",
     "PYTHONDONTWRITEBYTECODE": "1"
   },
+  "mounts": [
+    "source=azure-slurm-bursting-tf-demo-evidence,target=/evidence,type=volume"
+  ],
   "remoteEnv": {
     "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerWorkspaceFolder}/.bundle/bin:/home/vscode/.local/bin:${containerEnv:PATH}",
     "BUNDLE_GEMFILE": "${containerWorkspaceFolder}/chef/Gemfile"

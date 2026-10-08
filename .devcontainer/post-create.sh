@@ -6,6 +6,30 @@ if [[ "$(id -u)" -eq 0 ]]; then
   exit 1
 fi
 
+: "${EVIDENCE_ROOT:?EVIDENCE_ROOT is required}"
+: "${EVIDENCE_DIR:?EVIDENCE_DIR is required}"
+[[ "$EVIDENCE_DIR" == "$EVIDENCE_ROOT/"* ]] || {
+  echo "EVIDENCE_DIR must be below EVIDENCE_ROOT" >&2
+  exit 1
+}
+if ! mountpoint -q -- "$EVIDENCE_ROOT"; then
+  printf '%s\n' \
+    "Protected evidence volume is not mounted at $EVIDENCE_ROOT." \
+    "Rebuild the development container so the named Docker volume is attached." \
+    "Do not create a host \$HOME/evidence directory; see README.md#protected-evidence-volume." >&2
+  exit 1
+fi
+if [[ ! -w "$EVIDENCE_ROOT" ]]; then
+  if ! sudo -n chown -R "$(id -u):$(id -g)" "$EVIDENCE_ROOT"; then
+    printf '%s\n' \
+      "Protected evidence volume at $EVIDENCE_ROOT is not writable by $(id -un) (UID $(id -u), GID $(id -g))." \
+      "Automatic ownership repair failed. See README.md#protected-evidence-volume." >&2
+    exit 1
+  fi
+fi
+chmod 0700 "$EVIDENCE_ROOT"
+install -d -m 0700 "$EVIDENCE_DIR"
+
 export PATH="$HOME/.local/bin:$PATH"
 # Spec Kit v1.1.2
 uv tool install --force specify-cli \
@@ -27,4 +51,5 @@ terraform -chdir=terraform init -backend=false
 printf '%s\n' \
   "Development runtimes installed without host-level privilege." \
   "Run 'make validate' to execute local source gates." \
+  "Protected evidence is stored outside Git in $EVIDENCE_DIR." \
   "Azure deployment still requires an authorized 'az login' and protected inputs."

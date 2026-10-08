@@ -20,4 +20,5 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list \
       shellcheck \
       unzip \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && install -d -o vscode -g vscode -m 0700 /evidence

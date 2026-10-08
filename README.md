@@ -30,6 +30,64 @@ authorized `az login`, an approved subscription, accepted product terms, and pro
 environment inputs. The container deliberately does not mount host Azure credentials or accept
 Chef licensing terms automatically.
 
+### Protected evidence volume
+
+The development container creates the Docker volume
+`azure-slurm-bursting-tf-demo-evidence` and mounts it at `/evidence`. The volume is outside the Git
+workspace, persists across container rebuilds, and is writable only by the container's `vscode`
+user. The container sets:
+
+```text
+EVIDENCE_ROOT=/evidence
+EVIDENCE_DIR=/evidence/quickstart
+```
+
+The post-create setup creates `/evidence/quickstart` with mode `0700`. Evidence-producing commands
+can therefore use `EVIDENCE_DIR` without writing plans, logs, audit events, or other protected
+artifacts into the repository:
+
+```bash
+printf '%s\n' "$EVIDENCE_DIR"
+test -d "$EVIDENCE_DIR" && test -w "$EVIDENCE_DIR"
+```
+
+Rebuild the development container after changing its configuration so the volume is mounted. A
+named volume is used instead of a host-home bind mount to keep the configuration portable across
+Linux, macOS, Windows, Codespaces, and remote Docker hosts. It is not automatically backed up.
+Export required evidence to an approved protected location before removing the Docker volume or
+development environment. Evidence created on provisioned VMs must be transferred through an
+approved protected channel into `$EVIDENCE_DIR`; `/evidence` is mounted only in the development
+container.
+
+The post-create command checks the mount whenever the development container is created or rebuilt.
+Restarting an existing container does not normally rerun that command. Because the named volume
+persists across rebuilds, rebuilding does not reset its contents; post-create adjusts retained
+ownership to the current `vscode` user when necessary.
+
+If post-create reports that `/evidence` is not writable, inspect the volume from the host:
+
+```bash
+docker run --rm \
+  --mount source=azure-slurm-bursting-tf-demo-evidence,target=/evidence \
+  alpine ls -ldn /evidence
+```
+
+Dev Containers can remap the `vscode` user's UID and GID to match the host account. Consequently,
+hard-coding `1000:1000` can leave the volume inaccessible. The post-create command automatically
+changes the volume contents to the `vscode` user's current UID and GID without deleting them.
+
+To repair the currently running container before rebuilding, run this inside the container:
+
+```bash
+sudo chown -R "$(id -u):$(id -g)" /evidence
+chmod 0700 /evidence
+```
+
+Alternatively, rebuild the development container to rerun the automatic repair. If the evidence is
+no longer needed, removing the named volume and rebuilding is another option, but permanently
+deletes everything stored in the volume. Do not create `$HOME/evidence`; it is not used by this
+configuration.
+
 ## Goals
 
 - Place the Slurm scheduler and administration plane in a configurable Azure source region and
@@ -111,7 +169,7 @@ the constitution and implementation plan.
 3. Record `sha256sum <approved-plan-path>` and have an authorized reviewer confirm AVM-only
    composition, the distinct source and burst regions, no public management endpoints, no
    unintended replacement or deletion, and redacted sensitive values.
-4. Record the reviewer approval reference beside the digest in the protected evidence location.
+4. Record the reviewer approval reference beside the digest in `$EVIDENCE_DIR`.
 5. Apply only with `terraform -chdir=terraform apply <approved-plan-path>`.
 
 Any change to Terraform, providers, modules, input values, backend/state context, Chef policy, or
