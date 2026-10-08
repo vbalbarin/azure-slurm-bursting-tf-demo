@@ -149,6 +149,9 @@ headless cluster and its nodes.
   unsuitable for the scheduler, shared-storage, or cluster-management path.
 - The latest generally available CycleCloud release is incompatible with the Slurm project or
   operating-system image selected for the scheduler.
+- The scheduler image supports the source-region scheduler size but the burst-compute image does
+  not support the selected burst-region size, or the two images do not provide a compatible
+  operating-system family and major release.
 - A matching Slurm cluster template cannot be discovered or parsed for the installed release.
 - A generated headless definition already lacks one or more removable sections or contains more
   than one matching section.
@@ -180,8 +183,9 @@ headless cluster and its nodes.
 - **FR-004**: During planning, the latest generally available CycleCloud release supported in the
   selected source and burst regions and compatible with the selected Slurm project MUST be
   selected, recorded, and pinned. Every deployment of this feature MUST use that exact version.
-- **FR-005**: The source-region network MUST contain one supported AlmaLinux HPC scheduler host and
-  one supported Windows administration host.
+- **FR-005**: The source-region network MUST contain one supported AlmaLinux scheduler host using
+  a pinned image compatible with the selected scheduler VM size, and one supported Windows
+  administration host.
 - **FR-006**: The Windows host MUST be able to access the CycleCloud application over private
   networking, and the CycleCloud application MUST NOT be directly reachable from the public
   internet. The application MUST present a certificate valid for its private name, with the
@@ -218,8 +222,9 @@ headless cluster and its nodes.
 - **FR-017**: The scheduler MUST provide Slurm, Munge, shared `/sched` and `/shared` storage, and an
   external-scheduler configuration compatible with the discovered project version.
 - **FR-018**: The cluster MUST configure compute nodes to use the scheduler's private address for
-  `/sched` and `/shared`, use the same supported operating-system family as the scheduler, and not
-  use built-in network storage.
+  `/sched` and `/shared`, use an independently pinned image that is compatible with the selected
+  burst-compute VM size and the scheduler's operating-system family and major release, and not use
+  built-in network storage.
 - **FR-019**: The cluster MUST disable the return proxy when direct private connectivity between
   the networks is available.
 - **FR-020**: A test user MUST have a consistent numeric identity, group membership, home
@@ -236,10 +241,13 @@ headless cluster and its nodes.
 - **FR-031**: The source and burst regions MUST be explicit inputs, MUST be different, and MUST be
   recorded in inventory and acceptance evidence.
 - **FR-032**: Deployment MUST fail before apply when either selected region lacks required
-  capabilities, images, SKUs, quota, or approved cross-region connectivity; it MUST NOT silently
-  select another region.
+  capabilities, the image or VM SKU assigned to each role, quota, or approved cross-region
+  connectivity; it MUST NOT silently select another region, image, or SKU.
 - **FR-033**: The acceptance job's evidence MUST prove that the scheduler ran in the source region
   and the transient execution node ran in the selected burst region.
+- **FR-034**: The scheduler and burst-compute image references MUST be separate explicit inputs,
+  MUST each be pinned to an exact version, MUST be validated in their assigned regions against
+  their assigned VM sizes, and MUST be recorded by role in inventory and acceptance evidence.
 - **FR-025**: Every infrastructure change MUST comply with the current project constitution,
   including exclusive use of pinned Azure Verified Modules and successful validation and change
   review before deployment.
@@ -284,7 +292,8 @@ fallback processing with documented justification (FR-029 and FR-030).
 - **Headless Cluster Definition**: A release-matched cluster description identified by source
   project version, Slurm version, required identities, removed sections, and validation status.
 - **Slurm Cluster**: The externally scheduled cluster identified by cluster name, scheduler,
-  partitions, shared-storage endpoints, compute-node image, and lifecycle state.
+  partitions, shared-storage endpoints, independently pinned scheduler and compute-node images,
+  their compatibility status, and lifecycle state.
 - **Demonstration User**: The authorized job submitter identified by user name, UID, group,
   public key, home path, and cluster access state.
 - **Burst Job**: A submitted workload identified by job ID, user, partition, requested node count,
@@ -309,6 +318,10 @@ fallback processing with documented justification (FR-029 and FR-030).
 - **SC-011**: Every successful acceptance run records two distinct configured Azure regions and
   proves that the scheduler and transient execution node ran in their assigned source and burst
   regions respectively.
+- **SC-012**: Every approved deployment records distinct pinned scheduler and burst-compute image
+  references and proves before apply that each image is available in its assigned region,
+  compatible with its assigned VM size, and compatible with the other role's operating-system
+  family and major release.
 - **SC-006**: The demonstration job succeeds on its first submission in at least 9 of 10 clean
   environment test runs, excluding documented external regional-capacity failures.
 - **SC-007**: Every credential and private key required by the environment is centrally protected,
@@ -339,8 +352,11 @@ fallback processing with documented justification (FR-029 and FR-030).
   failover, and substitution are out of scope.
 - Existing on-premises scheduler connectivity is a future extension and is not implemented by
   this feature.
-- The latest supported AlmaLinux HPC image is preferred for the scheduler and matching compute
-  nodes. The latest supported Windows Server image is sufficient for the administration host.
+- The scheduler and burst compute nodes use independently pinned images from the same supported
+  AlmaLinux family and compatible major release. The scheduler image is selected for compatibility
+  with its source-region general-purpose VM size, while the burst image is the supported HPC image
+  for its burst-region compute size. The latest supported Windows Server image is sufficient for
+  the administration host.
 - Azure regional capacity, an authorized subscription, required service quotas, and controlled
   outbound access to approved product and package sources are available.
 - The demonstration uses one external scheduler, one CycleCloud host, one Windows host, and at

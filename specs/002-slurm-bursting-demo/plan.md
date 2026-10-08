@@ -1,6 +1,6 @@
 # Implementation Plan: Secure Slurm Bursting Demonstration
 
-**Branch**: `main` | **Date**: 2026-10-07 |
+**Branch**: `main` | **Date**: 2026-10-08 |
 **Spec**: [spec.md](./spec.md)
 
 **Input**: Feature specification from `specs/002-slurm-bursting-demo/spec.md`
@@ -9,14 +9,16 @@
 
 Build a cross-region Azure demonstration with a source-region management VNET and a burst-region
 compute VNET connected by bidirectional global peering. The source region hosts private CycleCloud
-8.9.3, an AlmaLinux HPC external Slurm scheduler, a Windows administration host, Bastion, private
-Key Vault access, private DNS, and 90-day audit retention; the separately selected burst region
-hosts transient compute. Terraform calls pinned Azure Verified Modules directly for every Azure
-resource. Chef Local converges the CycleCloud and scheduler guests. A narrowly scoped Python
-processor discovers the installed Slurm project, transforms its cluster template into a headless
-definition with guarded atomic writes, and fails closed when the pinned product or regional
-combination is incompatible. The acceptance path submits one job in the source region and proves
-that one transient compute node executed it in the burst region.
+8.9.3, an external Slurm scheduler on a pinned AlmaLinux image compatible with its general-purpose
+VM size, a Windows administration host, Bastion, private Key Vault access, private DNS, and 90-day
+audit retention. The separately selected burst region hosts transient compute on an independently
+pinned AlmaLinux HPC image compatible with its selected compute size. Terraform calls pinned Azure
+Verified Modules directly for every Azure resource. Chef Local converges the CycleCloud and
+scheduler guests. A narrowly scoped Python processor discovers the installed Slurm project,
+transforms its cluster template into a headless definition with guarded atomic writes, and fails
+closed when the pinned product, regional, or role-specific image combination is incompatible. The
+acceptance path submits one job in the source region and proves that one transient compute node
+executed it in the burst region.
 
 ## Technical Context
 
@@ -24,8 +26,9 @@ that one transient compute node executed it in the burst region.
 implementation; Python 3 from the pinned CycleCloud image
 
 **Primary Dependencies**: AzureRM and AzAPI providers; direct pinned calls to Azure Verified
-Modules; CycleCloud 8.9.3; the Slurm project installed with the pinned CycleCloud image; Chef Local;
-CycleCloud CLI and `azslurm`; pytest and Bandit for the fallback processor
+Modules; CycleCloud 8.9.3; independently pinned compatible scheduler and burst-compute AlmaLinux
+images; the Slurm project installed with the pinned CycleCloud image; Chef Local; CycleCloud CLI
+and `azslurm`; pytest and Bandit for the fallback processor
 
 **Storage**: Key Vault for credentials and certificates; scheduler-hosted NFS for `/sched` and
 `/shared`; Log Analytics with 90-day retention; local configuration files managed by Chef
@@ -35,8 +38,9 @@ plan; Cookstyle, Chef unit tests, Test Kitchen and InSpec with a second-converge
 pytest and Bandit; end-to-end Slurm burst-job validation
 
 **Target Platform**: Two distinct operator-selected Azure regions connected by global VNET
-peering; Azure CycleCloud 8.9.3 Marketplace VM; supported AlmaLinux HPC scheduler and
-compute-node image; supported Windows Server administration VM
+peering; Azure CycleCloud 8.9.3 Marketplace VM; a supported source-region AlmaLinux scheduler
+image; a separately pinned burst-region AlmaLinux HPC compute image; supported Windows Server
+administration VM
 
 **Project Type**: Infrastructure as code plus guest configuration management and one guarded
 configuration-file processor
@@ -48,8 +52,9 @@ most 5 minutes; one-node burst job output in at most 15 minutes under normal cap
 modules; no public VM, CycleCloud, or Key Vault ingress; explicit distinct source and burst regions
 with no automatic substitution; latest release supported by both regions selected during planning
 and pinned; one compute node for acceptance; no HA, DR, region failover, dynamic region ranking, or
-scale testing; configuration must be non-interactive and idempotent; secrets must not appear in
-outputs or logs
+scale testing; scheduler and burst-compute images must be explicit, exact-version inputs validated
+by role, region, VM size, and compatible operating-system family/major release; configuration must
+be non-interactive and idempotent; secrets must not appear in outputs or logs
 
 **Scale/Scope**: One resource group spanning two regions, two VNETs, bidirectional global peering,
 dedicated management and burst-workload subnets, one source-region CycleCloud VM, one
@@ -75,10 +80,12 @@ burst-region node during acceptance
 Research confirmed published AVMs cover the required resource types. CycleCloud 8.9.3 is the
 pinned current GA release. Public documentation does not certify every 8.9.3, Slurm project, and
 AlmaLinux image combination, so deployment includes a fail-closed compatibility preflight that
-discovers the installed project/template and validates the selected image before transformation.
-The preflight also validates both explicit regions, global peering support, images, SKUs, quota,
-and burst capacity without choosing a substitute region. These are operational gates, not
-unresolved requirements.
+discovers the installed project/template and independently validates the scheduler image against
+the source region and scheduler VM size and the burst-compute image against the burst region and
+compute VM size. It also validates that both images provide a compatible AlmaLinux family and major
+release before transformation. The preflight validates both explicit regions, global peering
+support, images, SKUs, quota, and burst capacity without choosing a substitute region, image, or
+SKU. These are operational gates, not unresolved requirements.
 
 ### Post-design gate
 
