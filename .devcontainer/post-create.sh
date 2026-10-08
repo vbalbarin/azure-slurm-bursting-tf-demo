@@ -6,6 +6,12 @@ if [[ "$(id -u)" -eq 0 ]]; then
   exit 1
 fi
 
+export PATH="$HOME/.local/bin:$PATH"
+# Spec Kit v1.1.2
+uv tool install --force specify-cli \
+  --from "git+https://github.com/github/spec-kit.git@959e866caa3618bf3dc290d5dca33394365af9c6"
+specify --version
+
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade "pip==25.2"
 .venv/bin/python -m pip install \

@@ -16,9 +16,10 @@ installs pinned Python and Ruby dependencies into workspace-local `.venv/` and `
 directories. No host-level `sudo` access is required.
 
 The container pins Terraform, TFLint, Azure CLI, PowerShell, Ruby, Chef Infra Client, ChefSpec,
-Cookstyle, Test Kitchen, InSpec, Checkov, pytest, mypy, and Bandit. Run:
+Cookstyle, Test Kitchen, InSpec, Checkov, pytest, mypy, Bandit, `uv`, and the Spec Kit CLI. Run:
 
 ```text
+specify --version
 make validate
 make chef-style
 make chef-unit

@@ -29,7 +29,7 @@
     "PYTHONDONTWRITEBYTECODE": "1"
   },
   "remoteEnv": {
-    "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerWorkspaceFolder}/.bundle/bin:${containerEnv:PATH}",
+    "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerWorkspaceFolder}/.bundle/bin:/home/vscode/.local/bin:${containerEnv:PATH}",
     "BUNDLE_GEMFILE": "${containerWorkspaceFolder}/chef/Gemfile"
   },
   "postCreateCommand": "bash .devcontainer/post-create.sh",
