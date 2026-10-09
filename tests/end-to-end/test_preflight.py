@@ -29,6 +29,9 @@ elif args[:2] == ["account", "list-locations"]:
     print("eastus2")
 elif args[:2] == ["vm", "list-skus"]:
     size = args[args.index("--size") + 1]
+    region = args[args.index("--location") + 1]
+    if region == os.environ.get("FAKE_MISSING_SKU_REGION"):
+        sys.exit(0)
     role = "BURST" if size == "Standard_HB120rs_v3" else "SCHEDULER"
     family = "standardHBSFamily" if role == "BURST" else "standardDSv6Family"
     zones = os.environ.get(f"FAKE_{role}_ZONES", "1,2,3").split(",")
@@ -257,3 +260,15 @@ def test_reports_alternate_with_missing_quota_as_inconclusive(
     alternate = evidence["capacity"]["alternate_placements"][0]
     assert alternate["status"] == "inconclusive"
     assert alternate["failure_class"] == "family_quota_unavailable"
+
+
+def test_reports_unavailable_alternate_sku_without_failing_selection(
+    tmp_path: Path,
+) -> None:
+    result = _run(tmp_path, FAKE_MISSING_SKU_REGION="eastus2")
+
+    assert result.returncode == 0, result.stderr
+    evidence = json.loads(result.stdout)
+    alternate = evidence["capacity"]["alternate_placements"][0]
+    assert alternate["status"] == "ineligible"
+    assert alternate["failure_class"] == "sku_unavailable"

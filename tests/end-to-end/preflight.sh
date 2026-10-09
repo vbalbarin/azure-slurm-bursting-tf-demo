@@ -56,10 +56,12 @@ run_az() {
 load_sku() {
   local region="$1" size="$2"
   local key="$region|$size"
+  local response
   if [[ ! -v "sku_data[$key]" ]]; then
     progress "Querying VM size $size in $region"
-    sku_data["$key"]="$(run_az vm list-skus --location "$region" --size "$size" --all \
+    response="$(run_az vm list-skus --location "$region" --size "$size" --all \
       --query "[?name=='$size'] | [0]" --output json)"
+    sku_data["$key"]="${response:-null}"
   fi
 }
 
