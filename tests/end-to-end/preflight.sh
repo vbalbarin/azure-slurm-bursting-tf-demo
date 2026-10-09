@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for command in az jq terraform; do
+for command in az jq terraform timeout; do
   command -v "$command" >/dev/null || { echo "Missing required command: $command" >&2; exit 2; }
 done
 
@@ -21,22 +21,66 @@ if [[ "${SOURCE_REGION,,}" == "${BURST_REGION,,}" ]]; then
   exit 3
 fi
 
-subscription_id="$(az account show --query id --output tsv)"
-locations="$(az account list-locations --query '[].name' --output tsv)"
+az_timeout_seconds="${AZ_COMMAND_TIMEOUT_SECONDS:-120}"
+declare -A sku_data=()
+declare -A image_data=()
+
+progress() {
+  printf '[preflight] %s\n' "$*" >&2
+}
+
+run_az() {
+  local status
+  timeout --foreground "${az_timeout_seconds}s" az "$@" && return
+  status="$?"
+  if [[ "$status" -eq 124 ]]; then
+    echo "Azure CLI command timed out after ${az_timeout_seconds}s: az $*" >&2
+  fi
+  return "$status"
+}
+
+load_sku() {
+  local region="$1" size="$2"
+  local key="$region|$size"
+  if [[ ! -v "sku_data[$key]" ]]; then
+    progress "Querying VM size $size in $region"
+    sku_data["$key"]="$(run_az vm list-skus --location "$region" --size "$size" --all \
+      --query "[?name=='$size'] | [0]" --output json)"
+  fi
+}
+
+load_image() {
+  local region="$1" urn="$2"
+  local key="$region|$urn"
+  local publisher offer sku version
+  if [[ ! -v "image_data[$key]" ]]; then
+    IFS=: read -r publisher offer sku version <<<"$urn"
+    progress "Querying image $urn in $region"
+    image_data["$key"]="$(run_az vm image show --location "$region" \
+      --publisher "$publisher" --offer "$offer" --sku "$sku" --version "$version" \
+      --output json)"
+  fi
+}
+
+progress "Checking subscription and regions"
+subscription_id="$(run_az account show --query id --output tsv)"
+locations="$(run_az account list-locations --query '[].name' --output tsv)"
 grep -Fxq "$SOURCE_REGION" <<<"$locations" || { echo "Unsupported source region: $SOURCE_REGION" >&2; exit 4; }
 grep -Fxq "$BURST_REGION" <<<"$locations" || { echo "Unsupported burst region: $BURST_REGION" >&2; exit 4; }
 
 check_sku() {
   local region="$1" size="$2"
   local restrictions
-  restrictions="$(az vm list-skus --location "$region" --size "$size" --all \
-    --query "[?name=='$size'].restrictions[].reasonCode" --output tsv)"
+  load_sku "$region" "$size"
+  jq -e --arg size "$size" '.name == $size' <<<"${sku_data["$region|$size"]}" >/dev/null || {
+    echo "VM size $size is unavailable in $region" >&2
+    return 1
+  }
+  restrictions="$(jq -r '.restrictions[]?.reasonCode' <<<"${sku_data["$region|$size"]}")"
   if [[ -n "$restrictions" ]]; then
     echo "VM size $size is restricted in $region: $restrictions" >&2
     return 1
   fi
-  az vm list-skus --location "$region" --size "$size" --all \
-    --query "[?name=='$size'] | length(@)" --output tsv | grep -qv '^0$'
 }
 
 check_image() {
@@ -46,22 +90,21 @@ check_image() {
     echo "Image URN is incomplete: $urn" >&2
     return 1
   }
-  az vm image show --location "$region" --publisher "$publisher" --offer "$offer" \
-    --sku "$sku" --version "$version" --output none
+  load_image "$region" "$urn"
 }
 
 image_property() {
   local region="$1" urn="$2" property="$3"
-  IFS=: read -r publisher offer sku version <<<"$urn"
-  az vm image show --location "$region" --publisher "$publisher" --offer "$offer" \
-    --sku "$sku" --version "$version" --query "$property" --output tsv
+  load_image "$region" "$urn"
+  jq -er --arg property "$property" '.[$property]' <<<"${image_data["$region|$urn"]}"
 }
 
 size_capability() {
   local region="$1" size="$2" capability="$3"
-  az vm list-skus --location "$region" --size "$size" --all \
-    --query "[?name=='$size'].capabilities[?name=='$capability'].value | [0][0]" \
-    --output tsv
+  load_sku "$region" "$size"
+  jq -er --arg capability "$capability" \
+    '.capabilities[] | select(.name == $capability) | .value' \
+    <<<"${sku_data["$region|$size"]}"
 }
 
 check_image_size_compatibility() {
@@ -116,12 +159,14 @@ IFS=: read -r image_family image_major <<<"$scheduler_family_major"
 scheduler_generation="$(image_property "$SOURCE_REGION" "$SCHEDULER_URN" hyperVGeneration)"
 scheduler_architecture="$(image_property "$SOURCE_REGION" "$SCHEDULER_URN" architecture)"
 
-az vm image terms show --urn "$CYCLECLOUD_URN" \
+progress "Checking CycleCloud Marketplace terms"
+run_az vm image terms show --urn "$CYCLECLOUD_URN" \
   --query "accepted == true" --output tsv | grep -qi '^true$' || {
   echo "CycleCloud Marketplace terms are not accepted for $CYCLECLOUD_URN" >&2
   exit 5
 }
 
+progress "All preflight checks passed"
 jq -n \
   --arg subscription_id "$subscription_id" \
   --arg source_region "$SOURCE_REGION" \

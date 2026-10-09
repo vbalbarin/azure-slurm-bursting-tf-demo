@@ -38,7 +38,7 @@ variables {
   }
   cyclecloud_vm_size = "Standard_D4s_v6"
   scheduler_vm_size  = "Standard_D4s_v6"
-  windows_vm_size    = "Standard_D2s_v5"
+  windows_vm_size    = "Standard_D2s_v6"
   burst_vm_size      = "Standard_HB120rs_v3"
   cluster_name       = "demo-cluster"
   cyclecloud_certificate_secret_id = "https://example.invalid/secrets/tls/version"

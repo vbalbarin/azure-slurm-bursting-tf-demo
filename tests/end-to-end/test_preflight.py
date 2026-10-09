@@ -14,6 +14,7 @@ def _write_fake_az(directory: Path) -> None:
     executable = directory / "az"
     executable.write_text(
         """#!/usr/bin/env python3
+import json
 import os
 import sys
 
@@ -28,14 +29,20 @@ elif args[:2] == ["account", "list-locations"]:
 elif args[:2] == ["vm", "list-skus"]:
     size = args[args.index("--size") + 1]
     role = "BURST" if size == "Standard_HB120rs_v3" else "SCHEDULER"
-    if "restrictions" in query:
-        pass
-    elif "length" in query:
-        print("1")
-    elif "HyperVGenerations" in query:
-        print(os.environ.get(f"FAKE_{role}_SIZE_HYPERV", "V2"))
-    elif "CpuArchitectureType" in query:
-        print(os.environ.get(f"FAKE_{role}_SIZE_ARCH", "x64"))
+    print(json.dumps({
+        "name": size,
+        "restrictions": [],
+        "capabilities": [
+            {
+                "name": "HyperVGenerations",
+                "value": os.environ.get(f"FAKE_{role}_SIZE_HYPERV", "V2"),
+            },
+            {
+                "name": "CpuArchitectureType",
+                "value": os.environ.get(f"FAKE_{role}_SIZE_ARCH", "x64"),
+            },
+        ],
+    }))
 elif args[:3] == ["vm", "image", "show"]:
     urn = ":".join(
         args[args.index(option) + 1]
@@ -44,10 +51,12 @@ elif args[:3] == ["vm", "image", "show"]:
     if urn == os.environ.get("FAKE_MISSING_URN"):
         sys.exit(3)
     role = "BURST" if ":almalinux-hpc:" in urn else "SCHEDULER"
-    if "hyperVGeneration" in query:
-        print(os.environ.get(f"FAKE_{role}_IMAGE_HYPERV", "V2"))
-    elif "architecture" in query:
-        print(os.environ.get(f"FAKE_{role}_IMAGE_ARCH", "x64"))
+    print(json.dumps({
+        "hyperVGeneration": os.environ.get(
+            f"FAKE_{role}_IMAGE_HYPERV", "V2"
+        ),
+        "architecture": os.environ.get(f"FAKE_{role}_IMAGE_ARCH", "x64"),
+    }))
 elif args[:3] == ["vm", "image", "terms"]:
     print("true")
 else:
@@ -69,7 +78,7 @@ def _environment(tmp_path: Path) -> dict[str, str]:
         "BURST_REGION": "southcentralus",
         "CYCLECLOUD_VM_SIZE": "Standard_D4s_v6",
         "SCHEDULER_VM_SIZE": "Standard_D4s_v6",
-        "WINDOWS_VM_SIZE": "Standard_D2s_v5",
+        "WINDOWS_VM_SIZE": "Standard_D2s_v6",
         "BURST_VM_SIZE": "Standard_HB120rs_v3",
         "CYCLECLOUD_URN": (
             "azurecyclecloud:azure-cyclecloud:"
