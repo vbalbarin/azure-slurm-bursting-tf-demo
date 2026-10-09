@@ -187,7 +187,11 @@ quota_record() {
   load_usage "$region"
   jq -ec --arg name "$name" \
     '.[] | select((.name.value // "" | ascii_downcase) == ($name | ascii_downcase)) |
-     {name: .name.value, current: .currentValue, limit: .limit}' \
+     {
+       name: .name.value,
+       current: (.currentValue | tonumber),
+       limit: (.limit | tonumber)
+     }' \
     <<<"${usage_data[$region]}" | head -n 1
 }
 
@@ -283,6 +287,8 @@ grep -Fxiq "$BURST_REGION" <<<"$locations" || { echo "Unsupported burst region: 
 for index in "${!role_names[@]}"; do
   load_sku "${role_regions[$index]}" "${role_sizes[$index]}"
 done
+load_usage "$SOURCE_REGION"
+load_usage "$BURST_REGION"
 
 check_image "$SOURCE_REGION" "$CYCLECLOUD_URN"
 check_image "$SOURCE_REGION" "$SCHEDULER_URN"
@@ -327,6 +333,8 @@ while IFS= read -r placement; do
       '{region:$region,zone:$zone,status:"ineligible",failure_class:"unsupported_region",image_status:"not_checked"}')")
     continue
   fi
+  load_sku "$region" "$BURST_VM_SIZE"
+  load_usage "$region"
   assessment="$(assess_placement "$region" "$zone" "$BURST_VM_SIZE" "$BURST_NODE_COUNT")"
   if run_az vm image show --location "$region" \
     --publisher "${BURST_COMPUTE_URN%%:*}" \

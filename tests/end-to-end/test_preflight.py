@@ -65,13 +65,13 @@ elif args[:2] == ["vm", "list-usage"]:
     usages = [
         {
             "name": {"value": "cores"},
-            "currentValue": 0,
-            "limit": int(os.environ.get("FAKE_REGIONAL_QUOTA_LIMIT", "1000")),
+            "currentValue": "0",
+            "limit": os.environ.get("FAKE_REGIONAL_QUOTA_LIMIT", "1000"),
         },
         {
             "name": {"value": "standardDSv6Family"},
-            "currentValue": 0,
-            "limit": int(os.environ.get("FAKE_DSV6_QUOTA_LIMIT", "1000")),
+            "currentValue": "0",
+            "limit": os.environ.get("FAKE_DSV6_QUOTA_LIMIT", "1000"),
         },
     ]
     if not (
@@ -80,8 +80,8 @@ elif args[:2] == ["vm", "list-usage"]:
     ):
         usages.append({
             "name": {"value": "standardHBSFamily"},
-            "currentValue": 0,
-            "limit": int(os.environ.get("FAKE_HB_QUOTA_LIMIT", "1000")),
+            "currentValue": "0",
+            "limit": os.environ.get("FAKE_HB_QUOTA_LIMIT", "1000"),
         })
     print(json.dumps(usages))
 elif args[:3] == ["vm", "image", "show"]:
