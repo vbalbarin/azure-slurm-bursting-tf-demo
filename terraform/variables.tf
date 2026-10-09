@@ -174,6 +174,16 @@ variable "windows_image" {
     sku       = string
     version   = string
   })
+
+  validation {
+    condition = (
+      lower(var.windows_image.publisher) == "microsoftwindowsserver" &&
+      lower(var.windows_image.offer) == "windowsserver" &&
+      lower(var.windows_image.sku) == "2025-datacenter-azure-edition" &&
+      can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.windows_image.version))
+    )
+    error_message = "windows_image must be an exact-version Windows Server 2025 Datacenter Azure Edition image."
+  }
 }
 
 variable "cyclecloud_vm_size" {

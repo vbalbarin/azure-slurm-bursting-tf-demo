@@ -2,16 +2,16 @@ mock_provider "azurerm" {}
 mock_provider "azapi" {}
 
 variables {
-  subscription_id = "00000000-0000-0000-0000-000000000000"
-  tenant_id       = "00000000-0000-0000-0000-000000000000"
-  environment_name = "demo"
-  source_region    = "eastus"
-  burst_region     = "southcentralus"
-  burst_zone       = "1"
+  subscription_id            = "00000000-0000-0000-0000-000000000000"
+  tenant_id                  = "00000000-0000-0000-0000-000000000000"
+  environment_name           = "demo"
+  source_region              = "eastus"
+  burst_region               = "southcentralus"
+  burst_zone                 = "1"
   alternate_burst_placements = [{ region = "eastus2", zone = "1" }]
-  source_vnet_cidr = "10.10.0.0/16"
-  burst_vnet_cidr  = "10.20.0.0/16"
-  operator_group_object_ids = ["00000000-0000-0000-0000-000000000000"]
+  source_vnet_cidr           = "10.10.0.0/16"
+  burst_vnet_cidr            = "10.20.0.0/16"
+  operator_group_object_ids  = ["00000000-0000-0000-0000-000000000000"]
   cyclecloud_image = {
     publisher = "azurecyclecloud"
     offer     = "azure-cyclecloud"
@@ -36,15 +36,15 @@ variables {
     publisher = "MicrosoftWindowsServer"
     offer     = "WindowsServer"
     sku       = "2025-datacenter-azure-edition"
-    version   = "latest"
+    version   = "26100.33438.260905"
   }
-  cyclecloud_vm_size = "Standard_D4s_v6"
-  scheduler_vm_size  = "Standard_D4s_v6"
-  windows_vm_size    = "Standard_D2s_v6"
-  burst_vm_size      = "Standard_HB120rs_v3"
-  cluster_name       = "demo-cluster"
+  cyclecloud_vm_size               = "Standard_D4s_v6"
+  scheduler_vm_size                = "Standard_D4s_v6"
+  windows_vm_size                  = "Standard_D2s_v6"
+  burst_vm_size                    = "Standard_HB120rs_v3"
+  cluster_name                     = "demo-cluster"
   cyclecloud_certificate_secret_id = "https://example.invalid/secrets/tls/version"
-  chef_policy_archive_uri = "https://example.invalid/policies"
+  chef_policy_archive_uri          = "https://example.invalid/policies"
 }
 
 run "valid_inputs" {
@@ -115,4 +115,17 @@ run "reject_non_hpc_burst_image" {
     }
   }
   expect_failures = [var.burst_compute_image]
+}
+
+run "reject_unpinned_windows_image" {
+  command = plan
+  variables {
+    windows_image = {
+      publisher = "MicrosoftWindowsServer"
+      offer     = "WindowsServer"
+      sku       = "2025-datacenter-azure-edition"
+      version   = "latest"
+    }
+  }
+  expect_failures = [var.windows_image]
 }

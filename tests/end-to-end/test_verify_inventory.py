@@ -42,7 +42,7 @@ def _inventory() -> dict[str, object]:
             ),
             "windows_image": (
                 "MicrosoftWindowsServer:WindowsServer:"
-                "2025-datacenter-azure-edition:latest"
+                "2025-datacenter-azure-edition:26100.33438.260905"
             ),
         },
         "image_compatibility": {

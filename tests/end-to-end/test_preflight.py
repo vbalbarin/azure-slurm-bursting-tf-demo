@@ -138,7 +138,7 @@ def _environment(tmp_path: Path) -> dict[str, str]:
         ),
         "WINDOWS_URN": (
             "MicrosoftWindowsServer:WindowsServer:"
-            "2025-datacenter-azure-edition:latest"
+            "2025-datacenter-azure-edition:26100.33438.260905"
         ),
     }
 
