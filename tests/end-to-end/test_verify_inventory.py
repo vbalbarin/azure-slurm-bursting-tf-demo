@@ -18,6 +18,14 @@ def _inventory() -> dict[str, object]:
         "environment_name": "demo",
         "source_region": "eastus",
         "burst_region": "southcentralus",
+        "burst_zone": "1",
+        "alternate_burst_placements": [{"region": "eastus2", "zone": "1"}],
+        "planned_role_counts": {
+            "cyclecloud": 1,
+            "scheduler": 1,
+            "windows_admin": 1,
+            "burst_compute": 1,
+        },
         "cluster_name": "demo-cluster",
         "private_hosts": {
             "cyclecloud": {"name": "cc", "private_address": "10.10.0.4"},
@@ -42,8 +50,31 @@ def _inventory() -> dict[str, object]:
             "os_family": "almalinux",
             "os_major": "9",
         },
+        "capacity_assessment": {
+            "status": "validated",
+            "assessed_at": "2026-10-09T13:00:00Z",
+            "roles": {},
+            "alternate_placements": [],
+            "disclaimer": "Point-in-time evidence does not guarantee capacity.",
+        },
+        "capacity_probe": {
+            "region": "southcentralus",
+            "zone": "1",
+            "vm_size": "Standard_HB120rs_v3",
+            "image_urn": (
+                "almalinux:almalinux-hpc:9-hpc-gen2:9.8.202608110"
+            ),
+            "allocation_state": "allocated",
+            "cleanup_state": "verified",
+            "started_at": "2026-10-09T13:01:00Z",
+            "completed_at": "2026-10-09T13:03:00Z",
+            "cleaned_at": "2026-10-09T13:07:00Z",
+            "guarantee": "point_in_time_only",
+        },
         "validation": {
             "plan_digest": "a" * 64,
+            "preflight_digest": "b" * 64,
+            "capacity_probe_digest": "c" * 64,
             "approval_reference": "review-123",
         },
     }
@@ -70,4 +101,14 @@ def test_rejects_incompatible_image_evidence() -> None:
     compatibility["status"] = "failed"
 
     with pytest.raises(ValueError, match="compatibility"):
+        verify_inventory.validate(inventory)
+
+
+def test_rejects_unverified_capacity_probe_cleanup() -> None:
+    inventory = _inventory()
+    probe = inventory["capacity_probe"]
+    assert isinstance(probe, dict)
+    probe["cleanup_state"] = "failed"
+
+    with pytest.raises(ValueError, match="capacity probe"):
         verify_inventory.validate(inventory)

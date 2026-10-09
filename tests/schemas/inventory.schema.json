@@ -7,16 +7,43 @@
     "environment_name",
     "source_region",
     "burst_region",
+    "burst_zone",
+    "planned_role_counts",
     "cluster_name",
     "private_hosts",
     "versions",
     "image_compatibility",
+    "capacity_assessment",
+    "capacity_probe",
     "validation"
   ],
   "properties": {
     "environment_name": {"type": "string", "pattern": "^[a-z][a-z0-9-]+$"},
     "source_region": {"type": "string", "minLength": 1},
     "burst_region": {"type": "string", "minLength": 1},
+    "burst_zone": {"enum": ["1", "2", "3"]},
+    "alternate_burst_placements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["region", "zone"],
+        "properties": {
+          "region": {"type": "string", "minLength": 1},
+          "zone": {"enum": ["1", "2", "3"]}
+        }
+      }
+    },
+    "planned_role_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cyclecloud", "scheduler", "windows_admin", "burst_compute"],
+      "properties": {
+        "cyclecloud": {"const": 1},
+        "scheduler": {"const": 1},
+        "windows_admin": {"const": 1},
+        "burst_compute": {"const": 1}
+      }
+    },
     "cluster_name": {"type": "string", "minLength": 1},
     "private_hosts": {
       "type": "object",
@@ -57,11 +84,43 @@
         "os_major": {"const": "9"}
       }
     },
+    "capacity_assessment": {
+      "type": "object",
+      "required": ["status", "assessed_at", "roles", "alternate_placements", "disclaimer"],
+      "properties": {
+        "status": {"const": "validated"},
+        "assessed_at": {"type": "string", "format": "date-time"},
+        "roles": {"type": "object"},
+        "alternate_placements": {"type": "array"},
+        "disclaimer": {"type": "string", "minLength": 1}
+      }
+    },
+    "capacity_probe": {
+      "type": "object",
+      "required": [
+        "region", "zone", "vm_size", "image_urn", "allocation_state",
+        "cleanup_state", "started_at", "completed_at", "cleaned_at", "guarantee"
+      ],
+      "properties": {
+        "region": {"type": "string", "minLength": 1},
+        "zone": {"enum": ["1", "2", "3"]},
+        "vm_size": {"type": "string", "minLength": 1},
+        "image_urn": {"type": "string", "minLength": 1},
+        "allocation_state": {"const": "allocated"},
+        "cleanup_state": {"const": "verified"},
+        "started_at": {"type": "string", "format": "date-time"},
+        "completed_at": {"type": "string", "format": "date-time"},
+        "cleaned_at": {"type": "string", "format": "date-time"},
+        "guarantee": {"const": "point_in_time_only"}
+      }
+    },
     "validation": {
       "type": "object",
-      "required": ["plan_digest", "approval_reference"],
+      "required": ["plan_digest", "preflight_digest", "capacity_probe_digest", "approval_reference"],
       "properties": {
         "plan_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "preflight_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "capacity_probe_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "approval_reference": {"type": "string", "minLength": 1}
       }
     }

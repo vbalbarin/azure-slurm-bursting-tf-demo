@@ -1,0 +1,18 @@
+subscription_id = "00000000-0000-0000-0000-000000000000"
+tenant_id       = "00000000-0000-0000-0000-000000000000"
+environment_name = "slurmdemo"
+burst_region      = "southcentralus"
+burst_zone        = "1"
+burst_vm_size     = "Standard_HB120rs_v3"
+
+burst_compute_image = {
+  publisher = "almalinux"
+  offer     = "almalinux-hpc"
+  sku       = "9-hpc-gen2"
+  version   = "9.8.202608110"
+}
+
+probe_vnet_cidr  = "10.254.0.0/24"
+expires_at       = "2026-10-09T15:00:00Z"
+owner            = "approved-operator"
+cost_acknowledged = true

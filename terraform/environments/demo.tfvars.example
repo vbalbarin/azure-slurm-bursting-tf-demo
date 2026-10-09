@@ -3,9 +3,18 @@ tenant_id       = "00000000-0000-0000-0000-000000000000"
 environment_name = "slurmdemo"
 source_region    = "eastus"
 burst_region     = "southcentralus"
+burst_zone       = "1"
+alternate_burst_placements = [
+  {
+    region = "eastus2"
+    zone   = "1"
+  }
+]
 source_vnet_cidr = "10.10.0.0/16"
 burst_vnet_cidr  = "10.20.0.0/16"
 
+# Existing Microsoft Entra security-group object IDs. Terraform grants these groups
+# Key Vault Secrets Officer on the demo vault; replace the placeholder before deployment.
 operator_group_object_ids = ["00000000-0000-0000-0000-000000000000"]
 
 cyclecloud_image = {
@@ -42,6 +51,10 @@ cyclecloud_vm_size = "Standard_D4s_v6"
 scheduler_vm_size  = "Standard_D4s_v6"
 windows_vm_size    = "Standard_D2s_v6"
 burst_vm_size      = "Standard_HB120rs_v3"
+cyclecloud_vm_count = 1
+scheduler_vm_count  = 1
+windows_vm_count    = 1
+burst_node_count    = 1
 cluster_name       = "cross-region-demo"
 idle_timeout_minutes = 10
 demo_username        = "slurmdemo"

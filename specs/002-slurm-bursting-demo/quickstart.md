@@ -16,6 +16,16 @@ the reviewed Terraform plan or environment-specific runbook.
 - Approved private CIDRs for `vnet-source` and `vnet-burst`
 - Approved sensitive input channel for required bootstrap credentials and certificate material
 
+> [!IMPORTANT]
+> `operator_group_object_ids` requires at least one existing Microsoft Entra security-group object
+> ID. Terraform grants that group `Key Vault Secrets Officer` on the demo vault. This is a
+> vault-scoped secret data-plane assignment, not a requirement for the group to be subscription
+> Owner or Contributor. The separate identity running Terraform must be able to create the
+> infrastructure and role assignments. Subscription ownership alone does not automatically let a
+> person read Key Vault secret values; the person must belong to the listed group or have another
+> suitable vault data-plane assignment. Automated burst-job operation does not depend on the human
+> group after configuration, but human secret administration and recovery do.
+
 Review [research.md](./research.md), [data-model.md](./data-model.md), and all files under
 [contracts/](./contracts/) before proceeding.
 
@@ -40,27 +50,40 @@ Expected outcome:
 
 ## 2. Create and review the plan
 
+> [!IMPORTANT]
+> CycleCloud does not make managed nodes implicitly zonal. This feature deliberately selects one
+> burst zone for deterministic eligibility checks, allocation probing, and evidence. Zone pinning
+> does not itself guarantee low compute or storage latency and can reduce allocation flexibility.
+> Tightly coupled production workloads may additionally require RDMA-capable placement, proximity
+> controls, and co-located high-performance storage. The cross-region scheduler-hosted storage in
+> this one-node acceptance demo is not a production low-latency HPC storage architecture.
+
 Before creating the main-environment plan, run the implementation-provided static preflight and
-review its evidence. It must separately report:
+review its evidence. Source `tests/end-to-end/export_preflight_env.sh` with the protected `.tfvars`
+path first so Terraform derives and `jq` exports the non-secret preflight inputs without manual
+duplication. Review the shell-safe values displayed by the helper. Preflight must separately
+report:
 
 - Required vCPUs, current usage, limits, available quota, and projected remaining quota for total
   regional and applicable VM-family quotas.
 - Exact image and SKU eligibility plus subscription, location, and zone restrictions.
 - The selected burst region and zone and every operator-approved alternate candidate.
 
-Then explicitly acknowledge temporary probe cost, create and review the capacity-probe plan, apply
-only that reviewed probe plan, and verify one exact burst node can be allocated. Destroy all
-probe-owned resources and confirm cleanup within 15 minutes. Treat success as point-in-time
-evidence only. Stop if allocation or cleanup fails.
+Then explicitly acknowledge temporary probe cost and use
+`tests/end-to-end/capacity_probe.sh` to create and review the isolated
+`terraform/capacity-probe/` plan. Apply only that reviewed probe plan, verify one exact burst node
+can be allocated, create and approve the separate destroy plan, and confirm cleanup within 15
+minutes. Treat success as point-in-time evidence only. Stop if allocation or cleanup fails.
 
 If the selected placement fails, review the ordered alternate assessments. To choose an alternate,
 edit the protected inputs and restart static preflight, capacity probe, plan review, and approval;
 never carry forward evidence from the previous placement.
 
 Initialize the `terraform/` root with the approved backend and environment inputs, then create a
-saved plan. Supply the protected preflight JSON as `PREFLIGHT_RESULTS_FILE`; provisioning must
-reject it if either role-specific image differs from the Terraform inventory or compatibility did
-not validate.
+saved plan. Supply the protected preflight JSON as `PREFLIGHT_RESULTS_FILE` and the cleaned probe
+JSON as `CAPACITY_PROBE_RESULTS_FILE`. Approval records the digests of the plan and both evidence
+files. Provisioning must reject stale, changed, incomplete, or placement-incompatible evidence and
+must never regenerate the reviewed plan.
 
 Review must confirm:
 

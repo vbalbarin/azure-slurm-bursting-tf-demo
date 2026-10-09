@@ -14,10 +14,14 @@ def validate(inventory: dict[str, object]) -> None:
         "environment_name",
         "source_region",
         "burst_region",
+        "burst_zone",
+        "planned_role_counts",
         "cluster_name",
         "private_hosts",
         "versions",
         "image_compatibility",
+        "capacity_assessment",
+        "capacity_probe",
         "validation",
     }
     missing = required - inventory.keys()
@@ -25,6 +29,15 @@ def validate(inventory: dict[str, object]) -> None:
         raise ValueError(f"Missing inventory fields: {sorted(missing)}")
     if inventory["source_region"] == inventory["burst_region"]:
         raise ValueError("Source and burst regions must differ")
+    if inventory["burst_zone"] not in {"1", "2", "3"}:
+        raise ValueError("Burst zone must be 1, 2, or 3")
+    if inventory["planned_role_counts"] != {
+        "cyclecloud": 1,
+        "scheduler": 1,
+        "windows_admin": 1,
+        "burst_compute": 1,
+    }:
+        raise ValueError("Inventory planned role counts are invalid")
     serialized = json.dumps(inventory, sort_keys=True)
     if SECRET_FIELD.search(serialized):
         raise ValueError("Inventory contains a prohibited secret-shaped field")
@@ -70,6 +83,23 @@ def validate(inventory: dict[str, object]) -> None:
         r"[a-f0-9]{64}", str(validation.get("plan_digest", ""))
     ):
         raise ValueError("Inventory must contain the reviewed saved-plan digest")
+    for digest_name in ("preflight_digest", "capacity_probe_digest"):
+        if not re.fullmatch(r"[a-f0-9]{64}", str(validation.get(digest_name, ""))):
+            raise ValueError(f"Inventory must contain {digest_name}")
+    assessment = inventory["capacity_assessment"]
+    if not isinstance(assessment, dict) or assessment.get("status") != "validated":
+        raise ValueError("Inventory capacity assessment is invalid")
+    probe = inventory["capacity_probe"]
+    if (
+        not isinstance(probe, dict)
+        or probe.get("allocation_state") != "allocated"
+        or probe.get("cleanup_state") != "verified"
+        or probe.get("guarantee") != "point_in_time_only"
+        or probe.get("region") != inventory["burst_region"]
+        or probe.get("zone") != inventory["burst_zone"]
+        or probe.get("image_urn") != burst_compute_image
+    ):
+        raise ValueError("Inventory capacity probe evidence is invalid")
 
 
 def main() -> None:

@@ -7,6 +7,8 @@ variables {
   environment_name = "demo"
   source_region    = "eastus"
   burst_region     = "southcentralus"
+  burst_zone       = "1"
+  alternate_burst_placements = [{ region = "eastus2", zone = "1" }]
   source_vnet_cidr = "10.10.0.0/16"
   burst_vnet_cidr  = "10.20.0.0/16"
   operator_group_object_ids = ["00000000-0000-0000-0000-000000000000"]
@@ -55,6 +57,22 @@ run "reject_identical_regions" {
     burst_region = "eastus"
   }
   expect_failures = [var.burst_region]
+}
+
+run "reject_invalid_burst_zone" {
+  command = plan
+  variables {
+    burst_zone = "4"
+  }
+  expect_failures = [var.burst_zone]
+}
+
+run "reject_selected_placement_as_alternate" {
+  command = plan
+  variables {
+    alternate_burst_placements = [{ region = "southcentralus", zone = "1" }]
+  }
+  expect_failures = [var.alternate_burst_placements]
 }
 
 run "reject_overlapping_cidrs" {

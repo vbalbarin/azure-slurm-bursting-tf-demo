@@ -43,6 +43,35 @@ variable "burst_region" {
   }
 }
 
+variable "burst_zone" {
+  description = "Operator-approved availability zone for transient burst compute."
+  type        = string
+
+  validation {
+    condition     = contains(["1", "2", "3"], var.burst_zone)
+    error_message = "burst_zone must be 1, 2, or 3."
+  }
+}
+
+variable "alternate_burst_placements" {
+  description = "Ordered operator-approved alternate burst region and availability-zone candidates."
+  type = list(object({
+    region = string
+    zone   = string
+  }))
+  default = []
+
+  validation {
+    condition = alltrue([
+      for placement in var.alternate_burst_placements :
+      placement.region != "" &&
+      contains(["1", "2", "3"], placement.zone) &&
+      !(lower(placement.region) == lower(var.burst_region) && placement.zone == var.burst_zone)
+    ])
+    error_message = "Alternate placements require a region and zone 1-3 and must differ from the selected burst placement."
+  }
+}
+
 variable "source_vnet_cidr" {
   description = "Private /16 CIDR for vnet-source."
   type        = string
@@ -166,6 +195,50 @@ variable "windows_vm_size" {
 variable "burst_vm_size" {
   type        = string
   description = "Regionally available burst compute VM size."
+}
+
+variable "cyclecloud_vm_count" {
+  description = "Planned CycleCloud VM count used for quota validation."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.cyclecloud_vm_count == 1
+    error_message = "The bounded demonstration requires exactly one CycleCloud VM."
+  }
+}
+
+variable "scheduler_vm_count" {
+  description = "Planned scheduler VM count used for quota validation."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.scheduler_vm_count == 1
+    error_message = "The bounded demonstration requires exactly one scheduler VM."
+  }
+}
+
+variable "windows_vm_count" {
+  description = "Planned Windows administration VM count used for quota validation."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.windows_vm_count == 1
+    error_message = "The bounded demonstration requires exactly one Windows administration VM."
+  }
+}
+
+variable "burst_node_count" {
+  description = "Maximum simultaneously allocated burst nodes used for quota validation."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.burst_node_count == 1
+    error_message = "The bounded acceptance demonstration requires exactly one burst node."
+  }
 }
 
 variable "cluster_name" {

@@ -8,6 +8,7 @@ describe 'cyclecloud_node::default' do
     'certificate_secret_id' => 'https://vault.example.invalid/secrets/tls/version',
     'cluster_name' => 'demo',
     'burst_region' => 'westus3',
+    'burst_zone' => '1',
     'burst_vm_size' => 'Standard_HB120rs_v3',
     'burst_image_urn' => 'almalinux:almalinux-hpc:9-hpc-gen2:9.8.202608110',
     'scheduler_private_address' => '10.10.0.4',
@@ -25,6 +26,11 @@ describe 'cyclecloud_node::default' do
     is_expected.to render_file(
       '/opt/cycle/jetpack/system/projects/slurm/templates/slurm-headless.txt.overrides'
     ).with_content('ImageName = almalinux:almalinux-hpc:9-hpc-gen2:9.8.202608110')
+  end
+  it do
+    is_expected.to render_file(
+      '/opt/cycle/jetpack/system/projects/slurm/templates/slurm-headless.txt.overrides'
+    ).with_content('Zone = 1')
   end
   it { is_expected.to create_template('/etc/cyclecloud/slurm-cluster.properties').with(mode: '0600') }
   it { is_expected.to run_execute('import-headless-slurm-cluster') }

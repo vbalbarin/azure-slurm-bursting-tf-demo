@@ -12,6 +12,7 @@ default['cyclecloud']['processor_root'] = '/opt/headless-template'
 default['cyclecloud']['inventory_path'] = '/var/lib/cyclecloud/slurm-versions.json'
 default['cyclecloud']['credential_file'] = '/run/cyclecloud/credentials'
 default['cyclecloud']['burst_region'] = nil
+default['cyclecloud']['burst_zone'] = nil
 default['cyclecloud']['burst_vm_size'] = nil
 default['cyclecloud']['burst_image_urn'] = nil
 default['cyclecloud']['scheduler_private_address'] = nil

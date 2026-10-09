@@ -10,6 +10,8 @@ terraform-init:
 
 terraform-validate: terraform-init
 	terraform -chdir=terraform validate
+	terraform -chdir=terraform/capacity-probe init -backend=false
+	terraform -chdir=terraform/capacity-probe validate
 	command -v tflint >/dev/null || { echo "tflint is required" >&2; exit 1; }
 	tflint --chdir=terraform
 	command -v checkov >/dev/null || { echo "checkov is required" >&2; exit 1; }
@@ -22,7 +24,7 @@ policy-test:
 	python3 -m pytest tests/policy
 
 end-to-end-unit:
-	python3 -m pytest tests/end-to-end/test_preflight.py tests/end-to-end/test_verify_inventory.py
+	python3 -m pytest tests/end-to-end/test_preflight.py tests/end-to-end/test_verify_inventory.py tests/end-to-end/test_capacity_probe.py tests/end-to-end/test_provision.py tests/end-to-end/test_export_preflight_env.py
 
 python-test:
 	PYTHONPATH=tools/headless_template/src python3 -m pytest tools/headless_template/tests

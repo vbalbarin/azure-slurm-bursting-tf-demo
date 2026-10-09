@@ -180,34 +180,73 @@ endpoint. A failed validation, review, digest comparison, or approval check bloc
 
 ### End-to-end operator workflow
 
+> [!IMPORTANT]
+> CycleCloud-managed resources are not implicitly zonal. This demonstration explicitly pins the
+> burst node array to one availability zone to make SKU checks, the capacity probe, and acceptance
+> evidence deterministic. Availability-zone placement is a fault-domain and allocation constraint;
+> it does not by itself guarantee minimum compute, storage, or MPI latency. Tightly coupled
+> workloads can also require supported RDMA networking, proximity placement, and appropriately
+> co-located storage. Conversely, zone pinning can reduce allocation flexibility when capacity
+> exists elsewhere in the region. The cross-region scheduler-hosted `/sched` and `/shared` exports
+> in this bounded one-node demo are not a production low-latency HPC storage design.
+
+#### Operator identity prerequisite
+
+`operator_group_object_ids` must contain at least one existing Microsoft Entra security-group
+object ID from the configured tenant. Use the group object ID, not its display name, an application
+ID, or an individual user ID. Terraform grants each listed group `Key Vault Secrets Officer` on
+the demonstration vault so authorized humans can retrieve, update, rotate, and recover demo
+secrets.
+
+This group is separate from the identity that runs Terraform:
+
+- The Terraform identity needs permission to create the resource group, infrastructure, and role
+  assignments. Subscription `Owner`, or an appropriately scoped combination such as `Contributor`
+  plus `Role Based Access Control Administrator`, can satisfy that deployment role.
+- Subscription `Owner` is control-plane authority and does not by itself imply Key Vault secret
+  data-plane access. An owner can create the required assignment, but must belong to a listed group
+  or receive another suitable Key Vault data-plane role to read secret values.
+- The automated Slurm job, CycleCloud allocation, and idle-node removal path does not depend on
+  human group membership after configuration. The group remains the supported human administration
+  and recovery path, so removing its vault assignment after setup is not part of this design.
+
+RBAC assignments can take several minutes to propagate after deployment.
+
 1. Copy `terraform/environments/demo.tfvars.example` to a protected, ignored `.tfvars` file and
    supply the approved subscription, tenant, distinct source/burst regions, CIDRs, Entra group,
    exact scheduler and burst-compute image versions, VM SKUs, and versioned Key Vault references.
-2. Export `SCHEDULER_URN` for the source-region standard AlmaLinux image and
-   `BURST_COMPUTE_URN` for the burst-region AlmaLinux HPC image, then run
-   `tests/end-to-end/preflight.sh`. Preserve its JSON output as compatibility evidence and pass its
-   protected path to provisioning as `PREFLIGHT_RESULTS_FILE`. Provisioning rejects evidence whose
-   role-specific URNs differ from the Terraform inventory. Stop on an unavailable or
-   VM-size-incompatible image, mismatched AlmaLinux major release, unsupported service, quota,
-   Marketplace terms, global peering, or regional capacity. Never substitute another image, SKU,
-   or region automatically.
-3. Run `make validate`, create and approve the saved plan as described above, then run
-   `tests/end-to-end/provision.sh` to apply that exact digest and produce secret-free inventory.
-4. Use Bastion to run `chef/bin/converge-cyclecloud.sh` and
+2. Source `tests/end-to-end/export_preflight_env.sh` with the protected `.tfvars` path. The helper
+   uses Terraform and `jq` to export and display only the non-secret role sizes, counts, image URNs,
+   selected zone, and approved alternate placements. Then run `tests/end-to-end/preflight.sh` and
+   preserve stdout as `PREFLIGHT_RESULTS_FILE`. Review its separate total-regional and VM-family
+   quota measurements, selected-zone restrictions, and ordered alternate-placement assessments.
+   A candidate result is advisory and never changes deployment inputs.
+3. Explicitly acknowledge temporary Azure cost and run
+   `tests/end-to-end/capacity_probe.sh plan` against `terraform/capacity-probe/`. Review and approve
+   its saved plan, run `apply`, then create and approve the destroy plan before running `cleanup`.
+   Continue only when `capacity-probe.json` records one exact allocation and verified cleanup.
+   Success is point-in-time evidence, not a future or multi-node capacity guarantee. Use an
+   On-demand Capacity Reservation when guaranteed placement is required.
+4. Run `make validate`, create the main saved plan, and approve its plan digest together with the
+   exact preflight and cleaned-probe evidence digests. Run `tests/end-to-end/provision.sh`; it
+   consumes the existing reviewed plan and never regenerates it. Any changed input, selected
+   region/zone, plan, or evidence file invalidates approval.
+5. Use Bastion to run `chef/bin/converge-cyclecloud.sh` and
    `chef/bin/converge-scheduler.sh` twice. The second run must report zero resources updated.
-5. From the Windows administration VM reached through Bastion, run
+6. From the Windows administration VM reached through Bastion, run
    `tests/end-to-end/verify_private_administration.ps1`. The private CycleCloud URL must resolve,
    present the trusted Key Vault certificate, and show the imported cluster without public access.
-6. On the scheduler, run `tests/end-to-end/run_burst_demo.sh`. The output must identify one node
+7. On the scheduler, run `tests/end-to-end/run_burst_demo.sh`. The output must identify one node
    in the configured burst region within 15 minutes and that node must disappear after idle
    timeout while the source-region scheduler remains healthy.
-7. Run `tests/end-to-end/collect_audit_evidence.sh`, validate inventory, and create a second
+8. Run `tests/end-to-end/collect_audit_evidence.sh`, validate inventory, and create a second
    unchanged Terraform plan. Any drift, secret leak, failed private probe, or non-idempotent result
    blocks completion.
 
-Do not manually patch a node or bypass compatibility, identity, certificate, connectivity,
-secret-access, idempotency, or reviewed-plan failures. Correct the input or implementation and
-restart the invalidated gate.
+Do not manually patch a node or bypass quota, zonal eligibility, probe cleanup, compatibility,
+identity, certificate, connectivity, secret-access, idempotency, or reviewed-plan failures. To
+select an alternate placement, update the protected inputs and restart static preflight, capacity
+probe, main-plan review, and approval.
 
 ### Private CycleCloud administration
 

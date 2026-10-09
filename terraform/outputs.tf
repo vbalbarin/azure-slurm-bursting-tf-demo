@@ -1,10 +1,18 @@
 output "inventory" {
   description = "Secret-free private environment inventory."
   value = {
-    environment_name = var.environment_name
-    source_region    = var.source_region
-    burst_region     = var.burst_region
-    cluster_name     = var.cluster_name
+    environment_name           = var.environment_name
+    source_region              = var.source_region
+    burst_region               = var.burst_region
+    burst_zone                 = var.burst_zone
+    alternate_burst_placements = var.alternate_burst_placements
+    planned_role_counts = {
+      cyclecloud    = var.cyclecloud_vm_count
+      scheduler     = var.scheduler_vm_count
+      windows_admin = var.windows_vm_count
+      burst_compute = var.burst_node_count
+    }
+    cluster_name = var.cluster_name
     private_hosts = {
       cyclecloud = {
         name            = local.names.cyclecloud
@@ -36,8 +44,10 @@ output "inventory" {
       ])
     }
     validation = {
-      plan_digest        = "record-after-plan-review"
-      approval_reference = "record-after-plan-review"
+      plan_digest           = "record-after-plan-review"
+      preflight_digest      = "record-after-plan-review"
+      capacity_probe_digest = "record-after-plan-review"
+      approval_reference    = "record-after-plan-review"
     }
   }
 }
