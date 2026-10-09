@@ -87,6 +87,40 @@ bounded demonstration and a production capacity broker.
 - <https://learn.microsoft.com/azure/bastion/vnet-peering>
 - <https://learn.microsoft.com/azure/cyclecloud/>
 
+## Quota, zonal eligibility, and allocation capacity
+
+**Decision**: Treat SKU eligibility, quota, and physical allocation capacity as separate gates.
+For every planned role, compare required vCPUs with both total regional and VM-family quota. For
+burst compute, validate the exact operator-selected availability zone and preserve the full
+restriction classification. Before main-environment approval, use a separately reviewed,
+one-node, exact-placement Terraform deployment as a time-bounded capacity probe, then verify
+deletion of every probe-owned resource. Assess only an operator-supplied ordered list of alternate
+region/zone candidates and never rewrite deployment inputs automatically.
+
+**Rationale**: A SKU can be published in a region while restricted for a subscription or zone.
+Likewise, available quota is a policy limit and does not prove that matching physical hardware can
+currently be allocated. A one-node deployment supplies stronger point-in-time evidence than a
+metadata or plan-only check, but it cannot guarantee later or multi-node allocation. Separating
+these results gives customer and field operators an actionable diagnosis without overstating what
+Azure can guarantee. Requiring explicit alternate candidates and a full rerun after selection
+preserves plan reproducibility and auditability.
+
+**Alternatives considered**: Treating every SKU restriction as generic unavailability was rejected
+because it obscures quota and zonal remediation. A validation-only deployment was rejected because
+it does not allocate hardware. Shell-created probe resources were rejected by the constitution's
+Terraform-only control-plane rule. Automatic discovery or substitution of a region was rejected
+because it bypasses operator approval. On-demand Capacity Reservation was not added because the
+bounded demonstration requires one temporary node rather than guaranteed production capacity; it
+remains the documented option when placement guarantees are required.
+
+**Sources**:
+
+- <https://learn.microsoft.com/azure/quotas/>
+- <https://learn.microsoft.com/azure/virtual-machines/quotas>
+- <https://learn.microsoft.com/azure/virtual-machines/troubleshooting/allocation-failure>
+- <https://learn.microsoft.com/azure/well-architected/design-guides/capacity-resilience>
+- <https://learn.microsoft.com/azure/virtual-machines/capacity-reservation-overview>
+
 ## Headless template transformation
 
 **Decision**: Use the installed CycleCloud and project CLIs for discovery, fetch, import, and

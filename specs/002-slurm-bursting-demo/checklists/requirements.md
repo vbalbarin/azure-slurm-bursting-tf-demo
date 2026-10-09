@@ -35,5 +35,8 @@
   iteration.
 - Cross-region scope update validated on 2026-10-07; source and burst regions are explicit,
   distinct, testable, and bounded without introducing automatic failover or region selection.
+- Comprehensive preflight update validated on 2026-10-09; regional and VM-family quota, exact
+  zonal restrictions, controlled point-in-time capacity probing, verified cleanup, and advisory
+  operator-approved alternate placements are explicit and testable without automatic substitution.
 - Azure, CycleCloud, Chef Local, and the conditional Python fallback are explicit stakeholder and
   governance constraints rather than implementation design introduced by this specification.

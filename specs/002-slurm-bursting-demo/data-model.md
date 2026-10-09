@@ -13,6 +13,8 @@ Terraform, Chef, the template processor, and acceptance tests must share.
 | `tenant_id` | Entra tenant containing operator identities |
 | `source_region` | Azure region hosting management and scheduler resources; required and distinct from `burst_region` |
 | `burst_region` | Azure region hosting transient compute; required and distinct from `source_region` |
+| `burst_zone` | Explicit operator-approved availability zone for the exact burst SKU |
+| `alternate_burst_placements` | Ordered operator-approved region and zone candidates; never selected automatically |
 | `resource_group_name` | One feature-owned resource group |
 | `cyclecloud_version` | Exactly `8.9.3` for this feature baseline |
 | `slurm_project_version` | Discovered from pinned CycleCloud image and recorded before convergence |
@@ -29,6 +31,34 @@ Headless Cluster Definition, one Slurm Cluster, and one Audit Evidence Set.
 **Transitions**: `planned -> validated -> provisioned -> configured -> verified`. Any gate may move
 to `failed`; retry resumes only after the failed gate is corrected. `verified -> retired` is an
 operator action.
+
+## Regional Capacity Assessment
+
+| Field | Rules |
+|---|---|
+| `region` and `zone` | Exact approved candidate placement |
+| `vm_size` and `image` | Exact burst inputs evaluated for the candidate |
+| `sku_state` | `available`, `unavailable`, or `restricted` |
+| `restriction_class` | `none`, `subscription`, `location`, `zone`, or `unknown` |
+| `regional_quota` | Current usage, limit, required vCPUs, available vCPUs, and projected remainder |
+| `family_quota` | Current usage, limit, required vCPUs, available vCPUs, and projected remainder |
+| `probe_state` | `not_run`, `allocated`, `allocation_failed`, `inconclusive`, or `cleanup_failed` |
+| `assessed_at` | UTC timestamp; required because quota and capacity change |
+| `selection_state` | `selected`, `eligible_alternate`, `ineligible`, or `inconclusive` |
+
+## Capacity Probe
+
+| Field | Rules |
+|---|---|
+| `region`, `zone`, `vm_size`, and `image` | Equal the exact selected burst placement inputs |
+| `requested_nodes` | Exactly one |
+| `approval_reference` | Reviewed probe plan and explicit cost acknowledgement |
+| `started_at` and `completed_at` | UTC timestamps |
+| `expires_at` | Bounded lifetime for temporary resources |
+| `allocation_state` | `pending`, `allocated`, `failed`, or `timed_out` |
+| `failure_class` | Distinguishes allocation, quota, policy, configuration, and unknown failures |
+| `cleanup_state` | `pending`, `verified`, or `failed`; only `verified` permits main approval |
+| `guarantee` | Always `point_in_time_only` |
 
 ## Network Site
 
@@ -122,6 +152,7 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
 | `state` | `queued`, `configuring`, `running`, `completed`, `failed` |
 | `execution_node` | One CycleCloud-created remote node |
 | `execution_region` | Equals Demonstration Environment `burst_region` |
+| `execution_zone` | Equals Demonstration Environment `burst_zone` |
 | `output_path` | File under demonstration user's shared home |
 | `output_evidence` | Contains remote node name |
 
@@ -130,6 +161,8 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
 | Field | Rules |
 |---|---|
 | `validation_results` | Terraform, Chef, Python, and security gate outcomes |
+| `capacity_assessments` | Selected and alternate quota, eligibility, zonal restriction, and probe results |
+| `capacity_probe_cleanup` | Probe deletion result and verification timestamp |
 | `plan_reference` | Reviewed saved-plan digest and approval |
 | `access_events` | Secret and administrative access events without values |
 | `configuration_events` | Convergence and transformation outcomes |
@@ -149,3 +182,7 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
    compute node is in the distinct `burst_region`.
 8. Scheduler and burst-compute image URNs are distinct, exact-version values assigned only to
    their intended roles and validated against their respective regions and VM sizes.
+9. Main-environment approval requires sufficient total regional and VM-family quota, exact burst
+   zone eligibility, a successful selected-placement capacity probe, and verified probe cleanup.
+10. Alternate assessments never mutate the selected region or zone; a changed selection returns
+    the environment to `planned` and invalidates prior validation and approval.

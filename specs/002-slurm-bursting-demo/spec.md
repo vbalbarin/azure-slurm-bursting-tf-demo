@@ -60,6 +60,13 @@ public internet.
 3. **Given** an authorized administrator, **When** the administrator uses the protected access
    service, **Then** the administrator can connect to the Linux and Windows hosts using credentials
    retrieved through authorized secret-store access.
+4. **Given** the exact planned VM counts, sizes, regions, and burst availability zone, **When**
+   pre-deployment validation runs, **Then** it separately reports regional and VM-family quota
+   headroom, SKU and image eligibility, zonal restrictions, and current allocation-probe status.
+5. **Given** that the selected burst region or zone cannot satisfy a quota, eligibility, or
+   point-in-time allocation check, **When** approved alternate-region candidates are assessed,
+   **Then** the operator receives actionable candidate results without any deployment input being
+   changed automatically.
 
 ---
 
@@ -143,6 +150,16 @@ headless cluster and its nodes.
 
 - The selected Azure region does not offer a required VM image, VM size, current supported
   CycleCloud release, or Azure service capability.
+- The subscription has enough total regional quota but insufficient quota for the selected VM
+  family, or vice versa.
+- A burst SKU is available in a region but unavailable or restricted in the selected availability
+  zone.
+- A capacity probe succeeds for one node but later multi-node allocation is constrained; the
+  evidence must not represent the probe as a capacity guarantee.
+- A capacity probe fails after creating one or more temporary resources, or cleanup cannot be
+  confirmed.
+- An alternate region satisfies static eligibility and quota checks but has not passed a
+  point-in-time allocation probe.
 - The source and burst regions are identical, or either region lacks a required service, image,
   SKU, quota, or capacity.
 - Global peering is unavailable between the selected regions or measured cross-region latency is
@@ -248,6 +265,38 @@ headless cluster and its nodes.
 - **FR-034**: The scheduler and burst-compute image references MUST be separate explicit inputs,
   MUST each be pinned to an exact version, MUST be validated in their assigned regions against
   their assigned VM sizes, and MUST be recorded by role in inventory and acceptance evidence.
+- **FR-035**: Pre-deployment validation MUST calculate the vCPUs required by every planned role and
+  MUST compare them separately with both total regional vCPU quota and the applicable regional
+  VM-family quota, including current usage, limit, remaining quota, required quota, and projected
+  remaining quota.
+- **FR-036**: Pre-deployment validation MUST distinguish an unavailable SKU, a subscription
+  restriction, insufficient total regional quota, insufficient VM-family quota, a zonal
+  restriction, and a point-in-time allocation failure, and MUST provide an actionable reason for
+  each failed gate.
+- **FR-037**: Burst placement MUST include an explicit operator-approved availability zone.
+  Pre-deployment validation MUST prove that the exact burst SKU and image are eligible in the
+  selected region and zone and MUST account for location- and zone-specific restrictions before
+  any demonstration infrastructure is applied.
+- **FR-038**: Before the main environment is approved, an authorized operator MUST be able to run
+  a controlled, one-node capacity probe using the exact burst region, availability zone, VM size,
+  and image. The probe MUST require explicit cost acknowledgement, record its start time and
+  outcome, use no public ingress, have a bounded lifetime, and state that success is point-in-time
+  evidence rather than a future or multi-node capacity guarantee.
+- **FR-039**: Every capacity probe MUST use the same governed infrastructure review and deployment
+  controls as the demonstration, MUST remove all probe-owned resources after success or failure,
+  and MUST block main-environment approval when cleanup cannot be confirmed.
+- **FR-040**: Operators MUST be able to provide an ordered list of approved alternate burst-region
+  and zone candidates. Validation MUST assess each candidate for the exact burst image, SKU,
+  zonal restrictions, total and family quota, and probe status; MUST identify eligible candidates
+  and the reason each other candidate is ineligible or inconclusive; and MUST NOT discover,
+  select, substitute, or deploy a candidate automatically.
+- **FR-041**: Selecting a recommended alternate candidate MUST require an operator to update the
+  protected deployment inputs and rerun the complete validation, capacity-probe, plan-review, and
+  approval sequence.
+- **FR-042**: Inventory and acceptance evidence MUST record quota measurements, required vCPUs,
+  region and zone eligibility, restriction classifications, capacity-probe timestamps and
+  outcomes, cleanup confirmation, assessed alternate candidates, and the operator-selected region
+  and zone without exposing secret values.
 - **FR-025**: Every infrastructure change MUST comply with the current project constitution,
   including exclusive use of pinned Azure Verified Modules and successful validation and change
   review before deployment.
@@ -298,6 +347,12 @@ fallback processing with documented justification (FR-029 and FR-030).
   public key, home path, and cluster access state.
 - **Burst Job**: A submitted workload identified by job ID, user, partition, requested node count,
   execution node, status, timestamps, and output location.
+- **Regional Capacity Assessment**: A time-stamped evaluation of one approved region and zone,
+  including exact SKU and image eligibility, restriction classifications, total and VM-family
+  quota measurements, required vCPUs, probe status, and operator-selection state.
+- **Capacity Probe**: A controlled temporary one-node allocation identified by exact placement and
+  image inputs, approval reference, start and completion times, allocation outcome, failure
+  classification, expiration boundary, and verified cleanup state.
 
 ## Success Criteria *(mandatory)*
 
@@ -322,6 +377,17 @@ fallback processing with documented justification (FR-029 and FR-030).
   references and proves before apply that each image is available in its assigned region,
   compatible with its assigned VM size, and compatible with the other role's operating-system
   family and major release.
+- **SC-013**: Every main-environment approval includes a complete quota assessment in which 100%
+  of planned roles have sufficient total regional and VM-family quota for their required vCPUs.
+- **SC-014**: Every burst-region assessment reports the exact region and zone and classifies 100%
+  of observed SKU, subscription, quota, zonal, and allocation failures without describing one
+  class as another.
+- **SC-015**: Every capacity probe either confirms allocation of one exact burst node and removes
+  all temporary resources within 15 minutes, or fails with actionable evidence and confirmed
+  cleanup; an unconfirmed cleanup blocks the main deployment.
+- **SC-016**: When the selected burst placement fails, an operator can identify the eligibility,
+  quota headroom, probe status, and rejection reason for every approved alternate candidate within
+  10 minutes, with zero automatic changes to deployment inputs.
 - **SC-006**: The demonstration job succeeds on its first submission in at least 9 of 10 clean
   environment test runs, excluding documented external regional-capacity failures.
 - **SC-007**: Every credential and private key required by the environment is centrally protected,
@@ -348,8 +414,9 @@ fallback processing with documented justification (FR-029 and FR-030).
   preview releases are excluded. The selected version remains pinned for all deployments.
 - The source region hosts the scheduler, Windows administration host, Bastion, CycleCloud, Key
   Vault private endpoint, and management services; the burst region hosts transient compute.
-- Region selection is explicit and operator-approved. Automatic region discovery, ranking,
-  failover, and substitution are out of scope.
+- Region and zone selection is explicit and operator-approved. Candidates are supplied in an
+  operator-approved order. Automatic region discovery, failover, substitution, and deployment are
+  out of scope.
 - Existing on-premises scheduler connectivity is a future extension and is not implemented by
   this feature.
 - The scheduler and burst compute nodes use independently pinned images from the same supported
@@ -357,8 +424,12 @@ fallback processing with documented justification (FR-029 and FR-030).
   with its source-region general-purpose VM size, while the burst image is the supported HPC image
   for its burst-region compute size. The latest supported Windows Server image is sufficient for
   the administration host.
-- Azure regional capacity, an authorized subscription, required service quotas, and controlled
-  outbound access to approved product and package sources are available.
+- An authorized subscription and controlled outbound access to approved product and package
+  sources are available. Regional and VM-family quota, zonal eligibility, and point-in-time
+  capacity are validation outcomes rather than assumptions.
+- A successful one-node capacity probe is temporary evidence only; it does not reserve capacity or
+  guarantee later or multi-node allocation. Workloads that require guaranteed placement require a
+  separately approved capacity-reservation design outside this bounded demonstration.
 - The demonstration uses one external scheduler, one CycleCloud host, one Windows host, and at
   most one burst compute node for the acceptance test. High availability, disaster recovery,
   production hardening, performance benchmarking, and multi-node scale testing are out of scope.

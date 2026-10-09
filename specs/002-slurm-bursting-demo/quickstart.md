@@ -6,8 +6,9 @@ the reviewed Terraform plan or environment-specific runbook.
 ## Prerequisites
 
 - Authorized Azure subscription and Entra operator group
-- Distinct source and burst regions with required services, global peering, quota, capacity, and
-  availability for their pinned SKUs and images
+- Distinct source and burst regions, an explicit burst availability zone, and an ordered list of
+  approved alternate region/zone candidates
+- Sufficient total regional and VM-family quota for the exact planned role counts
 - Exact scheduler and burst-compute image URNs selected independently, with a shared AlmaLinux
   family and major release
 - Terraform and project validation tools at the pinned versions
@@ -39,6 +40,23 @@ Expected outcome:
 
 ## 2. Create and review the plan
 
+Before creating the main-environment plan, run the implementation-provided static preflight and
+review its evidence. It must separately report:
+
+- Required vCPUs, current usage, limits, available quota, and projected remaining quota for total
+  regional and applicable VM-family quotas.
+- Exact image and SKU eligibility plus subscription, location, and zone restrictions.
+- The selected burst region and zone and every operator-approved alternate candidate.
+
+Then explicitly acknowledge temporary probe cost, create and review the capacity-probe plan, apply
+only that reviewed probe plan, and verify one exact burst node can be allocated. Destroy all
+probe-owned resources and confirm cleanup within 15 minutes. Treat success as point-in-time
+evidence only. Stop if allocation or cleanup fails.
+
+If the selected placement fails, review the ordered alternate assessments. To choose an alternate,
+edit the protected inputs and restart static preflight, capacity probe, plan review, and approval;
+never carry forward evidence from the previous placement.
+
 Initialize the `terraform/` root with the approved backend and environment inputs, then create a
 saved plan. Supply the protected preflight JSON as `PREFLIGHT_RESULTS_FILE`; provisioning must
 reject it if either role-specific image differs from the Terraform inventory or compatibility did
@@ -67,8 +85,9 @@ Expected outcome:
 
 - Provisioning completes within 90 minutes.
 - Inventory reports private names, private addresses, both role-specific image URNs, image
-  compatibility, pinned versions, cluster name, validation references, source region, and burst
-  region without secret values.
+  compatibility, quota and zonal evidence, capacity-probe outcome and cleanup, assessed alternate
+  placements, pinned versions, cluster name, validation references, source region, burst region,
+  and burst zone without secret values.
 - Public-inbound probes to all hosts, CycleCloud, and Key Vault fail.
 - Private DNS resolves CycleCloud and Key Vault from authorized network locations.
 
@@ -131,6 +150,7 @@ Expected outcome:
 
 ## Failure rule
 
-Stop immediately on validation, compatibility, private connectivity, identity, certificate,
-secret-access, idempotency, or plan-review failure. Do not substitute versions, expose a public
+Stop immediately on validation, quota, zonal eligibility, selected-placement capacity,
+probe-cleanup, compatibility, private connectivity, identity, certificate, secret-access,
+idempotency, or plan-review failure. Do not substitute versions, regions, zones, expose a public
 endpoint, bypass validation, or manually patch a node to continue the demonstration.

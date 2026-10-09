@@ -18,7 +18,10 @@ scheduler guests. A narrowly scoped Python processor discovers the installed Slu
 transforms its cluster template into a headless definition with guarded atomic writes, and fails
 closed when the pinned product, regional, or role-specific image combination is incompatible. The
 acceptance path submits one job in the source region and proves that one transient compute node
-executed it in the burst region.
+executed it in the burst region. Before main-environment approval, the operator validates total and
+VM-family quota, exact zonal eligibility, and a controlled one-node allocation probe, and can
+compare an ordered set of approved alternate region/zone candidates without automatic
+substitution.
 
 ## Technical Context
 
@@ -35,7 +38,8 @@ and `azslurm`; pytest and Bandit for the fallback processor
 
 **Testing**: `terraform fmt -check`, `terraform validate`, TFLint, Checkov, reviewed Terraform
 plan; Cookstyle, Chef unit tests, Test Kitchen and InSpec with a second-converge no-change gate;
-pytest and Bandit; end-to-end Slurm burst-job validation
+pytest and Bandit; quota and zonal-restriction fixtures; capacity-probe success, allocation
+failure, timeout, and cleanup-failure tests; end-to-end Slurm burst-job validation
 
 **Target Platform**: Two distinct operator-selected Azure regions connected by global VNET
 peering; Azure CycleCloud 8.9.3 Marketplace VM; a supported source-region AlmaLinux scheduler
@@ -48,13 +52,15 @@ configuration-file processor
 **Performance Goals**: Complete provisioning in at most 90 minutes; private UI inspection in at
 most 5 minutes; one-node burst job output in at most 15 minutes under normal capacity
 
-**Constraints**: AVM-only Azure resources; no direct Azure resource blocks or custom Terraform
+**Constraints**: AVM-only Azure resources, including temporary capacity-probe resources; no direct Azure resource blocks or custom Terraform
 modules; no public VM, CycleCloud, or Key Vault ingress; explicit distinct source and burst regions
-with no automatic substitution; latest release supported by both regions selected during planning
-and pinned; one compute node for acceptance; no HA, DR, region failover, dynamic region ranking, or
-scale testing; scheduler and burst-compute images must be explicit, exact-version inputs validated
-by role, region, VM size, and compatible operating-system family/major release; configuration must
-be non-interactive and idempotent; secrets must not appear in outputs or logs
+and an explicit burst zone with no automatic substitution; operator-approved alternate candidates
+are assessed in their supplied order but are not discovered or deployed automatically; latest
+release supported by both regions selected during planning and pinned; one compute node for the
+capacity probe and acceptance; no HA, DR, automatic region failover, or scale testing; scheduler
+and burst-compute images must be explicit, exact-version inputs validated by role, region, zone,
+VM size, and compatible operating-system family/major release; configuration must be
+non-interactive and idempotent; secrets must not appear in outputs or logs
 
 **Scale/Scope**: One resource group spanning two regions, two VNETs, bidirectional global peering,
 dedicated management and burst-workload subnets, one source-region CycleCloud VM, one
@@ -73,7 +79,7 @@ burst-region node during acceptance
 | Azure Verified Modules only | Every Azure resource is created through a pinned published AVM called directly from the root configuration. No direct resource blocks and no custom Terraform modules are planned. | PASS |
 | Security without exception | Private ingress, Bastion, Key Vault private endpoint, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
 | Reliable, idempotent, validated change | Terraform, Chef, and Python each have syntax, security, idempotency, failure, and review gates. The exact plan is applied only after validation. | PASS |
-| Scope constraints | Two-region placement is a required demonstration behavior, not HA or DR; the design remains single-instance and introduces no failover or multi-node scaling capability. | PASS |
+| Scope constraints | Two-region placement and advisory assessment of operator-approved candidates demonstrate placement flexibility without HA, DR, automatic failover, or multi-node scaling. | PASS |
 
 ### Pre-design gate
 
@@ -83,9 +89,12 @@ AlmaLinux image combination, so deployment includes a fail-closed compatibility 
 discovers the installed project/template and independently validates the scheduler image against
 the source region and scheduler VM size and the burst-compute image against the burst region and
 compute VM size. It also validates that both images provide a compatible AlmaLinux family and major
-release before transformation. The preflight validates both explicit regions, global peering
-support, images, SKUs, quota, and burst capacity without choosing a substitute region, image, or
-SKU. These are operational gates, not unresolved requirements.
+release before transformation. The preflight validates both explicit regions, global peering support, images, SKUs, total
+regional and VM-family quota, zonal restrictions, and point-in-time burst allocation without
+choosing a substitute region, zone, image, or SKU. The capacity probe is a separately reviewed,
+time-bounded Terraform deployment using a pinned compute AVM; shell and Python orchestration do not
+create Azure resources. Probe cleanup is verified and blocks main-environment approval when
+incomplete. These are operational gates, not unresolved requirements.
 
 ### Post-design gate
 
