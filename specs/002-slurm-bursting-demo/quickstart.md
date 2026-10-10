@@ -61,8 +61,11 @@ Expected outcome:
 Before creating the main-environment plan, run the implementation-provided static preflight and
 review its evidence. Source `tests/end-to-end/export_preflight_env.sh` with the protected `.tfvars`
 path first so Terraform derives and `jq` exports the non-secret preflight inputs without manual
-duplication. Review the shell-safe values displayed by the helper. Preflight must separately
-report:
+duplication. Review the shell-safe values displayed by the helper. Use
+`tests/end-to-end/marketplace_terms.sh show` to inspect CycleCloud legal links and acceptance state.
+Acceptance is a separate, persistent subscription-level action and requires an authorized operator
+to invoke `accept` with `ACCEPT_MARKETPLACE_TERMS=yes`; it is never performed by export or ordinary
+preflight. Preflight must separately report:
 
 - Required vCPUs, current usage, limits, available quota, and projected remaining quota for total
   regional and applicable VM-family quotas.

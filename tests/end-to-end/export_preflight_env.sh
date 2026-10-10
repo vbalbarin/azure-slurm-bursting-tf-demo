@@ -30,6 +30,7 @@ _export_preflight_env() {
 
   expression="$(cat <<'EOF'
 jsonencode({
+  TARGET_SUBSCRIPTION_ID = var.subscription_id,
   SOURCE_REGION = var.source_region,
   BURST_REGION = var.burst_region,
   BURST_ZONE = var.burst_zone,
