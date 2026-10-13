@@ -357,7 +357,7 @@ fi
 
 progress "Checking CycleCloud Marketplace terms"
 run_az vm image terms show --urn "$CYCLECLOUD_URN" \
-  --query "accepted == true" --output tsv | grep -qi '^true$' || {
+  --query accepted --output tsv | grep -qi '^true$' || {
   echo "CycleCloud Marketplace terms are not accepted for $CYCLECLOUD_URN" >&2
   exit 5
 }

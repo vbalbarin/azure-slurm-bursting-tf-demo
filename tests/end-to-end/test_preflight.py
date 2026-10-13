@@ -103,7 +103,10 @@ elif args[:3] == ["vm", "image", "show"]:
             "architecture": os.environ.get(f"FAKE_{role}_IMAGE_ARCH", "x64"),
         }))
 elif args[:3] == ["vm", "image", "terms"]:
-    print("true")
+    if query != "accepted":
+        print("false")
+    else:
+        print(os.environ.get("FAKE_MARKETPLACE_TERMS_ACCEPTED", "true"))
 else:
     print(f"Unexpected az invocation: {args}", file=sys.stderr)
     sys.exit(9)
@@ -186,6 +189,13 @@ def test_rejects_unavailable_burst_image(tmp_path: Path) -> None:
     result = _run(tmp_path, FAKE_MISSING_URN=missing)
 
     assert result.returncode != 0
+
+
+def test_rejects_unaccepted_cyclecloud_marketplace_terms(tmp_path: Path) -> None:
+    result = _run(tmp_path, FAKE_MARKETPLACE_TERMS_ACCEPTED="false")
+
+    assert result.returncode == 5
+    assert "Marketplace terms are not accepted" in result.stderr
 
 
 def test_rejects_incompatible_os_major(tmp_path: Path) -> None:
