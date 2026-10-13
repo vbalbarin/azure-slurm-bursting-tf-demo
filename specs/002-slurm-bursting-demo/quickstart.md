@@ -72,6 +72,13 @@ preflight. Preflight must separately report:
 - Exact image and SKU eligibility plus subscription, location, and zone restrictions.
 - The selected burst region and zone and every operator-approved alternate candidate.
 
+Render the resulting JSON with
+`tests/end-to-end/render_preflight_summary.sh "$PREFLIGHT_RESULTS_FILE"` and save stdout as a
+Markdown evidence file. Preview that file in VS Code to review the overall result, image
+compatibility, role placement, both quota scopes, alternate placements, and every detected
+blocker. The Markdown is a review aid; the source JSON remains the authoritative preflight
+evidence.
+
 Then explicitly acknowledge temporary probe cost and use
 `tests/end-to-end/capacity_probe.sh` to create and review the isolated
 `terraform/capacity-probe/` plan. Apply only that reviewed probe plan, verify one exact burst node

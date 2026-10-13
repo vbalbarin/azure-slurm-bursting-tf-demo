@@ -222,9 +222,12 @@ RBAC assignments can take several minutes to propagate after deployment.
    links and acceptance state. If acceptance is required, an authorized operator must deliberately
    run the `accept` action with `ACCEPT_MARKETPLACE_TERMS=yes`; export and preflight never accept
    legal terms implicitly. Then run `tests/end-to-end/preflight.sh` and preserve stdout as
-   `PREFLIGHT_RESULTS_FILE`. Review its separate total-regional and VM-family quota measurements,
-   selected-zone restrictions, and ordered alternate-placement assessments. A candidate result is
-   advisory and never changes deployment inputs.
+   `PREFLIGHT_RESULTS_FILE`. Run
+   `tests/end-to-end/render_preflight_summary.sh "$PREFLIGHT_RESULTS_FILE"` to render a Markdown
+   summary for VS Code preview. Review its separate total-regional and VM-family quota
+   measurements, selected-zone restrictions, all detected blockers, and ordered
+   alternate-placement assessments. The JSON remains the authoritative evidence. A candidate
+   result is advisory and never changes deployment inputs.
 3. Explicitly acknowledge temporary Azure cost and run
    `tests/end-to-end/capacity_probe.sh plan` against `terraform/capacity-probe/`. Review and approve
    its saved plan, run `apply`, then create and approve the destroy plan before running `cleanup`.
