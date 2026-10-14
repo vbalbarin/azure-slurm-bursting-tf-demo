@@ -51,6 +51,10 @@ printf '%s\n' "$EVIDENCE_DIR"
 test -d "$EVIDENCE_DIR" && test -w "$EVIDENCE_DIR"
 ```
 
+Use the detailed
+[`quickstart-evidence-runbook.md`](docs/quickstart-evidence-runbook.md) for the complete backend
+bootstrap and Slurm demo evidence workflow.
+
 Rebuild the development container after changing its configuration so the volume is mounted. A
 named volume is used instead of a host-home bind mount to keep the configuration portable across
 Linux, macOS, Windows, Codespaces, and remote Docker hosts. It is not automatically backed up.
