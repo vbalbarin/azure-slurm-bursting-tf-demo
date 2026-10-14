@@ -34,6 +34,27 @@ non-secret unless an organization classifies resource identifiers as protected m
 6. Operator-group and workload-identity IDs must never be tenant, application, or subscription IDs.
 7. State keys are derived, not freely supplied, and must be pairwise distinct.
 
+## Restricted-public source address
+
+For restricted-public mode, an operator may discover the actual runner's current public IPv4
+address with:
+
+```bash
+PUBLIC_IPV4="$(
+  curl --ipv4 --fail --silent --show-error https://api.ipify.org
+)"
+printf '%s/32\n' "$PUBLIC_IPV4"
+```
+
+Use the resulting `/32` CIDR in `allowed_public_ipv4_cidrs`. Run the command from the same
+runner/network context that will access the backend and after connecting any required VPN or
+proxy. A changed egress address invalidates the associated readiness assessment.
+
+`api.ipify.org` is an external service that observes the request's source address. Use it only
+when organizational policy permits; otherwise obtain the egress IPv4 address through the approved
+network-administration path. Do not send tokens, credentials, hostnames, usernames, or query
+parameters to the echo service.
+
 ## Readiness identity
 
 `readiness_identity` binds canonical readiness evidence to the active Entra user or service

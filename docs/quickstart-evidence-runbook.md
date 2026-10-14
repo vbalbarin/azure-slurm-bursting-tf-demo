@@ -184,6 +184,30 @@ Choose one approved network mode:
 
 Never enable unrestricted public access as a fallback for failed DNS, routing, or authorization.
 
+For restricted-public mode, discover the current public IPv4 address from the actual runner:
+
+```bash
+export PUBLIC_IPV4="$(
+  curl --ipv4 \
+    --fail \
+    --silent \
+    --show-error \
+    https://api.ipify.org
+)"
+
+printf 'allowed_public_ipv4_cidrs = ["%s/32"]\n' "$PUBLIC_IPV4"
+```
+
+Use the printed `/32` value in `allowed_public_ipv4_cidrs`. Run the command after connecting any
+required VPN or proxy and from the same runner/network context that will access the backend. A
+network-context change can alter the public address and invalidates the associated readiness
+assessment.
+
+`api.ipify.org` is an external service and observes the request's source address. Use it only when
+approved by organizational policy. Otherwise obtain the runner's egress IPv4 address through the
+approved network-administration path. Never send a token, credential, hostname, username, or query
+parameter to the echo service.
+
 ## A2. Prepare protected inputs and local state
 
 ```bash
