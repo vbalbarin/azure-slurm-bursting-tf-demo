@@ -23,6 +23,14 @@ locals {
   container_name        = "tfstate"
   private_endpoint_name = "pep-${var.workload_name}-${var.environment_name}-${local.region_code}-${local.instance_code}-blob"
 
+  # Azure Storage rejects /31 and /32 prefixes in ipRules; individual addresses must be bare.
+  storage_ip_rules = toset(flatten([
+    for cidr in var.allowed_public_ipv4_cidrs :
+    endswith(cidr, "/32") ? [cidrhost(cidr, 0)] :
+    endswith(cidr, "/31") ? [cidrhost(cidr, 0), cidrhost(cidr, 1)] :
+    [cidr]
+  ]))
+
   state_keys = {
     bootstrap      = "${var.environment_name}/bootstrap.tfstate"
     main           = "${var.environment_name}/main.tfstate"

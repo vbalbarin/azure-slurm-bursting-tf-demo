@@ -48,7 +48,9 @@ printf '%s/32\n' "$PUBLIC_IPV4"
 
 Use the resulting `/32` CIDR in `allowed_public_ipv4_cidrs`. Run the command from the same
 runner/network context that will access the backend and after connecting any required VPN or
-proxy. A changed egress address invalidates the associated readiness assessment.
+proxy. A changed egress address invalidates the associated readiness assessment. At the Azure
+Storage API boundary, the implementation converts `/32` to one bare IPv4 address and `/31` to two
+bare addresses because Storage firewall `ipRules` rejects those prefix sizes.
 
 `api.ipify.org` is an external service that observes the request's source address. Use it only
 when organizational policy permits; otherwise obtain the egress IPv4 address through the approved

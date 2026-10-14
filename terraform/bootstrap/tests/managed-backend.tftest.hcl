@@ -11,7 +11,7 @@ variables {
   uniqueness_code             = "a1b2"
   operator_group_object_id    = "33333333-3333-4333-8333-333333333333"
   workload_identity_object_id = "55555555-5555-4555-8555-555555555555"
-  allowed_public_ipv4_cidrs   = ["203.0.113.10/32"]
+  allowed_public_ipv4_cidrs   = ["203.0.113.10/32", "198.51.100.10/31"]
   tags                        = { environment = "demo", workload = "slurm" }
   source_commit               = "0000000000000000000000000000000000000000"
   readiness_identity = {
@@ -48,6 +48,11 @@ run "managed_restricted_public_composition" {
   assert {
     condition     = output.backend_coordinates.network_mode == "restricted_public"
     error_message = "The default network mode must be restricted public."
+  }
+
+  assert {
+    condition     = local.storage_ip_rules == toset(["203.0.113.10", "198.51.100.10", "198.51.100.11"])
+    error_message = "Approved /31 and /32 ranges must be sent to Azure Storage as bare IPv4 addresses."
   }
 
   assert {

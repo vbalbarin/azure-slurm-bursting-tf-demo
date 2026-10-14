@@ -47,7 +47,7 @@ module "storage" {
   network_rules = var.network_mode == "restricted_public" ? {
     bypass                     = ["None"]
     default_action             = "Deny"
-    ip_rules                   = var.allowed_public_ipv4_cidrs
+    ip_rules                   = local.storage_ip_rules
     virtual_network_subnet_ids = []
   } : null
 

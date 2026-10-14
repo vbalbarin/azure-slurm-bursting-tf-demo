@@ -201,7 +201,8 @@ printf 'allowed_public_ipv4_cidrs = ["%s/32"]\n' "$PUBLIC_IPV4"
 Use the printed `/32` value in `allowed_public_ipv4_cidrs`. Run the command after connecting any
 required VPN or proxy and from the same runner/network context that will access the backend. A
 network-context change can alter the public address and invalidates the associated readiness
-assessment.
+assessment. The bootstrap preserves `/32` as the reviewed input but sends Azure Storage the bare
+IPv4 address required for a single-address firewall rule.
 
 `api.ipify.org` is an external service and observes the request's source address. Use it only when
 approved by organizational policy. Otherwise obtain the runner's egress IPv4 address through the
