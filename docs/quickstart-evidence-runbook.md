@@ -485,11 +485,82 @@ export COORDINATES_DIGEST="$(
 )"
 ```
 
-Validate the output against
-[`backend-coordinates.schema.json`](../specs/003-terraform-backend-bootstrap/contracts/backend-coordinates.schema.json)
-through `make backend-contract-test`. Confirm the bootstrap, main, and capacity-probe keys are
-`<environment>/bootstrap.tfstate`, `<environment>/main.tfstate`, and
-`<environment>/capacity-probe.tfstate`, and are pairwise distinct.
+Validate the live output and record a bounded result:
+
+```bash
+export BACKEND_COORDINATES_FILE="$BACKEND_EVIDENCE_DIR/backend-coordinates.json"
+export BACKEND_COORDINATES_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-coordinates.schema.json"
+
+sha256sum -c "$BACKEND_COORDINATES_FILE.sha256"
+test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+
+jq -e \
+  --arg environment "$BACKEND_ENVIRONMENT" \
+  '.state_keys.bootstrap == ($environment + "/bootstrap.tfstate") and
+   .state_keys.main == ($environment + "/main.tfstate") and
+   .state_keys.capacity_probe == ($environment + "/capacity-probe.tfstate") and
+   ([.state_keys[]] | unique | length) == 3' \
+  "$BACKEND_COORDINATES_FILE" >/dev/null
+
+.venv/bin/python - \
+  "$BACKEND_COORDINATES_FILE" \
+  "$BACKEND_COORDINATES_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+coordinates_path = Path(sys.argv[1])
+schema_path = Path(sys.argv[2])
+coordinates = json.loads(coordinates_path.read_text())
+schema = json.loads(schema_path.read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(coordinates)
+PY
+
+export COORDINATES_VALIDATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+tee_output \
+  "$BACKEND_EVIDENCE_DIR/backend-coordinates-validation.json" \
+  jq -n \
+    --arg source_commit "$SOURCE_COMMIT" \
+    --arg observed_at "$COORDINATES_VALIDATED_AT" \
+    --arg document_digest "$COORDINATES_DIGEST" \
+    --arg schema_digest "$(
+      sha256sum "$BACKEND_COORDINATES_SCHEMA" |
+      awk '{print $1}'
+    )" \
+    '{
+      schema_version: "1.0",
+      command_id: "backend_coordinates_schema_validation",
+      source_commit: $source_commit,
+      observed_at: $observed_at,
+      document_sha256: $document_digest,
+      schema_sha256: $schema_digest,
+      state_keys_exact_and_distinct: true,
+      valid: true
+    }'
+
+jq -e \
+  '.valid == true and
+   .state_keys_exact_and_distinct == true and
+   (.document_sha256 | test("^[a-f0-9]{64}$")) and
+   (.schema_sha256 | test("^[a-f0-9]{64}$"))' \
+  "$BACKEND_EVIDENCE_DIR/backend-coordinates-validation.json"
+```
+
+`make backend-contract-test` validates repository contract fixtures; the commands above separately
+validate the live coordinates exported for this run. Keep all three secret-free A4 artifacts in
+evidence:
+
+```text
+backend-coordinates.json
+backend-coordinates.json.sha256
+backend-coordinates-validation.json
+```
 
 ## A5. Perform preliminary readiness from the actual runner
 
