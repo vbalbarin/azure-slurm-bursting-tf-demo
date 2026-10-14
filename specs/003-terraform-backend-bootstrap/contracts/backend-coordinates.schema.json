@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/contracts/backend-coordinates.schema.json",
+  "title": "Backend Coordinates",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "ownership_mode",
+    "subscription_id",
+    "tenant_id",
+    "resource_group_name",
+    "storage_account_name",
+    "container_name",
+    "network_mode",
+    "state_keys",
+    "resource_ids"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "ownership_mode": {
+      "enum": ["managed", "existing"]
+    },
+    "subscription_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "resource_group_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "storage_account_name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]{3,24}$"
+    },
+    "container_name": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?!.*--)[a-z0-9-]{1,61}[a-z0-9]$"
+    },
+    "network_mode": {
+      "enum": ["restricted_public", "private"]
+    },
+    "state_keys": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrap", "main", "capacity_probe"],
+      "properties": {
+        "bootstrap": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*/bootstrap\\.tfstate$"
+        },
+        "main": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*/main\\.tfstate$"
+        },
+        "capacity_probe": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*/capacity-probe\\.tfstate$"
+        }
+      }
+    },
+    "resource_ids": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resource_group", "storage_account", "container"],
+      "properties": {
+        "resource_group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage_account": {
+          "type": "string",
+          "minLength": 1
+        },
+        "container": {
+          "type": "string",
+          "minLength": 1
+        },
+        "private_endpoint": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

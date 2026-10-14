@@ -6,6 +6,60 @@ variable "subscription_id" {
     condition     = can(regex("^[0-9a-fA-F-]{36}$", var.subscription_id))
     error_message = "subscription_id must be a UUID."
   }
+
+}
+
+variable "backend_readiness_file" {
+  description = "Path to current secret-free backend readiness evidence."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "backend_readiness_json" {
+  description = "Protected backend readiness JSON; intended for native tests or protected variable files when no path is available."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.backend_readiness_json == null || var.backend_readiness_file == null
+    error_message = "Set only one of backend_readiness_json or backend_readiness_file."
+  }
+}
+
+variable "current_execution_context_digest" {
+  description = "SHA-256 of the current non-secret runner/network execution context."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "deployment_source_commit" {
+  description = "Exact source commit authorized for this plan."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "deployment_principal_id" {
+  description = "Object ID of the active User or ServicePrincipal authorized by readiness evidence."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "backend_storage_account_name" {
+  description = "Approved storage account name used by the initialized backend."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "backend_container_name" {
+  description = "Approved storage container name used by the initialized backend."
+  type        = string
+  default     = "tfstate"
 }
 
 variable "tenant_id" {

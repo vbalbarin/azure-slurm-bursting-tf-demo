@@ -88,6 +88,161 @@ no longer needed, removing the named volume and rebuilding is another option, bu
 deletes everything stored in the volume. Do not create `$HOME/evidence`; it is not used by this
 configuration.
 
+### Terraform state backend bootstrap
+
+The development container also mounts the named volume
+`azure-slurm-bursting-tf-demo-state` at `/state`. It is separate from `/evidence`, is repaired to
+the current container user's ownership on create/rebuild, and is restricted to mode `0700`.
+Bootstrap state, saved plans, readiness assertions, lifecycle assertions, and approval records are
+protected operational inputs; they must not be committed or copied into evidence.
+
+The independent [`terraform/bootstrap/`](terraform/bootstrap/) root either creates a governed
+backend through direct pinned Azure Verified Modules or validates approved existing coordinates.
+Managed mode creates a private `tfstate` container, Entra data-plane assignments, restricted
+networking, versioning and seven-day deletion recovery, and a `CanNotDelete` lock. Existing mode
+performs read-only lookups and creates, imports, changes, locks, unlocks, and destroys nothing.
+
+#### 1. Create and apply an exact reviewed backend plan
+
+Copy [`bootstrap.tfvars.example`](terraform/bootstrap/bootstrap.tfvars.example) to an ignored
+`.tfvars` file and replace placeholders with approved values. For private mode, supply an existing
+reachable subnet and the `privatelink.blob.core.windows.net` private DNS zone. Do not add a public
+CIDR fallback. Then initialize protected local state:
+
+```bash
+umask 077
+export BACKEND_ENVIRONMENT="demo"
+export BOOTSTRAP_STATE_DIR="${BOOTSTRAP_STATE_ROOT}/${BACKEND_ENVIRONMENT}"
+install -d -m 0700 "$BOOTSTRAP_STATE_DIR"
+cp terraform/bootstrap/backend.local.tf.example terraform/bootstrap/backend.local.tf
+terraform -chdir=terraform/bootstrap init \
+  -reconfigure \
+  -backend-config="path=${BOOTSTRAP_STATE_DIR}/terraform.tfstate"
+terraform -chdir=terraform/bootstrap validate
+```
+
+Create the plan under `/state`, calculate its digest only after generation, and create a protected
+approval record conforming to
+[`backend-plan-approval.schema.json`](specs/003-terraform-backend-bootstrap/contracts/backend-plan-approval.schema.json):
+
+```bash
+terraform -chdir=terraform/bootstrap plan \
+  -var-file="$BOOTSTRAP_STATE_DIR/bootstrap.tfvars" \
+  -out="$BOOTSTRAP_STATE_DIR/create.tfplan"
+sha256sum "$BOOTSTRAP_STATE_DIR/create.tfplan"
+sha256sum -c "$BOOTSTRAP_STATE_DIR/create.tfplan.sha256"
+terraform -chdir=terraform/bootstrap apply "$BOOTSTRAP_STATE_DIR/create.tfplan"
+terraform -chdir=terraform/bootstrap plan \
+  -var-file="$BOOTSTRAP_STATE_DIR/bootstrap.tfvars" \
+  -detailed-exitcode
+```
+
+The reviewer must verify the exact source/input/plan digests and expected AVM-only changes.
+Immediately recheck the plan digest before `apply`; Terraform separately rejects a saved plan whose
+state snapshot is stale. Never replace exact-plan apply with auto-approval.
+
+#### 2. Assess readiness from the actual runner
+
+Run observations directly; do not implement readiness, provisioning, lifecycle, or apply in a
+custom Bash/Python wrapper. Record only bounded, non-secret values in a protected assertions file
+conforming to
+[`backend-readiness-assertions.schema.json`](specs/003-terraform-backend-bootstrap/contracts/backend-readiness-assertions.schema.json):
+
+```bash
+az account show --query '{subscription_id:id,tenant_id:tenantId,user_type:user.type}' -o json
+az storage account show --ids "<storage-account-resource-id>" \
+  --query '{id:id,publicNetworkAccess:publicNetworkAccess,allowSharedKeyAccess:allowSharedKeyAccess}'
+az storage container show --auth-mode login \
+  --account-name "<storage-account>" --name tfstate --query '{name:name}'
+getent ahostsv4 "<storage-account>.blob.core.windows.net"
+curl --fail-with-body --silent --show-error --head \
+  "https://<storage-account>.blob.core.windows.net/tfstate?restype=container"
+az storage blob list --auth-mode login \
+  --account-name "<storage-account>" --container-name tfstate \
+  --num-results 1 --query 'length(@)'
+terraform -chdir=terraform/bootstrap state pull >/dev/null
+```
+
+Use stable command IDs documented in the readiness assertion contract. Capture UTC observation
+times, exit codes, `passed`/`failed`/`not_run`, and bounded observed values—not raw output. Bind the
+assertions to the canonical coordinate digest, source commit, active tenant/identity, network
+mode, resolved Blob IPv4 addresses, and a SHA-256 of the non-secret runner context. Restricted
+public mode records the observed public source IPv4; private mode records the private-network
+context digest. A changed source address, route/context, or resolved endpoint requires reassessment.
+Role-assignment propagation delay is recorded separately and is never treated as success.
+
+Set `readiness_phase = "preliminary"` before migration; only migration and locking may be
+`not_run`, with null exit codes and empty observed values. Apply an exact reviewed output plan,
+export `terraform output -json backend_readiness` as canonical JSON, and create an adjacent
+`.sha256`. Final evidence is valid for at most one hour.
+
+#### 3. Migrate bootstrap state and initialize isolated roots
+
+Retain the mode-`0600` local copy until remote pull, lineage/resource-count equality, a no-change
+plan, and locking are verified. Replace the ignored local backend block with the ignored AzureRM
+block and migrate; `-reconfigure` does not copy state and must not be used here:
+
+```bash
+rm terraform/bootstrap/backend.local.tf
+cp terraform/bootstrap/backend.azurerm.tf.example terraform/bootstrap/backend.azurerm.tf
+terraform -chdir=terraform/bootstrap init -migrate-state -input=false \
+  -backend-config="storage_account_name=<storage-account>" \
+  -backend-config="container_name=tfstate" \
+  -backend-config="key=${BACKEND_ENVIRONMENT}/bootstrap.tfstate"
+terraform -chdir=terraform/bootstrap state pull >/dev/null
+```
+
+Run a deliberate concurrent plan to prove the second operation receives a lock conflict. Update
+migration and locking assertions to `passed`, regenerate final readiness, and remove the retained
+local copy only after every verification succeeds. Active local state is the configured
+`$BOOTSTRAP_STATE_DIR/terraform.tfstate`; recognized backups are the sibling
+`terraform.tfstate.backup` and timestamped Terraform backup variants created for that state.
+Record only SHA-256 digests and the named-file disposition in migration acceptance evidence—never
+state or backup content. Delete only those named active/recognized files, confirm each is absent,
+and retain that absence result. Sanitization of blocks on the named volume's underlying physical
+media is the host/container platform's responsibility, not a claim made by this workflow.
+
+Initialize the dependent roots with tracked Entra-only partial configurations:
+
+```bash
+cp terraform/backend.hcl.example terraform/backend.hcl
+terraform -chdir=terraform init -reconfigure -input=false \
+  -backend-config=backend.hcl
+
+cp terraform/capacity-probe/backend.hcl.example terraform/capacity-probe/backend.hcl
+terraform -chdir=terraform/capacity-probe init -reconfigure -input=false \
+  -backend-config=backend.hcl
+```
+
+The exact keys are `<environment>/main.tfstate` and
+`<environment>/capacity-probe.tfstate`. Both plans require the current readiness file, exact source
+commit, and freshly calculated execution-context digest. Missing, malformed, stale, failed, or
+mismatched evidence blocks planning before Azure resources are evaluated.
+
+#### 4. Recovery and managed removal
+
+Recovery grants a replacement operator membership in the approved Entra group; do not distribute a
+storage key or SAS. After refreshing Azure login and allowing separately measured RBAC propagation,
+the replacement operator must directly initialize, read, and lock all three namespaces.
+
+Existing mode has no removal path. For managed removal:
+
+1. Prove main and capacity-probe state are readable and manage zero resources.
+2. Migrate bootstrap state back to protected local state with `terraform init -migrate-state`;
+   verify mode `0600`, lineage/resource count, and state digest before removing the AzureRM override.
+3. Set lifecycle action `unlock`, create an unlock-only saved plan, create a post-generation
+   approval record, verify its digest, and apply that exact plan.
+4. Confirm the lock is absent. Set lifecycle action `destroy`, create a separate `-destroy` plan,
+   obtain a separate approval, verify its digest, and apply only that plan.
+
+Any missing/inconsistent local state, non-empty dependent namespace, failed reverse migration,
+state-digest mismatch, stale plan, or mismatched approval blocks removal.
+
+For acceptance, record bootstrap, preliminary-readiness, migration/final-readiness, dependent
+initialization/deployment, recovery, unlock, and removal as separate stages with their approval
+references. Use only the commands documented above: acceptance requires zero undocumented
+recovery commands and zero workflow substitutions.
+
 ## Goals
 
 - Place the Slurm scheduler and administration plane in a configurable Azure source region and

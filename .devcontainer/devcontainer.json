@@ -25,13 +25,16 @@
   },
   "remoteUser": "vscode",
   "containerEnv": {
+    "BOOTSTRAP_STATE_ROOT": "/state/terraform-backend",
     "EVIDENCE_DIR": "/evidence/quickstart",
     "EVIDENCE_ROOT": "/evidence",
+    "STATE_ROOT": "/state",
     "PIP_DISABLE_PIP_VERSION_CHECK": "1",
     "PYTHONDONTWRITEBYTECODE": "1"
   },
   "mounts": [
-    "source=azure-slurm-bursting-tf-demo-evidence,target=/evidence,type=volume"
+    "source=azure-slurm-bursting-tf-demo-evidence,target=/evidence,type=volume",
+    "source=azure-slurm-bursting-tf-demo-state,target=/state,type=volume"
   ],
   "remoteEnv": {
     "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerWorkspaceFolder}/.bundle/bin:/home/vscode/.local/bin:${containerEnv:PATH}",

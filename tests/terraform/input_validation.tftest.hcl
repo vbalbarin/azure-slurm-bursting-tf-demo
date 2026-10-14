@@ -45,6 +45,45 @@ variables {
   cluster_name                     = "demo-cluster"
   cyclecloud_certificate_secret_id = "https://example.invalid/secrets/tls/version"
   chef_policy_archive_uri          = "https://example.invalid/policies"
+  deployment_source_commit         = "0000000000000000000000000000000000000000"
+  deployment_principal_id          = "11111111-1111-4111-8111-111111111111"
+  backend_storage_account_name     = "stslurmdemoeus01a1b2"
+  current_execution_context_digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  backend_readiness_json = jsonencode({
+    source_commit = "0000000000000000000000000000000000000000"
+    assessed_at   = timestamp()
+    status        = "ready"
+    failure_class = "none"
+    identity = {
+      tenant_id    = "00000000-0000-0000-0000-000000000000"
+      principal_id = "11111111-1111-4111-8111-111111111111"
+    }
+    execution_context = {
+      runner_context_digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+    coordinates = {
+      subscription_id      = "00000000-0000-0000-0000-000000000000"
+      tenant_id            = "00000000-0000-0000-0000-000000000000"
+      storage_account_name = "stslurmdemoeus01a1b2"
+      container_name       = "tfstate"
+      state_keys = {
+        bootstrap      = "demo/bootstrap.tfstate"
+        main           = "demo/main.tfstate"
+        capacity_probe = "demo/capacity-probe.tfstate"
+      }
+    }
+    checks = {
+      account_context      = { status = "passed" }
+      backend_exists       = { status = "passed" }
+      container_exists     = { status = "passed" }
+      dns                  = { status = "passed" }
+      network              = { status = "passed" }
+      authorization        = { status = "passed" }
+      state_key_separation = { status = "passed" }
+      migration            = { status = "passed" }
+      locking              = { status = "passed" }
+    }
+  })
 }
 
 run "valid_inputs" {

@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/contracts/backend-readiness.schema.json",
+  "title": "Backend Readiness Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_commit",
+    "assessed_at",
+    "status",
+    "failure_class",
+    "identity",
+    "execution_context",
+    "coordinates",
+    "checks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "assessed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": ["ready", "failed"]
+    },
+    "failure_class": {
+      "enum": [
+        "none",
+        "missing_backend",
+        "missing_container",
+        "authentication_failed",
+        "authorization_failed",
+        "dns_failed",
+        "network_failed",
+        "state_key_collision",
+        "lock_failed",
+        "configuration_mismatch"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenant_id", "principal_id", "principal_type"],
+      "properties": {
+        "tenant_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "principal_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "principal_type": {
+          "enum": ["User", "ServicePrincipal"]
+        }
+      }
+    },
+    "execution_context": {
+      "$ref": "backend-readiness-assertions.schema.json#/$defs/execution_context"
+    },
+    "coordinates": {
+      "$ref": "backend-coordinates.schema.json"
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_context",
+        "backend_exists",
+        "container_exists",
+        "dns",
+        "network",
+        "authorization",
+        "state_key_separation",
+        "migration",
+        "locking"
+      ],
+      "properties": {
+        "account_context": {
+          "$ref": "#/$defs/check"
+        },
+        "backend_exists": {
+          "$ref": "#/$defs/check"
+        },
+        "container_exists": {
+          "$ref": "#/$defs/check"
+        },
+        "dns": {
+          "$ref": "#/$defs/check"
+        },
+        "network": {
+          "$ref": "#/$defs/check"
+        },
+        "authorization": {
+          "$ref": "#/$defs/check"
+        },
+        "state_key_separation": {
+          "$ref": "#/$defs/check"
+        },
+        "migration": {
+          "$ref": "#/$defs/check"
+        },
+        "locking": {
+          "$ref": "#/$defs/check"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ready"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "failure_class": {
+            "const": "none"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "not": {
+          "properties": {
+            "failure_class": {
+              "const": "none"
+            }
+          },
+          "required": ["failure_class"]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["passed", "failed", "not_run"]
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

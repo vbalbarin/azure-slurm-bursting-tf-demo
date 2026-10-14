@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/contracts/backend-live-acceptance.schema.json",
+  "title": "Backend Live Acceptance Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_commit",
+    "run_id",
+    "started_at",
+    "completed_at",
+    "bootstrap_elapsed_seconds",
+    "role_propagation_delay_seconds",
+    "replacement_operator",
+    "namespace_access",
+    "reverse_migration",
+    "unlock",
+    "destroy",
+    "backend_absence",
+    "secret_hygiene",
+    "stages",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "source_commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z$",
+      "not": { "const": "20261013T164853Z" }
+    },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "bootstrap_elapsed_seconds": { "type": "integer", "minimum": 0, "maximum": 1200 },
+    "role_propagation_delay_seconds": { "type": "integer", "minimum": 0 },
+    "replacement_operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenant_id", "principal_id", "principal_type", "authenticated_at", "completed_at", "elapsed_seconds"],
+      "properties": {
+        "tenant_id": { "type": "string", "format": "uuid" },
+        "principal_id": { "type": "string", "format": "uuid" },
+        "principal_type": { "enum": ["User", "ServicePrincipal"] },
+        "authenticated_at": { "type": "string", "format": "date-time" },
+        "completed_at": { "type": "string", "format": "date-time" },
+        "elapsed_seconds": { "type": "integer", "minimum": 0, "maximum": 900 }
+      }
+    },
+    "namespace_access": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrap", "main", "capacity_probe"],
+      "properties": {
+        "bootstrap": { "$ref": "#/$defs/access_result" },
+        "main": { "$ref": "#/$defs/access_result" },
+        "capacity_probe": { "$ref": "#/$defs/access_result" }
+      }
+    },
+    "reverse_migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_mode", "lineage_matches", "resource_count_matches", "digest_matches"],
+      "properties": {
+        "local_mode": { "const": "0600" },
+        "lineage_matches": { "type": "boolean" },
+        "resource_count_matches": { "type": "boolean" },
+        "digest_matches": { "type": "boolean" }
+      }
+    },
+    "unlock": { "$ref": "#/$defs/approved_plan" },
+    "destroy": { "$ref": "#/$defs/approved_plan" },
+    "backend_absence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["account_absent", "container_absent"],
+      "properties": {
+        "account_absent": { "type": "boolean" },
+        "container_absent": { "type": "boolean" }
+      }
+    },
+    "secret_hygiene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git_scan_passed", "evidence_scan_passed", "prohibited_artifact_count"],
+      "properties": {
+        "git_scan_passed": { "type": "boolean" },
+        "evidence_scan_passed": { "type": "boolean" },
+        "prohibited_artifact_count": { "type": "integer", "const": 0 }
+      }
+    },
+    "stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrap", "preliminary_readiness", "migration_final_readiness", "dependent_initialization_deployment", "recovery", "unlock", "removal", "undocumented_command_count", "workflow_substitution_count"],
+      "properties": {
+        "bootstrap": { "$ref": "#/$defs/approval_reference" },
+        "preliminary_readiness": { "$ref": "#/$defs/approval_reference" },
+        "migration_final_readiness": { "$ref": "#/$defs/approval_reference" },
+        "dependent_initialization_deployment": { "$ref": "#/$defs/approval_reference" },
+        "recovery": { "$ref": "#/$defs/approval_reference" },
+        "unlock": { "$ref": "#/$defs/approval_reference" },
+        "removal": { "$ref": "#/$defs/approval_reference" },
+        "undocumented_command_count": { "type": "integer", "const": 0 },
+        "workflow_substitution_count": { "type": "integer", "const": 0 }
+      }
+    },
+    "status": { "enum": ["passed", "failed"] }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "access_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initialized", "read_succeeded", "lock_succeeded"],
+      "properties": {
+        "initialized": { "type": "boolean" },
+        "read_succeeded": { "type": "boolean" },
+        "lock_succeeded": { "type": "boolean" }
+      }
+    },
+    "approved_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_digest", "approval_reference", "stale_plan_rejected", "applied_digest_matches"],
+      "properties": {
+        "plan_digest": { "$ref": "#/$defs/digest" },
+        "approval_reference": { "type": "string", "minLength": 1 },
+        "stale_plan_rejected": { "type": "boolean" },
+        "applied_digest_matches": { "type": "boolean" }
+      }
+    },
+    "approval_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recorded", "reference"],
+      "properties": {
+        "recorded": { "type": "boolean" },
+        "reference": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

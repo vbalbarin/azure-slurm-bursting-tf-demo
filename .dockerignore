@@ -11,4 +11,14 @@
 *.tfstate*
 *.tfvars
 !*.tfvars.example
+**/backend.azurerm.tf
+**/backend.local.tf
+**/backend.hcl
+**/backend-readiness.json
+**/backend-readiness.json.sha256
+**/backend-readiness-assertions.json
+**/backend-plan-approval.json
+**/backend-migration-acceptance.json
+**/backend-live-acceptance.json
+**/backend-lifecycle.json
 tests/evidence/

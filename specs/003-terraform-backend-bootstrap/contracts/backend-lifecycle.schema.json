@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/contracts/backend-lifecycle.schema.json",
+  "title": "Backend Lifecycle Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_commit",
+    "assessed_at",
+    "status",
+    "failure_class",
+    "ownership_mode",
+    "action",
+    "coordinates",
+    "namespaces",
+    "bootstrap_state",
+    "approval_reference"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "assessed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": ["ready", "blocked"]
+    },
+    "failure_class": {
+      "enum": [
+        "none",
+        "dependent_state_not_empty",
+        "bootstrap_state_not_local",
+        "state_digest_mismatch",
+        "ownership_mode_forbidden",
+        "reverse_migration_failed",
+        "approval_mismatch",
+        "configuration_mismatch"
+      ]
+    },
+    "ownership_mode": {
+      "enum": ["managed", "existing"]
+    },
+    "action": {
+      "enum": ["migrate_local", "unlock", "destroy"]
+    },
+    "coordinates": {
+      "$ref": "backend-coordinates.schema.json"
+    },
+    "namespaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["main", "capacity_probe"],
+      "properties": {
+        "main": {
+          "$ref": "#/$defs/namespace"
+        },
+        "capacity_probe": {
+          "$ref": "#/$defs/namespace"
+        }
+      }
+    },
+    "bootstrap_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "location",
+        "digest",
+        "expected_digest",
+        "reverse_migration_verified"
+      ],
+      "properties": {
+        "location": {
+          "enum": ["local", "remote", "missing"]
+        },
+        "digest": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expected_digest": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "reverse_migration_verified": {
+          "type": "boolean"
+        }
+      }
+    },
+    "approval_reference": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "namespace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state_status", "managed_resource_count"],
+      "properties": {
+        "state_status": {
+          "enum": ["absent", "empty", "managed", "unreadable"]
+        },
+        "managed_resource_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ready"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "failure_class": {
+            "const": "none"
+          },
+          "ownership_mode": {
+            "const": "managed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "blocked"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "not": {
+          "properties": {
+            "failure_class": {
+              "const": "none"
+            }
+          },
+          "required": ["failure_class"]
+        }
+      }
+    }
+  ]
+}

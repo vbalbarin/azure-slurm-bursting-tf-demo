@@ -1,0 +1,5 @@
+use_azuread_auth     = true
+use_cli              = true
+storage_account_name = "replace-with-approved-account"
+container_name       = "tfstate"
+key                  = "demo/main.tfstate"

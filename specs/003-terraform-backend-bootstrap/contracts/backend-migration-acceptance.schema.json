@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/contracts/backend-migration-acceptance.schema.json",
+  "title": "Backend Migration Acceptance Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_commit",
+    "observed_at",
+    "coordinates_digest",
+    "local_state",
+    "remote_state",
+    "lineage_matches",
+    "resource_count_matches",
+    "no_change_plan",
+    "stale_plan_rejection",
+    "lock_conflict",
+    "namespaces",
+    "verification_status"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "source_commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "coordinates_digest": { "$ref": "#/$defs/digest" },
+    "local_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path_class", "mode", "lineage", "resource_count", "digest", "retained_until_verified", "named_files_absent_after_deletion"],
+      "properties": {
+        "path_class": { "const": "protected_state_volume" },
+        "mode": { "const": "0600" },
+        "lineage": { "$ref": "#/$defs/uuid" },
+        "resource_count": { "type": "integer", "minimum": 0 },
+        "digest": { "$ref": "#/$defs/digest" },
+        "retained_until_verified": { "type": "boolean" },
+        "named_files_absent_after_deletion": { "type": "boolean" }
+      }
+    },
+    "remote_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pull_succeeded", "lineage", "resource_count", "key"],
+      "properties": {
+        "pull_succeeded": { "type": "boolean" },
+        "lineage": { "$ref": "#/$defs/uuid" },
+        "resource_count": { "type": "integer", "minimum": 0 },
+        "key": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,7}/bootstrap\\.tfstate$" }
+      }
+    },
+    "lineage_matches": { "type": "boolean" },
+    "resource_count_matches": { "type": "boolean" },
+    "no_change_plan": { "$ref": "#/$defs/command_result" },
+    "stale_plan_rejection": { "$ref": "#/$defs/command_result" },
+    "lock_conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first_operation_acquired", "first_operation_released", "second_operation_rejected"],
+      "properties": {
+        "first_operation_acquired": { "type": "boolean" },
+        "first_operation_released": { "type": "boolean" },
+        "second_operation_rejected": { "type": "boolean" }
+      }
+    },
+    "namespaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrap", "main", "capacity_probe", "pairwise_distinct", "isolation_verified"],
+      "properties": {
+        "bootstrap": { "type": "string" },
+        "main": { "type": "string" },
+        "capacity_probe": { "type": "string" },
+        "pairwise_distinct": { "type": "boolean" },
+        "isolation_verified": { "type": "boolean" }
+      }
+    },
+    "verification_status": { "enum": ["passed", "failed"] }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "uuid": { "type": "string", "format": "uuid" },
+    "command_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exit_code", "result"],
+      "properties": {
+        "exit_code": { "type": "integer" },
+        "result": { "type": "boolean" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verification_status": { "const": "passed" } } },
+      "then": {
+        "properties": {
+          "lineage_matches": { "const": true },
+          "resource_count_matches": { "const": true },
+          "local_state": {
+            "properties": {
+              "retained_until_verified": { "const": true },
+              "named_files_absent_after_deletion": { "const": true }
+            }
+          },
+          "remote_state": { "properties": { "pull_succeeded": { "const": true } } },
+          "namespaces": {
+            "properties": {
+              "pairwise_distinct": { "const": true },
+              "isolation_verified": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

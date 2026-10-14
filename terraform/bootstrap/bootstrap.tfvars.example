@@ -1,0 +1,31 @@
+subscription_id = "00000000-0000-4000-8000-000000000000"
+tenant_id       = "00000000-0000-4000-8000-000000000000"
+location        = "eastus"
+
+workload_name    = "slurm"
+environment_name = "demo"
+instance         = 1
+uniqueness_code  = "abcd"
+
+ownership_mode = "managed"
+network_mode   = "restricted_public"
+
+operator_group_object_id      = "00000000-0000-4000-8000-000000000000"
+workload_identity_object_id   = null
+allowed_public_ipv4_cidrs     = ["203.0.113.10/32"]
+private_endpoint_subnet_id    = null
+private_dns_zone_id           = null
+existing_backend              = null
+source_commit                 = "0000000000000000000000000000000000000000"
+
+readiness_identity = {
+  tenant_id      = "00000000-0000-4000-8000-000000000000"
+  principal_id   = "00000000-0000-4000-8000-000000000000"
+  principal_type = "User"
+}
+
+tags = {
+  environment = "demo"
+  managed_by  = "terraform"
+  workload    = "slurm-bursting-demo"
+}

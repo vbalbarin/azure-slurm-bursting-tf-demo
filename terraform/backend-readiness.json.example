@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "source_commit": "0000000000000000000000000000000000000000",
+  "assessed_at": "2026-10-14T13:01:00Z",
+  "status": "ready",
+  "failure_class": "none",
+  "identity": {
+    "tenant_id": "00000000-0000-4000-8000-000000000000",
+    "principal_id": "00000000-0000-4000-8000-000000000000",
+    "principal_type": "User"
+  },
+  "execution_context": {
+    "network_mode": "restricted_public",
+    "runner_context_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "observed_public_source_ipv4": "203.0.113.10",
+    "private_network_context_digest": null,
+    "resolved_blob_ipv4_addresses": ["20.1.2.3"],
+    "observed_at": "2026-10-14T13:00:00Z"
+  },
+  "coordinates": {
+    "schema_version": "1.0",
+    "ownership_mode": "managed",
+    "subscription_id": "00000000-0000-4000-8000-000000000000",
+    "tenant_id": "00000000-0000-4000-8000-000000000000",
+    "resource_group_name": "rg-slurm-demo-eus-01",
+    "storage_account_name": "stslurmdemoeus01abcd",
+    "container_name": "tfstate",
+    "network_mode": "restricted_public",
+    "state_keys": {
+      "bootstrap": "demo/bootstrap.tfstate",
+      "main": "demo/main.tfstate",
+      "capacity_probe": "demo/capacity-probe.tfstate"
+    },
+    "resource_ids": {
+      "resource_group": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-slurm-demo-eus-01",
+      "storage_account": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-slurm-demo-eus-01/providers/Microsoft.Storage/storageAccounts/stslurmdemoeus01abcd",
+      "container": "/blobServices/default/containers/tfstate",
+      "private_endpoint": null
+    }
+  },
+  "checks": {
+    "account_context": {"status": "passed"},
+    "backend_exists": {"status": "passed"},
+    "container_exists": {"status": "passed"},
+    "dns": {"status": "passed"},
+    "network": {"status": "passed"},
+    "authorization": {"status": "passed"},
+    "state_key_separation": {"status": "passed"},
+    "migration": {"status": "passed"},
+    "locking": {"status": "passed"}
+  }
+}
