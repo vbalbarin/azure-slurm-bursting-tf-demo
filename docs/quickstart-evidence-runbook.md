@@ -81,14 +81,25 @@ run_logged() {
 
   return "$command_status"
 }
+
+tee_output() {
+  local output_file="$1"
+  shift
+
+  "$@" | tee "$output_file"
+  local command_status="${PIPESTATUS[0]}"
+  return "$command_status"
+}
 ```
 
-Record only non-secret run metadata:
+Use `tee_output` only when a command's stdout is explicitly secret-free and must remain valid JSON,
+Markdown, or digest output. Record non-secret run metadata:
 
 ```bash
 export SOURCE_COMMIT="$(git rev-parse HEAD)"
 
-jq -n \
+tee_output "$RUN_EVIDENCE_DIR/run-metadata.json" \
+  jq -n \
   --arg run_id "$RUN_ID" \
   --arg started_at "$(date -u +%FT%TZ)" \
   --arg commit "$SOURCE_COMMIT" \
@@ -98,10 +109,12 @@ jq -n \
     started_at: $started_at,
     source_commit: $commit,
     branch: $branch
-  }' >"$RUN_EVIDENCE_DIR/run-metadata.json"
+  }'
 
-git --no-pager status --short >"$RUN_EVIDENCE_DIR/git-status.txt"
+tee_output "$RUN_EVIDENCE_DIR/git-status.txt" \
+  git --no-pager status --short
 test ! -s "$RUN_EVIDENCE_DIR/git-status.txt"
+printf 'Git worktree is clean at %s.\n' "$SOURCE_COMMIT"
 ```
 
 Stop if the worktree is not clean. The evidence must identify the exact tested commit.
@@ -112,9 +125,10 @@ Stop if the worktree is not clean. The evidence must identify the exact tested c
 az login
 az account set --subscription "<approved-subscription-id>"
 
-az account show \
-  --query '{subscription_id:id,subscription_name:name,tenant_id:tenantId,user_type:user.type}' \
-  --output json >"$RUN_EVIDENCE_DIR/azure-account.json"
+tee_output "$RUN_EVIDENCE_DIR/azure-account.json" \
+  az account show \
+    --query '{subscription_id:id,subscription_name:name,tenant_id:tenantId,user_type:user.type}' \
+    --output json
 ```
 
 Confirm the returned subscription and tenant before proceeding. Record RBAC propagation delay
@@ -227,8 +241,10 @@ terraform -chdir=terraform/bootstrap plan \
   -var-file="$BOOTSTRAP_TFVARS" \
   -out="$BOOTSTRAP_CREATE_PLAN"
 
-sha256sum "$BOOTSTRAP_CREATE_PLAN" >"$BOOTSTRAP_CREATE_DIGEST"
-sha256sum "$BOOTSTRAP_TFVARS" >"$BOOTSTRAP_STATE_DIR/bootstrap.tfvars.sha256"
+tee_output "$BOOTSTRAP_CREATE_DIGEST" \
+  sha256sum "$BOOTSTRAP_CREATE_PLAN"
+tee_output "$BOOTSTRAP_STATE_DIR/bootstrap.tfvars.sha256" \
+  sha256sum "$BOOTSTRAP_TFVARS"
 chmod 0600 "$BOOTSTRAP_CREATE_PLAN" "$BOOTSTRAP_CREATE_DIGEST"
 
 terraform -chdir=terraform/bootstrap show -no-color "$BOOTSTRAP_CREATE_PLAN"
@@ -281,8 +297,9 @@ terraform -chdir=terraform/bootstrap plan \
   -input=false \
   -var-file="$BOOTSTRAP_TFVARS" \
   -detailed-exitcode \
-  -no-color >"$BOOTSTRAP_STATE_DIR/create-no-change.log" 2>&1
-BOOTSTRAP_NO_CHANGE_STATUS="$?"
+  -no-color 2>&1 |
+  tee "$BOOTSTRAP_STATE_DIR/create-no-change.log"
+BOOTSTRAP_NO_CHANGE_STATUS="${PIPESTATUS[0]}"
 set -e
 test "$BOOTSTRAP_NO_CHANGE_STATUS" -eq 0
 ```
@@ -292,11 +309,11 @@ Do not copy the raw no-change log into evidence. Record only the exit status and
 ## A4. Export canonical coordinates
 
 ```bash
-terraform -chdir=terraform/bootstrap output -json backend_coordinates \
-  >"$BACKEND_EVIDENCE_DIR/backend-coordinates.json"
+tee_output "$BACKEND_EVIDENCE_DIR/backend-coordinates.json" \
+  terraform -chdir=terraform/bootstrap output -json backend_coordinates
 
-sha256sum "$BACKEND_EVIDENCE_DIR/backend-coordinates.json" \
-  >"$BACKEND_EVIDENCE_DIR/backend-coordinates.json.sha256"
+tee_output "$BACKEND_EVIDENCE_DIR/backend-coordinates.json.sha256" \
+  sha256sum "$BACKEND_EVIDENCE_DIR/backend-coordinates.json"
 
 export COORDINATES_DIGEST="$(
   sha256sum "$BACKEND_EVIDENCE_DIR/backend-coordinates.json" |
@@ -384,11 +401,11 @@ that plan.
 Export the native Terraform classification:
 
 ```bash
-terraform -chdir=terraform/bootstrap output -json backend_readiness \
-  >"$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json"
+tee_output "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json" \
+  terraform -chdir=terraform/bootstrap output -json backend_readiness
 
-sha256sum "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json" \
-  >"$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json.sha256"
+tee_output "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json.sha256" \
+  sha256sum "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json"
 ```
 
 Preliminary status is not final readiness. Stop on any failed or inconclusive applicable check.
@@ -474,11 +491,11 @@ Recalculate the current runner-context digest immediately before planning and re
 Create, review, approve, and apply an exact output-only plan, then export:
 
 ```bash
-terraform -chdir=terraform/bootstrap output -json backend_readiness \
-  >"$BACKEND_EVIDENCE_DIR/backend-readiness.json"
+tee_output "$BACKEND_EVIDENCE_DIR/backend-readiness.json" \
+  terraform -chdir=terraform/bootstrap output -json backend_readiness
 
-sha256sum "$BACKEND_EVIDENCE_DIR/backend-readiness.json" \
-  >"$BACKEND_EVIDENCE_DIR/backend-readiness.json.sha256"
+tee_output "$BACKEND_EVIDENCE_DIR/backend-readiness.json.sha256" \
+  sha256sum "$BACKEND_EVIDENCE_DIR/backend-readiness.json"
 
 jq -e '.status == "ready" and .failure_class == "none"' \
   "$BACKEND_EVIDENCE_DIR/backend-readiness.json"
@@ -617,8 +634,8 @@ Review the shell-safe values printed by the helper. Confirm the active Azure sub
 Inspect Marketplace terms and legal links:
 
 ```bash
-tests/end-to-end/marketplace_terms.sh show "$TFVARS_FILE" \
-  >"$DEMO_EVIDENCE_DIR/marketplace-terms.json"
+tee_output "$DEMO_EVIDENCE_DIR/marketplace-terms.json" \
+  tests/end-to-end/marketplace_terms.sh show "$TFVARS_FILE"
 ```
 
 If the terms are not already accepted, an authorized operator must review the links and
@@ -634,11 +651,12 @@ Export and render static preflight evidence:
 ```bash
 export PREFLIGHT_RESULTS_FILE="$DEMO_EVIDENCE_DIR/preflight.json"
 
-tests/end-to-end/preflight.sh >"$PREFLIGHT_RESULTS_FILE"
+tee_output "$PREFLIGHT_RESULTS_FILE" \
+  tests/end-to-end/preflight.sh
 
-tests/end-to-end/render_preflight_summary.sh \
-  "$PREFLIGHT_RESULTS_FILE" \
-  >"$DEMO_EVIDENCE_DIR/preflight-summary.md"
+tee_output "$DEMO_EVIDENCE_DIR/preflight-summary.md" \
+  tests/end-to-end/render_preflight_summary.sh \
+    "$PREFLIGHT_RESULTS_FILE"
 ```
 
 Review the Markdown summary in VS Code, but treat the JSON as authoritative. Confirm:
@@ -732,7 +750,8 @@ terraform -chdir=terraform plan \
   -var-file="$TFVARS_FILE" \
   -out="$PLAN_FILE"
 
-sha256sum "$PLAN_FILE" >"$DEMO_STATE_DIR/main.tfplan.sha256"
+tee_output "$DEMO_STATE_DIR/main.tfplan.sha256" \
+  sha256sum "$PLAN_FILE"
 terraform -chdir=terraform show -no-color "$PLAN_FILE"
 ```
 
@@ -899,8 +918,9 @@ terraform -chdir=terraform plan \
   -input=false \
   -detailed-exitcode \
   -var-file="$TFVARS_FILE" \
-  -no-color >"$DEMO_STATE_DIR/final-no-change-plan.log" 2>&1
-FINAL_PLAN_STATUS="$?"
+  -no-color 2>&1 |
+  tee "$DEMO_STATE_DIR/final-no-change-plan.log"
+FINAL_PLAN_STATUS="${PIPESTATUS[0]}"
 set -e
 
 test "$FINAL_PLAN_STATUS" -eq 0
