@@ -340,6 +340,54 @@ After plan generation, create `$BOOTSTRAP_CREATE_APPROVAL` to match
 Its `action` is `create`; its source, input, and plan digests must match the current files. An
 authorized reviewer supplies `approved_at` and `approval_reference`.
 
+Only after the reviewer approves the displayed plan, create the protected approval record:
+
+```bash
+read -r -p "Authorized approval reference: " APPROVAL_REFERENCE
+test -n "$APPROVAL_REFERENCE"
+test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+
+export PLAN_CREATED_AT="$(
+  date -u \
+    -r "$BOOTSTRAP_CREATE_PLAN" \
+    +%Y-%m-%dT%H:%M:%SZ
+)"
+export APPROVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export BOOTSTRAP_CREATE_APPROVAL_TMP="$BOOTSTRAP_CREATE_APPROVAL.tmp"
+
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg input_digest "$(
+    sha256sum "$BOOTSTRAP_TFVARS" |
+    awk '{print $1}'
+  )" \
+  --arg plan_digest "$(
+    sha256sum "$BOOTSTRAP_CREATE_PLAN" |
+    awk '{print $1}'
+  )" \
+  --arg plan_created_at "$PLAN_CREATED_AT" \
+  --arg approved_at "$APPROVED_AT" \
+  --arg approval_reference "$APPROVAL_REFERENCE" \
+  '{
+    schema_version: "1.0",
+    action: "create",
+    source_commit: $source_commit,
+    input_digest: $input_digest,
+    plan_digest: $plan_digest,
+    plan_created_at: $plan_created_at,
+    approved_at: $approved_at,
+    approval_reference: $approval_reference
+  }' >"$BOOTSTRAP_CREATE_APPROVAL_TMP"
+
+chmod 0600 "$BOOTSTRAP_CREATE_APPROVAL_TMP"
+mv "$BOOTSTRAP_CREATE_APPROVAL_TMP" "$BOOTSTRAP_CREATE_APPROVAL"
+jq . "$BOOTSTRAP_CREATE_APPROVAL"
+```
+
+Generating this JSON does not itself approve the plan. `APPROVAL_REFERENCE` must identify the
+authorized review that already approved the exact displayed plan and digest. Keep the approval
+record under `/state`; do not copy it into evidence.
+
 Immediately before apply:
 
 ```bash
