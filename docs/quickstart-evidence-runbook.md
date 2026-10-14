@@ -425,7 +425,50 @@ set -e
 test "$BOOTSTRAP_NO_CHANGE_STATUS" -eq 0
 ```
 
-Do not copy the raw no-change log into evidence. Record only the exit status and bounded result.
+Display the captured status and record a bounded, secret-free result plus the protected log's
+digest:
+
+```bash
+printf 'Terraform detailed exit code: %s\n' \
+  "$BOOTSTRAP_NO_CHANGE_STATUS"
+
+test "$BOOTSTRAP_NO_CHANGE_STATUS" -eq 0
+test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+
+export BOOTSTRAP_NO_CHANGE_OBSERVED_AT="$(
+  date -u +%Y-%m-%dT%H:%M:%SZ
+)"
+export BOOTSTRAP_NO_CHANGE_LOG="$BOOTSTRAP_STATE_DIR/create-no-change.log"
+
+tee_output \
+  "$BACKEND_EVIDENCE_DIR/bootstrap-create-no-change.json" \
+  jq -n \
+    --arg source_commit "$SOURCE_COMMIT" \
+    --arg observed_at "$BOOTSTRAP_NO_CHANGE_OBSERVED_AT" \
+    --arg log_digest "$(
+      sha256sum "$BOOTSTRAP_NO_CHANGE_LOG" |
+      awk '{print $1}'
+    )" \
+    --argjson exit_code "$BOOTSTRAP_NO_CHANGE_STATUS" \
+    '{
+      schema_version: "1.0",
+      command_id: "terraform_bootstrap_create_no_change",
+      source_commit: $source_commit,
+      observed_at: $observed_at,
+      exit_code: $exit_code,
+      no_changes: ($exit_code == 0),
+      protected_log_sha256: $log_digest
+    }'
+
+jq -e \
+  '.exit_code == 0 and
+   .no_changes == true and
+   (.protected_log_sha256 | test("^[a-f0-9]{64}$"))' \
+  "$BACKEND_EVIDENCE_DIR/bootstrap-create-no-change.json"
+```
+
+Do not copy the raw no-change log into evidence. Keep it under `/state`; only the bounded result
+and digest belong under `/evidence`.
 
 ## A4. Export canonical coordinates
 
