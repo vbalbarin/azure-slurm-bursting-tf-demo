@@ -199,10 +199,58 @@ cp terraform/bootstrap/bootstrap.tfvars.example "$BOOTSTRAP_TFVARS"
 chmod 0600 "$BOOTSTRAP_TFVARS"
 ```
 
+For an interactive `az login`, obtain the active user's Entra object ID and tenant:
+
+```bash
+test "$(az account show --query user.type --output tsv)" = "user"
+
+export READINESS_TENANT_ID="$(
+  az account show --query tenantId --output tsv
+)"
+export READINESS_PRINCIPAL_ID="$(
+  az ad signed-in-user show --query id --output tsv
+)"
+export READINESS_PRINCIPAL_TYPE="User"
+
+printf 'readiness_identity tenant_id: %s\n' "$READINESS_TENANT_ID"
+printf 'readiness_identity principal_id: %s\n' "$READINESS_PRINCIPAL_ID"
+printf 'readiness_identity principal_type: %s\n' "$READINESS_PRINCIPAL_TYPE"
+```
+
+Use those values in the protected input:
+
+```hcl
+readiness_identity = {
+  tenant_id      = "<READINESS_TENANT_ID>"
+  principal_id   = "<READINESS_PRINCIPAL_ID>"
+  principal_type = "User"
+}
+```
+
+For a service-principal login, `az account show --query user.name` is normally the application
+(client) ID. Resolve it to the service principal's Entra object ID:
+
+```bash
+export READINESS_CLIENT_ID="$(
+  az account show --query user.name --output tsv
+)"
+export READINESS_PRINCIPAL_ID="$(
+  az ad sp show \
+    --id "$READINESS_CLIENT_ID" \
+    --query id \
+    --output tsv
+)"
+export READINESS_PRINCIPAL_TYPE="ServicePrincipal"
+```
+
+Do not use the application/client ID as `principal_id`. Do not substitute the operator-group,
+tenant, or subscription ID. If either directory lookup is denied, obtain the object ID through the
+approved Entra administration path and verify that it identifies the same active login.
+
 Edit `$BOOTSTRAP_TFVARS` with approved values from
 [`backend-inputs.md`](../specs/003-terraform-backend-bootstrap/contracts/backend-inputs.md).
-Set `source_commit` to `$SOURCE_COMMIT`. Do not add a storage key, SAS, access token, password, or
-certificate.
+Set `source_commit` to `$SOURCE_COMMIT` and set `readiness_identity` to the active identity
+resolved above. Do not add a storage key, SAS, access token, password, or certificate.
 
 Verify the ignored backend overrides before creating them:
 

@@ -20,6 +20,7 @@ non-secret unless an organization classifies resource identifiers as protected m
 | `private_endpoint_subnet_id` | Azure resource ID | private managed | Existing reachable subnet |
 | `private_dns_zone_id` | Azure resource ID | private managed | Existing `privatelink.blob.core.windows.net` zone |
 | `existing_backend` | object or null | existing | Approved resource group, account, container, resource IDs, and network mode |
+| `readiness_identity` | object | yes | Active tenant plus User or ServicePrincipal object ID used for readiness |
 | `tags` | string map | yes | Required governance tags; no secret-shaped keys or values |
 
 ## Cross-field rules
@@ -32,6 +33,33 @@ non-secret unless an organization classifies resource identifiers as protected m
 5. Storage naming must remain deterministic and fit Azure's 24-character account limit.
 6. Operator-group and workload-identity IDs must never be tenant, application, or subscription IDs.
 7. State keys are derived, not freely supplied, and must be pairwise distinct.
+
+## Readiness identity
+
+`readiness_identity` binds canonical readiness evidence to the active Entra user or service
+principal that performs the readiness checks. It does not create an identity or grant access.
+
+For an interactive Azure CLI login:
+
+```bash
+az account show --query tenantId --output tsv
+az ad signed-in-user show --query id --output tsv
+```
+
+Use the first result as `readiness_identity.tenant_id`, the second as
+`readiness_identity.principal_id`, and set `principal_type = "User"`.
+
+For a service-principal login, resolve the application ID reported by the account context to the
+service principal's Entra object ID:
+
+```bash
+READINESS_CLIENT_ID="$(az account show --query user.name --output tsv)"
+az ad sp show --id "$READINESS_CLIENT_ID" --query id --output tsv
+```
+
+Use the lookup result as `principal_id` and set `principal_type = "ServicePrincipal"`. The
+application/client ID itself is not the principal object ID. The operator-group, tenant, and
+subscription IDs are also invalid substitutions.
 
 ## Readiness assertion input
 
