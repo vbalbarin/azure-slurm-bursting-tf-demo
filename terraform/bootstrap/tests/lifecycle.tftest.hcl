@@ -101,6 +101,73 @@ run "migrate_local_is_a_distinct_action" {
   }
 }
 
+run "never_migrated_local_state_can_be_removed" {
+  command = plan
+
+  variables {
+    lifecycle_assertions = {
+      assessed_at                  = "2026-10-14T13:02:00Z"
+      approval_reference           = "approval-unlock-local-001"
+      main_state_status            = "absent"
+      main_managed_resource_count  = 0
+      probe_state_status           = "absent"
+      probe_managed_resource_count = 0
+      bootstrap_state_location     = "local"
+      bootstrap_state_digest       = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      expected_state_digest        = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      state_migration_status       = "never_migrated"
+      reverse_migration_verified   = false
+    }
+  }
+
+  override_module {
+    target = module.resource_group
+    outputs = {
+      resource_id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-slurm-demo-eus-01"
+    }
+  }
+
+  override_module {
+    target = module.storage
+    outputs = {
+      resource_id       = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-slurm-demo-eus-01/providers/Microsoft.Storage/storageAccounts/stslurmdemoeus01a1b2"
+      containers        = { state = { id = "/blobServices/default/containers/tfstate" } }
+      private_endpoints = {}
+    }
+  }
+
+  assert {
+    condition = (
+      output.backend_lifecycle.status == "ready" &&
+      output.backend_lifecycle.bootstrap_state.migration_status == "never_migrated" &&
+      !output.backend_lifecycle.bootstrap_state.reverse_migration_verified
+    )
+    error_message = "Verified authoritative state that never left the local backend must support cleanup without claiming reverse migration."
+  }
+}
+
+run "never_migrated_state_rejects_reverse_migration_claim" {
+  command = plan
+
+  variables {
+    lifecycle_assertions = {
+      assessed_at                  = "2026-10-14T13:03:00Z"
+      approval_reference           = "approval-unlock-local-001"
+      main_state_status            = "absent"
+      main_managed_resource_count  = 0
+      probe_state_status           = "absent"
+      probe_managed_resource_count = 0
+      bootstrap_state_location     = "local"
+      bootstrap_state_digest       = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      expected_state_digest        = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      state_migration_status       = "never_migrated"
+      reverse_migration_verified   = true
+    }
+  }
+
+  expect_failures = [var.lifecycle_action]
+}
+
 run "destroy_requires_separate_action" {
   command = plan
 

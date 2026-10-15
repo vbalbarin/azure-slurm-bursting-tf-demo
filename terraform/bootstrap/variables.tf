@@ -343,7 +343,16 @@ variable "lifecycle_action" {
         try(var.lifecycle_assertions.main_managed_resource_count, -1) == 0 &&
         try(var.lifecycle_assertions.probe_managed_resource_count, -1) == 0 &&
         try(var.lifecycle_assertions.bootstrap_state_location, "") == "local" &&
-        try(var.lifecycle_assertions.reverse_migration_verified, false) &&
+        (
+          (
+            try(var.lifecycle_assertions.state_migration_status, "reverse_migrated") == "reverse_migrated" &&
+            try(var.lifecycle_assertions.reverse_migration_verified, false)
+          ) ||
+          (
+            try(var.lifecycle_assertions.state_migration_status, "") == "never_migrated" &&
+            !try(var.lifecycle_assertions.reverse_migration_verified, true)
+          )
+        ) &&
         try(var.lifecycle_assertions.bootstrap_state_digest, null) != null &&
         try(var.lifecycle_assertions.bootstrap_state_digest, null) == try(var.lifecycle_assertions.expected_state_digest, null) &&
         trimspace(try(var.lifecycle_assertions.approval_reference, "")) != ""
@@ -365,8 +374,17 @@ variable "lifecycle_assertions" {
     bootstrap_state_location     = string
     bootstrap_state_digest       = optional(string)
     expected_state_digest        = optional(string)
+    state_migration_status       = optional(string, "reverse_migrated")
     reverse_migration_verified   = bool
   })
   default  = null
   nullable = true
+
+  validation {
+    condition = var.lifecycle_assertions == null || contains(
+      ["never_migrated", "reverse_migrated"],
+      var.lifecycle_assertions.state_migration_status
+    )
+    error_message = "state_migration_status must be never_migrated or reverse_migrated."
+  }
 }

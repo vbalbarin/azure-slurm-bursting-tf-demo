@@ -143,6 +143,43 @@ def readiness() -> dict[str, object]:
     }
 
 
+def managed_removal() -> dict[str, object]:
+    approved_plan = {
+        "plan_sha256": "c" * 64,
+        "approval_reference": "CHG-123",
+        "stale_plan_rejected": True,
+        "applied_plan_digest_matches": True,
+    }
+    return {
+        "schema_version": "1.0",
+        "source_commit": "a" * 40,
+        "removal_run_id": "20261015T010203Z",
+        "completed_at": "2026-10-15T01:05:00Z",
+        "state_migration_status": "never_migrated",
+        "reverse_migration_verified": False,
+        "dependent_namespaces": {
+            "main": {
+                "status": "absent",
+                "managed_resource_count": 0,
+            },
+            "capacity_probe": {
+                "status": "absent",
+                "managed_resource_count": 0,
+            },
+        },
+        "unlock": approved_plan,
+        "destroy": {
+            **approved_plan,
+            "approval_reference": "CHG-124",
+        },
+        "backend_absence": {
+            "account_absent": True,
+            "container_absent": True,
+        },
+        "status": "passed",
+    }
+
+
 @pytest.mark.parametrize(
     ("schema", "document"),
     [
@@ -150,6 +187,7 @@ def readiness() -> dict[str, object]:
         ("backend-readiness-assertions.schema.json", assertions()),
         ("backend-readiness-assertions.schema.json", assertions(final=False)),
         ("backend-readiness.schema.json", readiness()),
+        ("backend-managed-removal.schema.json", managed_removal()),
     ],
 )
 def test_representative_contract_documents(
@@ -210,6 +248,7 @@ def test_contract_examples_contain_no_secret_shaped_fields() -> None:
             "coordinates": coordinates(),
             "assertions": assertions(),
             "readiness": readiness(),
+            "managed_removal": managed_removal(),
         }
     ).lower()
     for forbidden in ("access_token", "sas_token", "account_key", "password"):

@@ -217,8 +217,10 @@ verify within 15 minutes that the operator can:
 Removal must initially fail while either main or capacity-probe state records managed resources.
 After both dependent environments are separately destroyed and verified empty:
 
-1. migrate bootstrap state back to protected local state with `terraform init -migrate-state`;
-2. verify the local state and remove the ignored remote-backend override;
+1. if bootstrap state was migrated, migrate it back to protected local state with
+   `terraform init -migrate-state`; otherwise verify that the authoritative state never left the
+   local backend;
+2. verify the local state and remove the ignored remote-backend override when present;
 3. create, review, approve, and apply an unlock-only plan;
 4. create and review a separate destroy plan;
 5. apply only the approved destroy plan;

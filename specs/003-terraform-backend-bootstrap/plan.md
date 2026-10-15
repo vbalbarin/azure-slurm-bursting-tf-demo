@@ -99,8 +99,10 @@ module remains pinned at 0.4.0. No direct resource is needed.
 
 The bootstrap chicken-and-egg is resolved by keeping initial state in `/state`, adding an ignored
 backend override only after preliminary readiness succeeds, and using
-`terraform init -migrate-state` rather than `-reconfigure`. The reverse migration is a mandatory
-tested teardown gate. Operators execute documented read-only Azure CLI, DNS, HTTP, and Terraform
+`terraform init -migrate-state` rather than `-reconfigure`. Reverse migration is a mandatory tested
+teardown gate after remote migration; an abandoned pre-migration deployment instead proves that
+its authoritative state never left the protected local backend. Operators execute documented
+read-only Azure CLI, DNS, HTTP, and Terraform
 commands directly and record their non-secret results in protected, schema-conforming readiness
 assertions. Assertions include stable command IDs, observation times, exit codes, non-secret
 observed values, exact coordinates digest, and a digest of the observed runner/network context.

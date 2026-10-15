@@ -1316,27 +1316,731 @@ Existing mode has no unlock or backend-destroy operation.
 For managed mode, first prove that main and capacity-probe state are readable and contain zero
 managed resources. Destroy and verify those environments separately before backend removal.
 
-Reverse-migrate bootstrap state to `/state` with `terraform init -migrate-state`; verify mode
-`0600`, lineage, resource count, and digest before removing the AzureRM override.
+The procedure below covers an abandoned managed deployment whose bootstrap state never left the
+protected local backend. It does not claim local-to-remote-to-local acceptance. If state was
+migrated to Azure Blob, stop and reverse-migrate it with `terraform init -migrate-state` before
+using the unlock and destroy steps. In that case use
+`state_migration_status = "reverse_migrated"` and
+`reverse_migration_verified = true`.
 
-Populate protected lifecycle assertions matching
-[`backend-lifecycle.schema.json`](../specs/003-terraform-backend-bootstrap/contracts/backend-lifecycle.schema.json).
-Then:
+### A10.1 Re-establish protected paths
 
-1. Set `lifecycle_action = "unlock"`.
-2. Generate an unlock-only saved plan.
-3. Calculate its digest after generation.
-4. Obtain a post-generation approval with `action = "unlock"`.
-5. Recheck source, input, and plan digests.
-6. Apply only that exact unlock plan and confirm the lock is absent.
-7. Set `lifecycle_action = "destroy"`.
-8. Generate a separate destroy plan.
-9. Obtain a separate approval with `action = "destroy"`.
-10. Recheck all digests and apply only that exact destroy plan.
-11. Verify the storage account and container are absent.
+After a shell or terminal restart, restore these non-secret path variables. Use a new removal
+evidence directory; never append cleanup results to the stopped run:
 
-Any non-empty dependent state, failed reverse migration, wrong local-state mode, state-digest
-mismatch, stale plan, or mismatched approval blocks removal.
+```bash
+umask 077
+
+export SOURCE_COMMIT="$(git rev-parse HEAD)"
+export BACKEND_ENVIRONMENT="demo"
+export BOOTSTRAP_STATE_ROOT="${BOOTSTRAP_STATE_ROOT:-/state/terraform-backend}"
+export BOOTSTRAP_STATE_DIR="$BOOTSTRAP_STATE_ROOT/$BACKEND_ENVIRONMENT"
+export BOOTSTRAP_TFVARS="$BOOTSTRAP_STATE_DIR/bootstrap.tfvars"
+export BOOTSTRAP_LOCAL_STATE="$BOOTSTRAP_STATE_DIR/terraform.tfstate"
+export REMOVAL_RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+export REMOVAL_EVIDENCE_DIR="/evidence/quickstart/$REMOVAL_RUN_ID/backend-bootstrap"
+export LIFECYCLE_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-lifecycle.schema.json"
+export PLAN_APPROVAL_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-plan-approval.schema.json"
+export MANAGED_REMOVAL_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-managed-removal.schema.json"
+
+install -d -m 0700 "$REMOVAL_EVIDENCE_DIR"
+
+test -f "$BOOTSTRAP_TFVARS"
+test -f "$BOOTSTRAP_LOCAL_STATE"
+test "$(stat -c '%a' "$BOOTSTRAP_LOCAL_STATE")" = "600"
+test -f terraform/bootstrap/backend.local.tf
+test ! -e terraform/bootstrap/backend.azurerm.tf
+test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+
+terraform -chdir=terraform/bootstrap init \
+  -reconfigure \
+  -input=false \
+  -backend-config="path=$BOOTSTRAP_LOCAL_STATE"
+```
+
+The last two backend-file checks prove this path is applicable only while the configured backend is
+local. They do not prove that remote migration never happened if files were manually changed.
+Review the stopped run’s migration evidence and state history before continuing.
+
+Derive the non-secret resource coordinates from the authoritative local state:
+
+```bash
+export REMOVAL_COORDINATES_JSON="$(
+  terraform -chdir=terraform/bootstrap output -json backend_coordinates
+)"
+export STORAGE_ACCOUNT_NAME="$(
+  jq -er '.storage_account_name' <<<"$REMOVAL_COORDINATES_JSON"
+)"
+export STORAGE_ACCOUNT_RESOURCE_ID="$(
+  jq -er '.resource_ids.storage_account' <<<"$REMOVAL_COORDINATES_JSON"
+)"
+export STATE_CONTAINER_NAME="$(
+  jq -er '.container_name' <<<"$REMOVAL_COORDINATES_JSON"
+)"
+```
+
+### A10.2 Prove dependent namespaces are absent
+
+For a stopped pre-migration run, neither dependent namespace may have a state blob. Query only
+existence; do not copy state content into evidence:
+
+```bash
+export MAIN_STATE_KEY="$BACKEND_ENVIRONMENT/main.tfstate"
+export PROBE_STATE_KEY="$BACKEND_ENVIRONMENT/capacity-probe.tfstate"
+
+export MAIN_STATE_EXISTS="$(
+  az storage blob exists \
+    --auth-mode login \
+    --account-name "$STORAGE_ACCOUNT_NAME" \
+    --container-name "$STATE_CONTAINER_NAME" \
+    --name "$MAIN_STATE_KEY" \
+    --query exists \
+    --output tsv
+)"
+export PROBE_STATE_EXISTS="$(
+  az storage blob exists \
+    --auth-mode login \
+    --account-name "$STORAGE_ACCOUNT_NAME" \
+    --container-name "$STATE_CONTAINER_NAME" \
+    --name "$PROBE_STATE_KEY" \
+    --query exists \
+    --output tsv
+)"
+
+test "$MAIN_STATE_EXISTS" = "false"
+test "$PROBE_STATE_EXISTS" = "false"
+
+export MAIN_STATE_STATUS="absent"
+export MAIN_MANAGED_RESOURCE_COUNT="0"
+export PROBE_STATE_STATUS="absent"
+export PROBE_MANAGED_RESOURCE_COUNT="0"
+```
+
+If either result is `true`, stop. Initialize that dependent root, inspect its state, and separately
+destroy and verify it before returning to A10. Do not relabel an existing state blob as absent.
+
+### A10.3 Bind the authoritative local state
+
+Create a protected verification copy, compare semantic state identity, and bind subsequent plans to
+the current local-state digest:
+
+```bash
+export REMOVAL_STATE_VERIFICATION="$BOOTSTRAP_STATE_DIR/removal-state-verification.json"
+
+terraform -chdir=terraform/bootstrap state pull \
+  >"$REMOVAL_STATE_VERIFICATION"
+chmod 0600 "$REMOVAL_STATE_VERIFICATION"
+
+test "$(jq -r '.lineage' "$REMOVAL_STATE_VERIFICATION")" = \
+  "$(jq -r '.lineage' "$BOOTSTRAP_LOCAL_STATE")"
+test "$(jq '[.resources[]?] | length' "$REMOVAL_STATE_VERIFICATION")" -eq \
+  "$(jq '[.resources[]?] | length' "$BOOTSTRAP_LOCAL_STATE")"
+
+export EXPECTED_LOCAL_STATE_DIGEST="$(
+  sha256sum "$BOOTSTRAP_LOCAL_STATE" |
+    awk '{print $1}'
+)"
+export OBSERVED_LOCAL_STATE_DIGEST="$(
+  sha256sum "$BOOTSTRAP_LOCAL_STATE" |
+    awk '{print $1}'
+)"
+
+test "$OBSERVED_LOCAL_STATE_DIGEST" = "$EXPECTED_LOCAL_STATE_DIGEST"
+```
+
+The two digest variables are intentionally captured at separate lifecycle boundaries below.
+Recalculate `OBSERVED_LOCAL_STATE_DIGEST` immediately before each plan and require it to match
+`EXPECTED_LOCAL_STATE_DIGEST`.
+
+### A10.4 Generate and review the lock-only plan
+
+Use a distinct external approval reference for unlock. The reference identifies the accountable
+review, but approval of the exact digest occurs only after plan generation:
+
+```bash
+read -r -p "Authorized unlock review reference: " \
+  UNLOCK_APPROVAL_REFERENCE
+test -n "$UNLOCK_APPROVAL_REFERENCE"
+
+export UNLOCK_TFVARS="$BOOTSTRAP_STATE_DIR/unlock.tfvars.json"
+export UNLOCK_INPUT_MANIFEST="$BOOTSTRAP_STATE_DIR/unlock-inputs.json"
+export UNLOCK_PLAN="$BOOTSTRAP_STATE_DIR/unlock.tfplan"
+export UNLOCK_PLAN_DIGEST="$BOOTSTRAP_STATE_DIR/unlock.tfplan.sha256"
+export UNLOCK_APPROVAL="$BOOTSTRAP_STATE_DIR/unlock-approval.json"
+export UNLOCK_STALE_PLAN="$BOOTSTRAP_STATE_DIR/unlock-stale.tfplan"
+export UNLOCK_STALE_LOG="$BOOTSTRAP_STATE_DIR/unlock-stale.log"
+
+export OBSERVED_LOCAL_STATE_DIGEST="$(
+  sha256sum "$BOOTSTRAP_LOCAL_STATE" |
+    awk '{print $1}'
+)"
+test "$OBSERVED_LOCAL_STATE_DIGEST" = "$EXPECTED_LOCAL_STATE_DIGEST"
+
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg assessed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg approval_reference "$UNLOCK_APPROVAL_REFERENCE" \
+  --arg main_state_status "$MAIN_STATE_STATUS" \
+  --argjson main_count "$MAIN_MANAGED_RESOURCE_COUNT" \
+  --arg probe_state_status "$PROBE_STATE_STATUS" \
+  --argjson probe_count "$PROBE_MANAGED_RESOURCE_COUNT" \
+  --arg state_digest "$OBSERVED_LOCAL_STATE_DIGEST" \
+  '{
+    source_commit: $source_commit,
+    lifecycle_action: "unlock",
+    lifecycle_assertions: {
+      assessed_at: $assessed_at,
+      approval_reference: $approval_reference,
+      main_state_status: $main_state_status,
+      main_managed_resource_count: $main_count,
+      probe_state_status: $probe_state_status,
+      probe_managed_resource_count: $probe_count,
+      bootstrap_state_location: "local",
+      bootstrap_state_digest: $state_digest,
+      expected_state_digest: $state_digest,
+      state_migration_status: "never_migrated",
+      reverse_migration_verified: false
+    }
+  }' >"$UNLOCK_TFVARS"
+chmod 0600 "$UNLOCK_TFVARS"
+
+jq -n \
+  --arg bootstrap_tfvars_sha256 "$(
+    sha256sum "$BOOTSTRAP_TFVARS" |
+      awk '{print $1}'
+  )" \
+  --arg lifecycle_tfvars_sha256 "$(
+    sha256sum "$UNLOCK_TFVARS" |
+      awk '{print $1}'
+  )" \
+  --arg local_state_sha256 "$OBSERVED_LOCAL_STATE_DIGEST" \
+  '{
+    bootstrap_tfvars_sha256: $bootstrap_tfvars_sha256,
+    lifecycle_tfvars_sha256: $lifecycle_tfvars_sha256,
+    local_state_sha256: $local_state_sha256
+  }' >"$UNLOCK_INPUT_MANIFEST"
+chmod 0600 "$UNLOCK_INPUT_MANIFEST"
+
+terraform -chdir=terraform/bootstrap plan \
+  -input=false \
+  -var-file="$BOOTSTRAP_TFVARS" \
+  -var-file="$UNLOCK_TFVARS" \
+  -out="$UNLOCK_PLAN"
+
+sha256sum "$UNLOCK_PLAN" >"$UNLOCK_PLAN_DIGEST"
+chmod 0600 "$UNLOCK_PLAN" "$UNLOCK_PLAN_DIGEST"
+cp --preserve=mode "$UNLOCK_PLAN" "$UNLOCK_STALE_PLAN"
+
+terraform -chdir=terraform/bootstrap show -no-color "$UNLOCK_PLAN"
+```
+
+Mechanically require exactly one infrastructure change: deletion of the managed storage-account
+lock. Output changes are permitted because source and lifecycle evidence are being updated:
+
+```bash
+export UNLOCK_CHANGE_SUMMARY="$(
+  terraform -chdir=terraform/bootstrap show -json "$UNLOCK_PLAN" |
+    jq -c '[
+      .resource_changes[]? |
+      select(.change.actions != ["no-op"]) |
+      {
+        address: .address,
+        actions: .change.actions
+      }
+    ]'
+)"
+
+test "$(jq 'length' <<<"$UNLOCK_CHANGE_SUMMARY")" -eq 1
+test "$(jq -r '.[0].address' <<<"$UNLOCK_CHANGE_SUMMARY")" = \
+  'module.storage[0].azapi_resource.lock[0]'
+test "$(jq -c '.[0].actions' <<<"$UNLOCK_CHANGE_SUMMARY")" = '["delete"]'
+```
+
+### A10.5 Approve and apply only the unlock plan
+
+After an authorized reviewer approves the displayed plan, create the protected approval record:
+
+```bash
+export UNLOCK_PLAN_CREATED_AT="$(
+  date -u -r "$UNLOCK_PLAN" +%Y-%m-%dT%H:%M:%SZ
+)"
+export UNLOCK_APPROVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export UNLOCK_INPUT_DIGEST="$(
+  sha256sum "$UNLOCK_INPUT_MANIFEST" |
+    awk '{print $1}'
+)"
+
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg input_digest "$UNLOCK_INPUT_DIGEST" \
+  --arg plan_digest "$(
+    sha256sum "$UNLOCK_PLAN" |
+      awk '{print $1}'
+  )" \
+  --arg plan_created_at "$UNLOCK_PLAN_CREATED_AT" \
+  --arg approved_at "$UNLOCK_APPROVED_AT" \
+  --arg approval_reference "$UNLOCK_APPROVAL_REFERENCE" \
+  '{
+    schema_version: "1.0",
+    action: "unlock",
+    source_commit: $source_commit,
+    input_digest: $input_digest,
+    plan_digest: $plan_digest,
+    plan_created_at: $plan_created_at,
+    approved_at: $approved_at,
+    approval_reference: $approval_reference
+  }' >"$UNLOCK_APPROVAL"
+chmod 0600 "$UNLOCK_APPROVAL"
+
+.venv/bin/python - \
+  "$UNLOCK_APPROVAL" \
+  "$PLAN_APPROVAL_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+approval = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(approval)
+PY
+
+sha256sum -c "$UNLOCK_PLAN_DIGEST"
+test "$(jq -r '.source_commit' "$UNLOCK_APPROVAL")" = "$SOURCE_COMMIT"
+test "$(jq -r '.input_digest' "$UNLOCK_APPROVAL")" = \
+  "$(sha256sum "$UNLOCK_INPUT_MANIFEST" | awk '{print $1}')"
+test "$(jq -r '.plan_digest' "$UNLOCK_APPROVAL")" = \
+  "$(sha256sum "$UNLOCK_PLAN" | awk '{print $1}')"
+test "$(sha256sum "$BOOTSTRAP_LOCAL_STATE" | awk '{print $1}')" = \
+  "$EXPECTED_LOCAL_STATE_DIGEST"
+
+terraform -chdir=terraform/bootstrap apply \
+  -input=false \
+  "$UNLOCK_PLAN"
+```
+
+Export and validate the secret-free unlock classification, then prove the lock is absent:
+
+```bash
+export UNLOCK_LIFECYCLE_EVIDENCE="$REMOVAL_EVIDENCE_DIR/backend-lifecycle-unlock.json"
+
+tee_output "$UNLOCK_LIFECYCLE_EVIDENCE" \
+  terraform -chdir=terraform/bootstrap output -json backend_lifecycle
+
+.venv/bin/python - \
+  "$UNLOCK_LIFECYCLE_EVIDENCE" \
+  "$LIFECYCLE_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker, RefResolver
+
+evidence = json.loads(Path(sys.argv[1]).read_text())
+schema_path = Path(sys.argv[2])
+schema = json.loads(schema_path.read_text())
+schema["$id"] = schema_path.resolve().as_uri()
+resolver = RefResolver(
+    base_uri=schema["$id"],
+    referrer=schema,
+)
+Draft202012Validator(
+    schema,
+    resolver=resolver,
+    format_checker=FormatChecker(),
+).validate(evidence)
+PY
+
+test "$(jq -r '.status' "$UNLOCK_LIFECYCLE_EVIDENCE")" = "ready"
+test "$(jq -r '.action' "$UNLOCK_LIFECYCLE_EVIDENCE")" = "unlock"
+test "$(jq -r '.bootstrap_state.migration_status' "$UNLOCK_LIFECYCLE_EVIDENCE")" = \
+  "never_migrated"
+test "$(jq -r '.bootstrap_state.reverse_migration_verified' "$UNLOCK_LIFECYCLE_EVIDENCE")" = \
+  "false"
+
+test "$(
+  az lock list \
+    --scope "$STORAGE_ACCOUNT_RESOURCE_ID" \
+    --query "[?level == 'CanNotDelete'] | length(@)" \
+    --output tsv
+)" -eq 0
+```
+
+Prove Terraform rejects the now-stale saved copy. Keep the raw diagnostic under `/state`:
+
+```bash
+set +e
+terraform -chdir=terraform/bootstrap apply \
+  -input=false \
+  "$UNLOCK_STALE_PLAN" >"$UNLOCK_STALE_LOG" 2>&1
+UNLOCK_STALE_STATUS="$?"
+set -e
+
+test "$UNLOCK_STALE_STATUS" -ne 0
+grep -Fq "Saved plan is stale" "$UNLOCK_STALE_LOG"
+export UNLOCK_STALE_PLAN_REJECTED="true"
+```
+
+### A10.6 Generate a separate destroy plan
+
+Use a different approval reference and a new lifecycle input file. Rebind the expected digest to
+the post-unlock local state:
+
+```bash
+read -r -p "Authorized destroy review reference: " \
+  DESTROY_APPROVAL_REFERENCE
+test -n "$DESTROY_APPROVAL_REFERENCE"
+test "$DESTROY_APPROVAL_REFERENCE" != "$UNLOCK_APPROVAL_REFERENCE"
+
+export DESTROY_TFVARS="$BOOTSTRAP_STATE_DIR/destroy.tfvars.json"
+export DESTROY_INPUT_MANIFEST="$BOOTSTRAP_STATE_DIR/destroy-inputs.json"
+export DESTROY_PLAN="$BOOTSTRAP_STATE_DIR/destroy.tfplan"
+export DESTROY_PLAN_DIGEST="$BOOTSTRAP_STATE_DIR/destroy.tfplan.sha256"
+export DESTROY_APPROVAL="$BOOTSTRAP_STATE_DIR/destroy-approval.json"
+export DESTROY_STALE_PLAN="$BOOTSTRAP_STATE_DIR/destroy-stale.tfplan"
+export DESTROY_STALE_LOG="$BOOTSTRAP_STATE_DIR/destroy-stale.log"
+export EXPECTED_LOCAL_STATE_DIGEST="$(
+  sha256sum "$BOOTSTRAP_LOCAL_STATE" |
+    awk '{print $1}'
+)"
+
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg assessed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg approval_reference "$DESTROY_APPROVAL_REFERENCE" \
+  --arg main_state_status "$MAIN_STATE_STATUS" \
+  --argjson main_count "$MAIN_MANAGED_RESOURCE_COUNT" \
+  --arg probe_state_status "$PROBE_STATE_STATUS" \
+  --argjson probe_count "$PROBE_MANAGED_RESOURCE_COUNT" \
+  --arg state_digest "$EXPECTED_LOCAL_STATE_DIGEST" \
+  '{
+    source_commit: $source_commit,
+    lifecycle_action: "destroy",
+    lifecycle_assertions: {
+      assessed_at: $assessed_at,
+      approval_reference: $approval_reference,
+      main_state_status: $main_state_status,
+      main_managed_resource_count: $main_count,
+      probe_state_status: $probe_state_status,
+      probe_managed_resource_count: $probe_count,
+      bootstrap_state_location: "local",
+      bootstrap_state_digest: $state_digest,
+      expected_state_digest: $state_digest,
+      state_migration_status: "never_migrated",
+      reverse_migration_verified: false
+    }
+  }' >"$DESTROY_TFVARS"
+chmod 0600 "$DESTROY_TFVARS"
+
+jq -n \
+  --arg bootstrap_tfvars_sha256 "$(
+    sha256sum "$BOOTSTRAP_TFVARS" |
+      awk '{print $1}'
+  )" \
+  --arg lifecycle_tfvars_sha256 "$(
+    sha256sum "$DESTROY_TFVARS" |
+      awk '{print $1}'
+  )" \
+  --arg local_state_sha256 "$EXPECTED_LOCAL_STATE_DIGEST" \
+  '{
+    bootstrap_tfvars_sha256: $bootstrap_tfvars_sha256,
+    lifecycle_tfvars_sha256: $lifecycle_tfvars_sha256,
+    local_state_sha256: $local_state_sha256
+  }' >"$DESTROY_INPUT_MANIFEST"
+chmod 0600 "$DESTROY_INPUT_MANIFEST"
+
+terraform -chdir=terraform/bootstrap plan \
+  -destroy \
+  -input=false \
+  -var-file="$BOOTSTRAP_TFVARS" \
+  -var-file="$DESTROY_TFVARS" \
+  -out="$DESTROY_PLAN"
+
+sha256sum "$DESTROY_PLAN" >"$DESTROY_PLAN_DIGEST"
+chmod 0600 "$DESTROY_PLAN" "$DESTROY_PLAN_DIGEST"
+cp --preserve=mode "$DESTROY_PLAN" "$DESTROY_STALE_PLAN"
+
+terraform -chdir=terraform/bootstrap show -no-color "$DESTROY_PLAN"
+```
+
+Reject an empty destroy plan, any create/update/replacement action, or any attempt to recreate the
+lock:
+
+```bash
+export DESTROY_CHANGE_SUMMARY="$(
+  terraform -chdir=terraform/bootstrap show -json "$DESTROY_PLAN" |
+    jq -c '[
+      .resource_changes[]? |
+      select(.change.actions != ["no-op"]) |
+      {
+        address: .address,
+        actions: .change.actions
+      }
+    ]'
+)"
+
+test "$(jq 'length' <<<"$DESTROY_CHANGE_SUMMARY")" -gt 0
+jq -e 'all(.[]; .actions == ["delete"])' \
+  <<<"$DESTROY_CHANGE_SUMMARY" >/dev/null
+jq -e 'all(.[];
+  .address != "module.storage[0].azapi_resource.lock[0]"
+)' <<<"$DESTROY_CHANGE_SUMMARY" >/dev/null
+```
+
+Evaluate the native destroy lifecycle classification before apply removes outputs:
+
+```bash
+export DESTROY_LIFECYCLE_EVIDENCE="$REMOVAL_EVIDENCE_DIR/backend-lifecycle-destroy.json"
+
+set +e
+printf 'jsonencode(local.backend_lifecycle)\n' |
+  terraform -chdir=terraform/bootstrap console \
+    -var-file="$BOOTSTRAP_TFVARS" \
+    -var-file="$DESTROY_TFVARS" |
+  jq -r 'fromjson' |
+  tee "$DESTROY_LIFECYCLE_EVIDENCE"
+DESTROY_PRINTF_STATUS="${PIPESTATUS[0]}"
+DESTROY_CONSOLE_STATUS="${PIPESTATUS[1]}"
+DESTROY_JQ_STATUS="${PIPESTATUS[2]}"
+DESTROY_TEE_STATUS="${PIPESTATUS[3]}"
+set -e
+
+test "$DESTROY_PRINTF_STATUS" -eq 0
+test "$DESTROY_CONSOLE_STATUS" -eq 0
+test "$DESTROY_JQ_STATUS" -eq 0
+test "$DESTROY_TEE_STATUS" -eq 0
+
+.venv/bin/python - \
+  "$DESTROY_LIFECYCLE_EVIDENCE" \
+  "$LIFECYCLE_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker, RefResolver
+
+evidence = json.loads(Path(sys.argv[1]).read_text())
+schema_path = Path(sys.argv[2])
+schema = json.loads(schema_path.read_text())
+schema["$id"] = schema_path.resolve().as_uri()
+resolver = RefResolver(
+    base_uri=schema["$id"],
+    referrer=schema,
+)
+Draft202012Validator(
+    schema,
+    resolver=resolver,
+    format_checker=FormatChecker(),
+).validate(evidence)
+PY
+
+test "$(jq -r '.status' "$DESTROY_LIFECYCLE_EVIDENCE")" = "ready"
+test "$(jq -r '.action' "$DESTROY_LIFECYCLE_EVIDENCE")" = "destroy"
+```
+
+### A10.7 Approve and apply only the destroy plan
+
+Create a distinct post-generation approval:
+
+```bash
+export DESTROY_PLAN_CREATED_AT="$(
+  date -u -r "$DESTROY_PLAN" +%Y-%m-%dT%H:%M:%SZ
+)"
+export DESTROY_APPROVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export DESTROY_INPUT_DIGEST="$(
+  sha256sum "$DESTROY_INPUT_MANIFEST" |
+    awk '{print $1}'
+)"
+
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg input_digest "$DESTROY_INPUT_DIGEST" \
+  --arg plan_digest "$(
+    sha256sum "$DESTROY_PLAN" |
+      awk '{print $1}'
+  )" \
+  --arg plan_created_at "$DESTROY_PLAN_CREATED_AT" \
+  --arg approved_at "$DESTROY_APPROVED_AT" \
+  --arg approval_reference "$DESTROY_APPROVAL_REFERENCE" \
+  '{
+    schema_version: "1.0",
+    action: "destroy",
+    source_commit: $source_commit,
+    input_digest: $input_digest,
+    plan_digest: $plan_digest,
+    plan_created_at: $plan_created_at,
+    approved_at: $approved_at,
+    approval_reference: $approval_reference
+  }' >"$DESTROY_APPROVAL"
+chmod 0600 "$DESTROY_APPROVAL"
+
+.venv/bin/python - \
+  "$DESTROY_APPROVAL" \
+  "$PLAN_APPROVAL_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+approval = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(approval)
+PY
+
+sha256sum -c "$DESTROY_PLAN_DIGEST"
+test "$(jq -r '.source_commit' "$DESTROY_APPROVAL")" = "$SOURCE_COMMIT"
+test "$(jq -r '.input_digest' "$DESTROY_APPROVAL")" = \
+  "$(sha256sum "$DESTROY_INPUT_MANIFEST" | awk '{print $1}')"
+test "$(jq -r '.plan_digest' "$DESTROY_APPROVAL")" = \
+  "$(sha256sum "$DESTROY_PLAN" | awk '{print $1}')"
+test "$(sha256sum "$BOOTSTRAP_LOCAL_STATE" | awk '{print $1}')" = \
+  "$EXPECTED_LOCAL_STATE_DIGEST"
+
+terraform -chdir=terraform/bootstrap apply \
+  -input=false \
+  "$DESTROY_PLAN"
+```
+
+Prove the saved duplicate is stale:
+
+```bash
+set +e
+terraform -chdir=terraform/bootstrap apply \
+  -input=false \
+  "$DESTROY_STALE_PLAN" >"$DESTROY_STALE_LOG" 2>&1
+DESTROY_STALE_STATUS="$?"
+set -e
+
+test "$DESTROY_STALE_STATUS" -ne 0
+grep -Fq "Saved plan is stale" "$DESTROY_STALE_LOG"
+export DESTROY_STALE_PLAN_REJECTED="true"
+```
+
+### A10.8 Verify absence and record bounded removal evidence
+
+Verify through Azure Resource Manager that no storage account exists at the exact recorded resource
+ID. A container cannot exist after its parent account is absent:
+
+```bash
+export STORAGE_ACCOUNT_RESOURCE_COUNT="$(
+  az resource list \
+    --resource-type Microsoft.Storage/storageAccounts \
+    --query '[].id' \
+    --output json |
+    jq \
+      --arg resource_id "$STORAGE_ACCOUNT_RESOURCE_ID" \
+      '[
+        .[] |
+        select(
+          ascii_downcase ==
+          ($resource_id | ascii_downcase)
+        )
+      ] | length'
+)"
+
+test "$STORAGE_ACCOUNT_RESOURCE_COUNT" -eq 0
+
+export ACCOUNT_ABSENT="true"
+export CONTAINER_ABSENT="true"
+```
+
+Record only bounded digests, references, stale-plan results, and absence Booleans matching
+[`backend-managed-removal.schema.json`](../specs/003-terraform-backend-bootstrap/contracts/backend-managed-removal.schema.json):
+
+```bash
+tee_output "$REMOVAL_EVIDENCE_DIR/managed-removal.json" \
+  jq -n \
+    --arg source_commit "$SOURCE_COMMIT" \
+    --arg removal_run_id "$REMOVAL_RUN_ID" \
+    --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg unlock_plan_digest "$(
+      sha256sum "$UNLOCK_PLAN" |
+        awk '{print $1}'
+    )" \
+    --arg unlock_reference "$UNLOCK_APPROVAL_REFERENCE" \
+    --argjson unlock_stale "$UNLOCK_STALE_PLAN_REJECTED" \
+    --arg destroy_plan_digest "$(
+      sha256sum "$DESTROY_PLAN" |
+        awk '{print $1}'
+    )" \
+    --arg destroy_reference "$DESTROY_APPROVAL_REFERENCE" \
+    --argjson destroy_stale "$DESTROY_STALE_PLAN_REJECTED" \
+    --argjson account_absent "$ACCOUNT_ABSENT" \
+    --argjson container_absent "$CONTAINER_ABSENT" \
+    '{
+      schema_version: "1.0",
+      source_commit: $source_commit,
+      removal_run_id: $removal_run_id,
+      completed_at: $completed_at,
+      state_migration_status: "never_migrated",
+      reverse_migration_verified: false,
+      dependent_namespaces: {
+        main: {
+          status: "absent",
+          managed_resource_count: 0
+        },
+        capacity_probe: {
+          status: "absent",
+          managed_resource_count: 0
+        }
+      },
+      unlock: {
+        plan_sha256: $unlock_plan_digest,
+        approval_reference: $unlock_reference,
+        stale_plan_rejected: $unlock_stale,
+        applied_plan_digest_matches: true
+      },
+      destroy: {
+        plan_sha256: $destroy_plan_digest,
+        approval_reference: $destroy_reference,
+        stale_plan_rejected: $destroy_stale,
+        applied_plan_digest_matches: true
+      },
+      backend_absence: {
+        account_absent: $account_absent,
+        container_absent: $container_absent
+      },
+      status: "passed"
+    }'
+
+tee_output "$REMOVAL_EVIDENCE_DIR/managed-removal.json.sha256" \
+  sha256sum "$REMOVAL_EVIDENCE_DIR/managed-removal.json"
+
+.venv/bin/python - \
+  "$REMOVAL_EVIDENCE_DIR/managed-removal.json" \
+  "$MANAGED_REMOVAL_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+evidence = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(evidence)
+PY
+
+sha256sum -c \
+  "$REMOVAL_EVIDENCE_DIR/managed-removal.json.sha256"
+```
+
+Do not delete the protected local state, plans, approvals, manifests, or raw stale-plan logs until
+the bounded removal evidence has been reviewed and retained according to policy.
+
+Any non-empty dependent state, unverified state provenance, wrong local-state mode, state-digest
+mismatch, unexpected plan action, stale plan accepted, mismatched approval, or ambiguous Azure
+absence result blocks removal.
 
 Record bootstrap, preliminary readiness, migration/final readiness, dependent initialization and
 deployment, recovery, unlock, and removal as separate stages. Acceptance requires zero

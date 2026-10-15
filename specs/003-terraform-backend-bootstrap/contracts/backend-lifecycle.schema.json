@@ -73,6 +73,7 @@
         "location",
         "digest",
         "expected_digest",
+        "migration_status",
         "reverse_migration_verified"
       ],
       "properties": {
@@ -86,6 +87,9 @@
         "expected_digest": {
           "type": ["string", "null"],
           "pattern": "^[a-f0-9]{64}$"
+        },
+        "migration_status": {
+          "enum": ["never_migrated", "reverse_migrated"]
         },
         "reverse_migration_verified": {
           "type": "boolean"

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/contracts/backend-managed-removal.schema.json",
+  "title": "Pre-Migration Managed Backend Removal Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_commit",
+    "removal_run_id",
+    "completed_at",
+    "state_migration_status",
+    "reverse_migration_verified",
+    "dependent_namespaces",
+    "unlock",
+    "destroy",
+    "backend_absence",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "removal_run_id": {
+      "type": "string",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z$"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "state_migration_status": {
+      "const": "never_migrated"
+    },
+    "reverse_migration_verified": {
+      "const": false
+    },
+    "dependent_namespaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["main", "capacity_probe"],
+      "properties": {
+        "main": {
+          "$ref": "#/$defs/absent_namespace"
+        },
+        "capacity_probe": {
+          "$ref": "#/$defs/absent_namespace"
+        }
+      }
+    },
+    "unlock": {
+      "$ref": "#/$defs/approved_plan"
+    },
+    "destroy": {
+      "$ref": "#/$defs/approved_plan"
+    },
+    "backend_absence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["account_absent", "container_absent"],
+      "properties": {
+        "account_absent": {
+          "const": true
+        },
+        "container_absent": {
+          "const": true
+        }
+      }
+    },
+    "status": {
+      "const": "passed"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "absent_namespace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "managed_resource_count"],
+      "properties": {
+        "status": {
+          "const": "absent"
+        },
+        "managed_resource_count": {
+          "const": 0
+        }
+      }
+    },
+    "approved_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plan_sha256",
+        "approval_reference",
+        "stale_plan_rejected",
+        "applied_plan_digest_matches"
+      ],
+      "properties": {
+        "plan_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "approval_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stale_plan_rejected": {
+          "const": true
+        },
+        "applied_plan_digest_matches": {
+          "const": true
+        }
+      }
+    }
+  }
+}

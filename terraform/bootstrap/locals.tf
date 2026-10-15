@@ -204,6 +204,19 @@ locals {
   )
 
   lifecycle_required = contains(["migrate_local", "unlock", "destroy"], var.lifecycle_action)
+  lifecycle_state_migration_valid = (
+    var.lifecycle_assertions != null &&
+    (
+      (
+        var.lifecycle_assertions.state_migration_status == "reverse_migrated" &&
+        var.lifecycle_assertions.reverse_migration_verified
+      ) ||
+      (
+        var.lifecycle_assertions.state_migration_status == "never_migrated" &&
+        !var.lifecycle_assertions.reverse_migration_verified
+      )
+    )
+  )
   lifecycle_ready = (
     local.lifecycle_required &&
     var.ownership_mode == "managed" &&
@@ -211,7 +224,7 @@ locals {
     var.lifecycle_assertions.main_managed_resource_count == 0 &&
     var.lifecycle_assertions.probe_managed_resource_count == 0 &&
     var.lifecycle_assertions.bootstrap_state_location == "local" &&
-    var.lifecycle_assertions.reverse_migration_verified &&
+    local.lifecycle_state_migration_valid &&
     var.lifecycle_assertions.bootstrap_state_digest != null &&
     var.lifecycle_assertions.bootstrap_state_digest == var.lifecycle_assertions.expected_state_digest &&
     trimspace(var.lifecycle_assertions.approval_reference) != ""
@@ -222,7 +235,7 @@ locals {
     var.lifecycle_assertions == null ? "configuration_mismatch" :
     var.lifecycle_assertions.main_managed_resource_count > 0 || var.lifecycle_assertions.probe_managed_resource_count > 0 ? "dependent_state_not_empty" :
     var.lifecycle_assertions.bootstrap_state_location != "local" ? "bootstrap_state_not_local" :
-    !var.lifecycle_assertions.reverse_migration_verified ? "reverse_migration_failed" :
+    !local.lifecycle_state_migration_valid ? "reverse_migration_failed" :
     var.lifecycle_assertions.bootstrap_state_digest != var.lifecycle_assertions.expected_state_digest ? "state_digest_mismatch" :
     trimspace(var.lifecycle_assertions.approval_reference) == "" ? "approval_mismatch" :
     "none"

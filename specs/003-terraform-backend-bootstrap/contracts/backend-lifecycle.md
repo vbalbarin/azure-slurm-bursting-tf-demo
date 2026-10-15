@@ -35,7 +35,7 @@ resources.
 | Managed create | Source validation, exact plan digest, approval reference |
 | Remote migration | Pre-migration readiness, protected local-state digest, approval reference |
 | Dependent initialization | Final readiness status `ready`, matching source and coordinate digest |
-| Unlock | Empty main/probe state, successful reverse migration, exact unlock-plan digest |
+| Unlock | Empty/absent main and probe state, verified authoritative local bootstrap state, exact unlock-plan digest |
 | Destroy | Verified local bootstrap state, unlocked backend, exact destroy-plan digest |
 
 Changing source, input, state context, network mode, principal, coordinate, plan, or evidence digest
@@ -56,7 +56,12 @@ order is:
 - Keep the protected source-state copy until destination state and a no-change plan are verified.
 - Record only state digests in evidence; never copy state content into `/evidence`.
 - A failed migration blocks dependent initialization or teardown.
-- Reverse migration to `/state` is mandatory before managed unlock or destroy.
+- Reverse migration to `/state` is mandatory before managed unlock or destroy when bootstrap state
+  was migrated to Azure Blob.
+- An abandoned pre-migration deployment may be removed without first uploading state. It must
+  record `state_migration_status = "never_migrated"`,
+  `reverse_migration_verified = false`, and independently verify that the protected local state is
+  authoritative. This cleanup does not satisfy local-to-remote-to-local acceptance.
 
 ## Removal rules
 
@@ -65,7 +70,8 @@ Managed removal is rejected unless:
 1. main state exists or is explicitly verified absent and contains zero managed resources;
 2. capacity-probe state exists or is explicitly verified absent and contains zero managed
    resources;
-3. bootstrap state has migrated back to protected local state and is verified;
+3. bootstrap state is verified in protected local state, either after reverse migration or because
+   it never left the local backend;
 4. an unlock plan is reviewed and applied;
 5. a separate destroy plan is generated and reviewed.
 

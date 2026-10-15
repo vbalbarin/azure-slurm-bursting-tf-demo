@@ -22,6 +22,7 @@ locals {
       location                   = try(var.lifecycle_assertions.bootstrap_state_location, "missing")
       digest                     = try(var.lifecycle_assertions.bootstrap_state_digest, null)
       expected_digest            = try(var.lifecycle_assertions.expected_state_digest, null)
+      migration_status           = try(var.lifecycle_assertions.state_migration_status, "reverse_migrated")
       reverse_migration_verified = try(var.lifecycle_assertions.reverse_migration_verified, false)
     }
     approval_reference = try(var.lifecycle_assertions.approval_reference, "not-approved")
