@@ -30,6 +30,11 @@ directly as shown in this guide. Python acceptance tests may validate the result
 secret-free evidence only; they must not invoke Terraform, Azure CLI, or any control-plane
 operation.
 
+For a combined backend and workload acceptance, execute sections 1 through 7, retain the managed
+backend while dependent workloads run, and execute section 8 only after those workloads have been
+destroyed and both dependent namespaces are empty. A backend-only acceptance may proceed directly
+through section 8, but it leaves no backend for dependent deployment.
+
 ## 1. Validate source
 
 Run the repository validation entry points covering:
@@ -227,6 +232,9 @@ After both dependent environments are separately destroyed and verified empty:
 6. verify backend resources are absent while protected removal evidence remains.
 
 Existing mode exposes no unlock or backend-destroy operation.
+
+For a combined run, removal is the final cleanup step after dependent workload acceptance. It is
+not a prerequisite for initializing or deploying those workloads.
 
 ## 9. Final acceptance
 

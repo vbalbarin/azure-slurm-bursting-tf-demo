@@ -166,6 +166,16 @@ Complete Part A before initializing the main or capacity-probe roots against the
 Bootstrap acceptance must complete within 20 minutes, excluding separately measured Entra
 role-propagation delay.
 
+Choose the execution order before starting:
+
+- **Backend-only acceptance:** run A1 through A10. This validates removal and leaves no backend for
+  Part B.
+- **Combined backend and Slurm acceptance:** run A1 through A9, continue with Part B, and return to
+  A10 only after the main and capacity-probe environments have been destroyed and verified empty.
+  This is the path that leaves a usable backend in place while Part B runs.
+
+Do not run A10 before Part B in a combined run. A10 deliberately removes the managed backend.
+
 ## A1. Select the ownership and network modes
 
 Choose one approved ownership mode:
@@ -1454,8 +1464,9 @@ Recalculate `OBSERVED_LOCAL_STATE_DIGEST` immediately before each plan and requi
 
 ### A10.4 Generate and review the lock-only plan
 
-Use a distinct external approval reference for unlock. The reference identifies the accountable
-review, but approval of the exact digest occurs only after plan generation:
+Record an external review reference for unlock. The reference identifies the accountable review,
+but approval of the exact digest occurs only after plan generation. Run the `read` command directly
+in an interactive terminal, not through a noninteractive task runner:
 
 ```bash
 read -r -p "Authorized unlock review reference: " \
@@ -1638,19 +1649,22 @@ import json
 import sys
 from pathlib import Path
 
-from jsonschema import Draft202012Validator, FormatChecker, RefResolver
+from jsonschema import Draft202012Validator, FormatChecker
+from referencing import Registry, Resource
 
 evidence = json.loads(Path(sys.argv[1]).read_text())
 schema_path = Path(sys.argv[2])
 schema = json.loads(schema_path.read_text())
-schema["$id"] = schema_path.resolve().as_uri()
-resolver = RefResolver(
-    base_uri=schema["$id"],
-    referrer=schema,
-)
+registry = Registry()
+for path in schema_path.parent.glob("*.schema.json"):
+    referenced_schema = json.loads(path.read_text())
+    registry = registry.with_resource(
+        referenced_schema["$id"],
+        Resource.from_contents(referenced_schema),
+    )
 Draft202012Validator(
     schema,
-    resolver=resolver,
+    registry=registry,
     format_checker=FormatChecker(),
 ).validate(evidence)
 PY
@@ -1664,7 +1678,11 @@ test "$(jq -r '.bootstrap_state.reverse_migration_verified' "$UNLOCK_LIFECYCLE_E
 
 test "$(
   az lock list \
-    --scope "$STORAGE_ACCOUNT_RESOURCE_ID" \
+    --resource-group "$(
+      jq -er '.resource_group_name' <<<"$REMOVAL_COORDINATES_JSON"
+    )" \
+    --resource "$STORAGE_ACCOUNT_NAME" \
+    --resource-type Microsoft.Storage/storageAccounts \
     --query "[?level == 'CanNotDelete'] | length(@)" \
     --output tsv
 )" -eq 0
@@ -1687,14 +1705,15 @@ export UNLOCK_STALE_PLAN_REJECTED="true"
 
 ### A10.6 Generate a separate destroy plan
 
-Use a different approval reference and a new lifecycle input file. Rebind the expected digest to
-the post-unlock local state:
+Create a new lifecycle input file and rebind the expected digest to the post-unlock local state.
+The destroy approval must be a separate post-generation approval record with `action = "destroy"`.
+It may use the same external change-ticket reference as unlock if that ticket separately records
+both approval events. Run the `read` command directly in an interactive terminal:
 
 ```bash
 read -r -p "Authorized destroy review reference: " \
   DESTROY_APPROVAL_REFERENCE
 test -n "$DESTROY_APPROVAL_REFERENCE"
-test "$DESTROY_APPROVAL_REFERENCE" != "$UNLOCK_APPROVAL_REFERENCE"
 
 export DESTROY_TFVARS="$BOOTSTRAP_STATE_DIR/destroy.tfvars.json"
 export DESTROY_INPUT_MANIFEST="$BOOTSTRAP_STATE_DIR/destroy-inputs.json"
@@ -1803,16 +1822,13 @@ printf 'jsonencode(local.backend_lifecycle)\n' |
     -var-file="$DESTROY_TFVARS" |
   jq -r 'fromjson' |
   tee "$DESTROY_LIFECYCLE_EVIDENCE"
-DESTROY_PRINTF_STATUS="${PIPESTATUS[0]}"
-DESTROY_CONSOLE_STATUS="${PIPESTATUS[1]}"
-DESTROY_JQ_STATUS="${PIPESTATUS[2]}"
-DESTROY_TEE_STATUS="${PIPESTATUS[3]}"
+DESTROY_PIPE_STATUSES=("${PIPESTATUS[@]}")
 set -e
 
-test "$DESTROY_PRINTF_STATUS" -eq 0
-test "$DESTROY_CONSOLE_STATUS" -eq 0
-test "$DESTROY_JQ_STATUS" -eq 0
-test "$DESTROY_TEE_STATUS" -eq 0
+test "${DESTROY_PIPE_STATUSES[0]}" -eq 0
+test "${DESTROY_PIPE_STATUSES[1]}" -eq 0
+test "${DESTROY_PIPE_STATUSES[2]}" -eq 0
+test "${DESTROY_PIPE_STATUSES[3]}" -eq 0
 
 .venv/bin/python - \
   "$DESTROY_LIFECYCLE_EVIDENCE" \
@@ -1821,19 +1837,22 @@ import json
 import sys
 from pathlib import Path
 
-from jsonschema import Draft202012Validator, FormatChecker, RefResolver
+from jsonschema import Draft202012Validator, FormatChecker
+from referencing import Registry, Resource
 
 evidence = json.loads(Path(sys.argv[1]).read_text())
 schema_path = Path(sys.argv[2])
 schema = json.loads(schema_path.read_text())
-schema["$id"] = schema_path.resolve().as_uri()
-resolver = RefResolver(
-    base_uri=schema["$id"],
-    referrer=schema,
-)
+registry = Registry()
+for path in schema_path.parent.glob("*.schema.json"):
+    referenced_schema = json.loads(path.read_text())
+    registry = registry.with_resource(
+        referenced_schema["$id"],
+        Resource.from_contents(referenced_schema),
+    )
 Draft202012Validator(
     schema,
-    resolver=resolver,
+    registry=registry,
     format_checker=FormatChecker(),
 ).validate(evidence)
 PY
@@ -2046,12 +2065,72 @@ Record bootstrap, preliminary readiness, migration/final readiness, dependent in
 deployment, recovery, unlock, and removal as separate stages. Acceptance requires zero
 undocumented commands and zero workflow substitutions.
 
+## A11. Retain the managed backend for Part B
+
+This section is an execution-order handoff, not an alternative bootstrap implementation. Use it
+only for a combined backend and Slurm acceptance run.
+
+1. Complete A1 through A7 to create the managed account, validate preliminary readiness, migrate
+   bootstrap state to Azure Blob, prove remote state and locking, and export current final
+   readiness.
+2. Complete A8 to initialize the main and capacity-probe roots with their exact distinct keys.
+3. Complete A9 when replacement-operator recovery is part of the acceptance run.
+4. Do **not** execute A10 yet. Keep the storage account, container, deletion lock, role
+   assignments, and all three state namespaces available.
+5. Continue to Part B using the same `RUN_ID`, `SOURCE_COMMIT`, final readiness evidence, backend
+   coordinates, and execution context.
+6. After Part B cleanup proves the main and capacity-probe namespaces contain zero managed
+   resources, return to A10. For a completed combined run, reverse-migrate bootstrap state and use
+   `state_migration_status = "reverse_migrated"` with
+   `reverse_migration_verified = true`.
+
+Immediately before Part B, require the retained handoff:
+
+```bash
+test "$(jq -r '.status' \
+  "$BACKEND_EVIDENCE_DIR/backend-readiness.json")" = "ready"
+test "$(jq -r '.failure_class' \
+  "$BACKEND_EVIDENCE_DIR/backend-readiness.json")" = "none"
+test "$(jq -r '.source_commit' \
+  "$BACKEND_EVIDENCE_DIR/backend-readiness.json")" = "$SOURCE_COMMIT"
+
+test -f terraform/backend.hcl
+test -f terraform/capacity-probe/backend.hcl
+
+test "$(awk -F= '/^[[:space:]]*key[[:space:]]*=/{gsub(/[ "\t]/, "", $2); print $2}' \
+  terraform/backend.hcl)" = "$BACKEND_ENVIRONMENT/main.tfstate"
+test "$(awk -F= '/^[[:space:]]*key[[:space:]]*=/{gsub(/[ "\t]/, "", $2); print $2}' \
+  terraform/capacity-probe/backend.hcl)" = \
+  "$BACKEND_ENVIRONMENT/capacity-probe.tfstate"
+
+test "$(
+  az resource list \
+    --resource-type Microsoft.Storage/storageAccounts \
+    --query '[].id' \
+    --output json |
+    jq \
+      --arg resource_id "$STORAGE_ACCOUNT_RESOURCE_ID" \
+      '[
+        .[] |
+        select(
+          ascii_downcase ==
+          ($resource_id | ascii_downcase)
+        )
+      ] | length'
+)" -eq 1
+```
+
+Final readiness is valid for at most one hour. If it expires before a Part B plan, repeat the direct
+readiness observations and apply a newly reviewed final output-only readiness plan; never edit the
+old evidence timestamp.
+
 ---
 
 # Part B: Slurm bursting demo
 
-Part B assumes Part A produced current final backend readiness and initialized the main and
-capacity-probe roots.
+Part B assumes the combined-run path in A11 retained the managed backend, produced current final
+readiness, and initialized the main and capacity-probe roots. Return to A10 only after Part B
+cleanup.
 
 ## B1. Prepare the protected demo inputs
 

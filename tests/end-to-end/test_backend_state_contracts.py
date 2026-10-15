@@ -296,6 +296,21 @@ def test_local_backend_uses_runtime_protected_path_contract() -> None:
     assert "underlying physical" in readme
 
 
+def test_detailed_runbook_uses_supported_removal_commands() -> None:
+    runbook = (ROOT / "docs/quickstart-evidence-runbook.md").read_text()
+
+    assert "--resource-type Microsoft.Storage/storageAccounts" in runbook
+    assert '--scope "$STORAGE_ACCOUNT_RESOURCE_ID"' not in runbook
+    assert 'DESTROY_PIPE_STATUSES=("${PIPESTATUS[@]}")' in runbook
+    assert (
+        'test "$DESTROY_APPROVAL_REFERENCE" != "$UNLOCK_APPROVAL_REFERENCE"'
+        not in runbook
+    )
+    assert "from referencing import Registry, Resource" in runbook
+    assert "A1 through A9, continue with Part B" in runbook
+    assert "return to a10 only after" in runbook.lower()
+
+
 def test_migration_contract_records_digest_only_disposition() -> None:
     schema = _schemas()[0]["backend-migration-acceptance.schema.json"]
     local_properties = schema["properties"]["local_state"]["properties"]

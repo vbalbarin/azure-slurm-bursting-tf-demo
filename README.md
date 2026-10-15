@@ -232,12 +232,19 @@ the replacement operator must directly initialize, read, and lock all three name
 Existing mode has no removal path. For managed removal:
 
 1. Prove main and capacity-probe state are readable and manage zero resources.
-2. Migrate bootstrap state back to protected local state with `terraform init -migrate-state`;
-   verify mode `0600`, lineage/resource count, and state digest before removing the AzureRM override.
+2. If bootstrap state was migrated, migrate it back to protected local state with
+   `terraform init -migrate-state`; otherwise prove that the authoritative state never left the
+   protected local backend. Verify mode `0600`, lineage/resource count, and state digest before
+   removing any AzureRM override.
 3. Set lifecycle action `unlock`, create an unlock-only saved plan, create a post-generation
    approval record, verify its digest, and apply that exact plan.
 4. Confirm the lock is absent. Set lifecycle action `destroy`, create a separate `-destroy` plan,
    obtain a separate approval, verify its digest, and apply only that plan.
+
+For a combined backend and Slurm run, retain the managed backend through dependent initialization,
+deployment, and cleanup. Perform managed removal only after main and capacity-probe state are
+verified empty. Separate unlock and destroy approval records may use one external change ticket
+when that ticket records both distinct post-generation approval events.
 
 Any missing/inconsistent local state, non-empty dependent namespace, failed reverse migration,
 state-digest mismatch, stale plan, or mismatched approval blocks removal.
