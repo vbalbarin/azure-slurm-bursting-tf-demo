@@ -15,6 +15,12 @@ operator must review each result and stop on failure. Do not replace the direct 
 commands with a custom Bash or Python provisioning, readiness, migration, lifecycle, apply,
 unlock, or destroy wrapper.
 
+Keep `errexit` disabled in the interactive operator shell. The runbook captures expected nonzero
+statuses explicitly, and a failed assertion must leave the shell alive so protected environment
+variables remain available for diagnosis or cleanup. Repository scripts use `set -e` only inside
+their child processes; their exit statuses are captured by the calling snippets. Do not continue
+to the next code block after a nonzero status or failed `test`.
+
 ## 1. Evidence and protected-state boundaries
 
 The development container provides two separate named volumes:
@@ -41,6 +47,7 @@ Open a terminal in the development container:
 ```bash
 cd /workspaces/azure-slurm-bursting-tf-demo
 umask 077
+set +e
 
 export RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 test "$RUN_ID" != "20261013T164853Z"
@@ -92,6 +99,100 @@ tee_output() {
 }
 ```
 
+Define an environment-only persistence helper. It writes no credentials, assertions, status flags,
+digests, approval references, or command results and performs no Azure or Terraform operation:
+
+```bash
+persist_run_context() {
+  : "${RUN_ID:?RUN_ID is required}"
+  : "${SOURCE_COMMIT:?SOURCE_COMMIT is required}"
+  : "${RUN_EVIDENCE_DIR:?RUN_EVIDENCE_DIR is required}"
+  : "${BACKEND_EVIDENCE_DIR:?BACKEND_EVIDENCE_DIR is required}"
+  : "${DEMO_EVIDENCE_DIR:?DEMO_EVIDENCE_DIR is required}"
+  : "${DEMO_STATE_DIR:?DEMO_STATE_DIR is required}"
+
+  export RUN_CONTEXT_DIR="/state/evidence-runs/$RUN_ID"
+  export RUN_CONTEXT_FILE="$RUN_CONTEXT_DIR/run-context.env"
+  local temporary_file="$RUN_CONTEXT_FILE.tmp"
+
+  install -d -m 0700 "$RUN_CONTEXT_DIR"
+  {
+    printf '# Generated run context. Contains paths and immutable identifiers only.\n'
+    printf 'export RUN_ID=%q\n' "$RUN_ID"
+    printf 'export SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
+    printf 'export RUN_EVIDENCE_DIR=%q\n' "$RUN_EVIDENCE_DIR"
+    printf 'export BACKEND_EVIDENCE_DIR=%q\n' "$BACKEND_EVIDENCE_DIR"
+    printf 'export DEMO_EVIDENCE_DIR=%q\n' "$DEMO_EVIDENCE_DIR"
+    printf 'export DEMO_STATE_DIR=%q\n' "$DEMO_STATE_DIR"
+    printf 'export RUN_CONTEXT_DIR=%q\n' "$RUN_CONTEXT_DIR"
+    printf 'export RUN_CONTEXT_FILE=%q\n' "$RUN_CONTEXT_FILE"
+
+    if test -n "${BACKEND_ENVIRONMENT:-}"; then
+      printf 'export BACKEND_ENVIRONMENT=%q\n' "$BACKEND_ENVIRONMENT"
+    fi
+    if test -n "${BOOTSTRAP_STATE_ROOT:-}"; then
+      printf 'export BOOTSTRAP_STATE_ROOT=%q\n' "$BOOTSTRAP_STATE_ROOT"
+    fi
+    if test -n "${BOOTSTRAP_STATE_DIR:-}"; then
+      printf 'export BOOTSTRAP_STATE_DIR=%q\n' "$BOOTSTRAP_STATE_DIR"
+    fi
+    if test -n "${BOOTSTRAP_TFVARS:-}"; then
+      printf 'export BOOTSTRAP_TFVARS=%q\n' "$BOOTSTRAP_TFVARS"
+    fi
+    if test -n "${BOOTSTRAP_LOCAL_STATE:-}"; then
+      printf 'export BOOTSTRAP_LOCAL_STATE=%q\n' "$BOOTSTRAP_LOCAL_STATE"
+    fi
+    if test -n "${BACKEND_COORDINATES_FILE:-}"; then
+      printf 'export BACKEND_COORDINATES_FILE=%q\n' "$BACKEND_COORDINATES_FILE"
+    fi
+    if test -n "${TFVARS_FILE:-}"; then
+      printf 'export TFVARS_FILE=%q\n' "$TFVARS_FILE"
+    fi
+    if test -n "${PREFLIGHT_RESULTS_FILE:-}"; then
+      printf 'export PREFLIGHT_RESULTS_FILE=%q\n' "$PREFLIGHT_RESULTS_FILE"
+    fi
+    if test -n "${PROBE_TFVARS_FILE:-}"; then
+      printf 'export PROBE_TFVARS_FILE=%q\n' "$PROBE_TFVARS_FILE"
+    fi
+    if test -n "${PROBE_PLAN_FILE:-}"; then
+      printf 'export PROBE_PLAN_FILE=%q\n' "$PROBE_PLAN_FILE"
+    fi
+    if test -n "${PROBE_APPROVAL_FILE:-}"; then
+      printf 'export PROBE_APPROVAL_FILE=%q\n' "$PROBE_APPROVAL_FILE"
+    fi
+    if test -n "${PROBE_DESTROY_PLAN_FILE:-}"; then
+      printf 'export PROBE_DESTROY_PLAN_FILE=%q\n' "$PROBE_DESTROY_PLAN_FILE"
+    fi
+    if test -n "${PROBE_CLEANUP_APPROVAL_FILE:-}"; then
+      printf 'export PROBE_CLEANUP_APPROVAL_FILE=%q\n' \
+        "$PROBE_CLEANUP_APPROVAL_FILE"
+    fi
+    if test -n "${PROBE_EVIDENCE_DIR:-}"; then
+      printf 'export PROBE_EVIDENCE_DIR=%q\n' "$PROBE_EVIDENCE_DIR"
+    fi
+    if test -n "${PLAN_FILE:-}"; then
+      printf 'export PLAN_FILE=%q\n' "$PLAN_FILE"
+    fi
+    if test -n "${APPROVAL_FILE:-}"; then
+      printf 'export APPROVAL_FILE=%q\n' "$APPROVAL_FILE"
+    fi
+    if test -n "${CAPACITY_PROBE_RESULTS_FILE:-}"; then
+      printf 'export CAPACITY_PROBE_RESULTS_FILE=%q\n' \
+        "$CAPACITY_PROBE_RESULTS_FILE"
+    fi
+    declare -f persist_run_context
+  } >"$temporary_file"
+
+  bash -n "$temporary_file"
+  chmod 0600 "$temporary_file"
+  mv "$temporary_file" "$RUN_CONTEXT_FILE"
+
+  test ! -L "$RUN_CONTEXT_FILE"
+  test "$(stat -c '%a' "$RUN_CONTEXT_FILE")" = "600"
+  test "$(stat -c '%u' "$RUN_CONTEXT_FILE")" = "$(id -u)"
+}
+```
+
 Use `tee_output` only when a command's stdout is explicitly secret-free and must remain valid JSON,
 Markdown, or digest output. Record non-secret run metadata:
 
@@ -115,11 +216,53 @@ tee_output "$RUN_EVIDENCE_DIR/git-status.txt" \
   git --no-pager status --short
 test ! -s "$RUN_EVIDENCE_DIR/git-status.txt"
 printf 'Git worktree is clean at %s.\n' "$SOURCE_COMMIT"
+
+persist_run_context
 ```
 
 Stop if the worktree is not clean. The evidence must identify the exact tested commit.
 
-### 1.2 Authenticate to the approved Azure context
+### 1.2 Resume an interrupted operator shell
+
+Use only the protected file created by this run. Never source a context file received from another
+operator, run, repository, or untrusted path:
+
+```bash
+cd /workspaces/azure-slurm-bursting-tf-demo
+umask 077
+set +e
+
+export RUN_ID="<existing-run-id>"
+export RUN_CONTEXT_FILE="/state/evidence-runs/$RUN_ID/run-context.env"
+
+test -f "$RUN_CONTEXT_FILE"
+test ! -L "$RUN_CONTEXT_FILE"
+test "$(stat -c '%a' "$RUN_CONTEXT_FILE")" = "600"
+test "$(stat -c '%u' "$RUN_CONTEXT_FILE")" = "$(id -u)"
+bash -n "$RUN_CONTEXT_FILE"
+```
+
+If any validation fails, do not source the file. Otherwise source it and bind the reconstructed
+shell to immutable run metadata and source:
+
+```bash
+source "$RUN_CONTEXT_FILE"
+set +e
+
+test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+test "$RUN_ID" = "$(jq -r '.run_id' "$RUN_EVIDENCE_DIR/run-metadata.json")"
+test "$SOURCE_COMMIT" = "$(
+  jq -r '.source_commit' "$RUN_EVIDENCE_DIR/run-metadata.json"
+)"
+test -z "$(git status --short)"
+```
+
+Reauthenticate to Azure and repeat the section's current identity, network, DNS, digest, timing,
+and command-result observations. The context file is a path cache only. It is never authority for
+current authentication, readiness, approval, plan, migration, lifecycle, cleanup, or acceptance
+status.
+
+### 1.3 Authenticate to the approved Azure context
 
 ```bash
 az login
@@ -170,9 +313,10 @@ Choose the execution order before starting:
 
 - **Backend-only acceptance:** run A1 through A10. This validates removal and leaves no backend for
   Part B.
-- **Combined backend and Slurm acceptance:** run A1 through A9, continue with Part B, and return to
-  A10 only after the main and capacity-probe environments have been destroyed and verified empty.
-  This is the path that leaves a usable backend in place while Part B runs.
+- **Combined backend and Slurm acceptance:** run A1 through A8, retain the backend through A11,
+  run B1 through B10, perform A9 recovery while all three state namespaces still exist, run B11
+  cleanup, and then return to A10. This is the path that leaves a usable backend in place while
+  Part B runs.
 
 Do not run A10 before Part B in a combined run. A10 deliberately removes the managed backend.
 
@@ -232,6 +376,8 @@ export BOOTSTRAP_STARTED_EPOCH="$(date +%s)"
 install -d -m 0700 "$BOOTSTRAP_STATE_DIR"
 cp terraform/bootstrap/bootstrap.tfvars.example "$BOOTSTRAP_TFVARS"
 chmod 0600 "$BOOTSTRAP_TFVARS"
+
+persist_run_context
 ```
 
 For an interactive `az login`, obtain the active user's Entra object ID and tenant:
@@ -355,6 +501,12 @@ Only after the reviewer approves the displayed plan, create the protected approv
 ```bash
 read -r -p "Authorized approval reference: " APPROVAL_REFERENCE
 test -n "$APPROVAL_REFERENCE"
+```
+
+If the prompt returns EOF or the reference is empty, stop without running the next block. Then bind
+the approval to the current source and exact plan:
+
+```bash
 test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
 
 export PLAN_CREATED_AT="$(
@@ -430,9 +582,11 @@ terraform -chdir=terraform/bootstrap plan \
   -detailed-exitcode \
   -no-color 2>&1 |
   tee "$BOOTSTRAP_STATE_DIR/create-no-change.log"
-BOOTSTRAP_NO_CHANGE_STATUS="${PIPESTATUS[0]}"
-set -e
+BOOTSTRAP_NO_CHANGE_PIPE_STATUSES=("${PIPESTATUS[@]}")
+BOOTSTRAP_NO_CHANGE_STATUS="${BOOTSTRAP_NO_CHANGE_PIPE_STATUSES[0]}"
+set +e
 test "$BOOTSTRAP_NO_CHANGE_STATUS" -eq 0
+test "${BOOTSTRAP_NO_CHANGE_PIPE_STATUSES[1]}" -eq 0
 ```
 
 Display the captured status and record a bounded, secret-free result plus the protected log's
@@ -500,6 +654,8 @@ Validate the live output and record a bounded result:
 ```bash
 export BACKEND_COORDINATES_FILE="$BACKEND_EVIDENCE_DIR/backend-coordinates.json"
 export BACKEND_COORDINATES_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-coordinates.schema.json"
+
+persist_run_context
 
 sha256sum -c "$BACKEND_COORDINATES_FILE.sha256"
 test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
@@ -622,7 +778,7 @@ ACCOUNT_JSON="$(
     --output json
 )"
 ACCOUNT_EXIT="$?"
-set -e
+set +e
 test "$ACCOUNT_EXIT" -eq 0
 test "$(jq -r '.subscription_id' <<<"$ACCOUNT_JSON")" = \
   "$(jq -r '.subscription_id' "$BACKEND_COORDINATES_FILE")"
@@ -646,7 +802,7 @@ BACKEND_JSON="$(
     --output json
 )"
 BACKEND_EXIT="$?"
-set -e
+set +e
 test "$BACKEND_EXIT" -eq 0
 test "$(jq -r '.id' <<<"$BACKEND_JSON")" = "$STORAGE_ACCOUNT_RESOURCE_ID"
 test "$(jq -r '.publicNetworkAccess' <<<"$BACKEND_JSON")" = "Enabled"
@@ -663,7 +819,7 @@ CONTAINER_NAME_OBSERVED="$(
     --output tsv
 )"
 CONTAINER_EXIT="$?"
-set -e
+set +e
 test "$CONTAINER_EXIT" -eq 0
 test "$CONTAINER_NAME_OBSERVED" = "$STATE_CONTAINER_NAME"
 ```
@@ -679,7 +835,7 @@ export DNS_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 set +e
 DNS_OUTPUT="$(getent ahostsv4 "$BLOB_HOST")"
 DNS_EXIT="$?"
-set -e
+set +e
 test "$DNS_EXIT" -eq 0
 
 export RESOLVED_BLOB_IPV4_JSON="$(
@@ -702,7 +858,7 @@ NETWORK_HTTP_STATUS="$(
     "https://$BLOB_HOST/$STATE_CONTAINER_NAME?restype=container"
 )"
 NETWORK_EXIT="$?"
-set -e
+set +e
 test "$NETWORK_EXIT" -eq 0
 case "$NETWORK_HTTP_STATUS" in
   200|400|401|403) ;;
@@ -729,13 +885,17 @@ BLOB_RESULT_COUNT="$(
     --output tsv
 )"
 AUTHORIZATION_EXIT="$?"
-set -e
+set +e
 test "$AUTHORIZATION_EXIT" -eq 0
 case "$BLOB_RESULT_COUNT" in
   0|1) ;;
   *) printf 'Unexpected Blob query count: %s\n' "$BLOB_RESULT_COUNT" >&2; false ;;
 esac
+```
 
+If authorization failed or returned an unexpected count, stop without running the next block:
+
+```bash
 export KEY_SEPARATION_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 set +e
 jq -e \
@@ -746,7 +906,7 @@ jq -e \
    ([.state_keys[]] | unique | length) == 3' \
   "$BACKEND_COORDINATES_FILE" >/dev/null
 KEY_SEPARATION_EXIT="$?"
-set -e
+set +e
 test "$KEY_SEPARATION_EXIT" -eq 0
 ```
 
@@ -1025,6 +1185,11 @@ managed create lifecycle, so the current approval contract uses `action = "creat
 read -r -p "Authorized preliminary-readiness approval reference: " \
   PRELIMINARY_APPROVAL_REFERENCE
 test -n "$PRELIMINARY_APPROVAL_REFERENCE"
+```
+
+If the prompt returns EOF or the reference is empty, stop without running the next block:
+
+```bash
 test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
 
 export PRELIMINARY_PLAN_CREATED_AT="$(
@@ -1239,7 +1404,7 @@ terraform -chdir=terraform/bootstrap apply \
   -input=false \
   "$MIGRATION_STALE_PLAN" >"$MIGRATION_STALE_LOG" 2>&1
 MIGRATION_STALE_STATUS="$?"
-set -e
+set +e
 
 test "$MIGRATION_STALE_STATUS" -ne 0
 export MIGRATION_STALE_REJECTED="true"
@@ -1260,7 +1425,7 @@ terraform -chdir=terraform/bootstrap plan \
   -no-color 2>&1 |
   tee "$REMOTE_NO_CHANGE_LOG"
 REMOTE_NO_CHANGE_PIPE_STATUSES=("${PIPESTATUS[@]}")
-set -e
+set +e
 
 test "${REMOTE_NO_CHANGE_PIPE_STATUSES[0]}" -eq 0
 test "${REMOTE_NO_CHANGE_PIPE_STATUSES[1]}" -eq 0
@@ -1302,7 +1467,7 @@ terraform -chdir=terraform/bootstrap plan \
   -out="$BOOTSTRAP_STATE_DIR/lock-contender.tfplan" \
   >"$LOCK_CONFLICT_LOG" 2>&1
 LOCK_CONFLICT_STATUS="$?"
-set -e
+set +e
 
 test "$LOCK_CONFLICT_STATUS" -ne 0
 grep -Eiq 'state lock|already locked|lease' "$LOCK_CONFLICT_LOG"
@@ -1613,7 +1778,11 @@ within the managed-create lifecycle:
 read -r -p "Authorized final-readiness approval reference: " \
   FINAL_APPROVAL_REFERENCE
 test -n "$FINAL_APPROVAL_REFERENCE"
+```
 
+If the prompt returns EOF or the reference is empty, stop without running the next block:
+
+```bash
 jq -n \
   --arg source_commit "$SOURCE_COMMIT" \
   --arg input_digest "$(
@@ -1742,6 +1911,9 @@ The main and capacity-probe roots may contain resources, but their protected inp
 describe the reviewed configuration. Use a fresh shell authenticated only as the replacement
 operator. Do not distribute a storage key, SAS, copied token, or shared credential.
 
+For the combined T057 run, execute A9 after B10 and before B11. Do not execute A9 before Part B:
+initializing a backend does not by itself guarantee that its state blob exists.
+
 Re-establish the protected paths and begin timing immediately after authentication:
 
 ```bash
@@ -1809,7 +1981,11 @@ case "$RECOVERY_AZURE_PRINCIPAL_TYPE" in
     false
     ;;
 esac
+```
 
+If the principal type is unsupported, stop without running the next block:
+
+```bash
 test "$RECOVERY_TENANT_ID" = \
   "$(jq -r '.tenant_id' "$BACKEND_EVIDENCE_DIR/backend-coordinates.json")"
 ```
@@ -1909,7 +2085,7 @@ terraform -chdir=terraform/capacity-probe plan \
   -var-file="$PROBE_TFVARS_FILE" \
   -out="$RECOVERY_PLAN_DIR/capacity-probe.tfplan"
 PROBE_RECOVERY_PLAN_STATUS="$?"
-set -e
+set +e
 
 test "$BOOTSTRAP_RECOVERY_PLAN_STATUS" -ne 1
 test "$BOOTSTRAP_RECOVERY_PLAN_STATUS" -le 2
@@ -2034,12 +2210,20 @@ case "$REMOVAL_PATH" in
     false
     ;;
 esac
+```
 
+If the removal path is unsupported, stop without running the next block:
+
+```bash
 install -d -m 0700 "$REMOVAL_EVIDENCE_DIR"
 
 test -f "$BOOTSTRAP_TFVARS"
 test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+```
 
+If either prerequisite test fails, stop without running the backend initialization block:
+
+```bash
 if test "$REMOVAL_PATH" = "acceptance"; then
   test -f terraform/bootstrap/backend.azurerm.tf
   test ! -e terraform/bootstrap/backend.local.tf
@@ -2089,17 +2273,26 @@ if test "$REMOVAL_PATH" = "acceptance"; then
     >"$LOCAL_STATE_AFTER_REVERSE"
   chmod 0600 "$LOCAL_STATE_AFTER_REVERSE" "$BOOTSTRAP_LOCAL_STATE"
 
-  test "$(stat -c '%a' "$BOOTSTRAP_LOCAL_STATE")" = "600"
-  export REVERSE_LOCAL_MODE="0600"
-  test "$(jq -r '.lineage' "$LOCAL_STATE_AFTER_REVERSE")" = \
-    "$(jq -r '.lineage' "$REMOTE_STATE_BEFORE_REVERSE")"
-  export REVERSE_LINEAGE_MATCHES="true"
-  test "$(jq '[.resources[]?] | length' "$LOCAL_STATE_AFTER_REVERSE")" -eq \
-    "$(jq '[.resources[]?] | length' "$REMOTE_STATE_BEFORE_REVERSE")"
-  export REVERSE_RESOURCE_COUNT_MATCHES="true"
-  test "$(jq -S -c . "$LOCAL_STATE_AFTER_REVERSE" | sha256sum | awk '{print $1}')" = \
-    "$(jq -S -c . "$REMOTE_STATE_BEFORE_REVERSE" | sha256sum | awk '{print $1}')"
-  export REVERSE_DIGEST_MATCHES="true"
+  if test "$(stat -c '%a' "$BOOTSTRAP_LOCAL_STATE")" = "600"; then
+    export REVERSE_LOCAL_MODE="0600"
+  fi
+  if test "$(jq -r '.lineage' "$LOCAL_STATE_AFTER_REVERSE")" = \
+    "$(jq -r '.lineage' "$REMOTE_STATE_BEFORE_REVERSE")"; then
+    export REVERSE_LINEAGE_MATCHES="true"
+  fi
+  if test "$(jq '[.resources[]?] | length' "$LOCAL_STATE_AFTER_REVERSE")" -eq \
+    "$(jq '[.resources[]?] | length' "$REMOTE_STATE_BEFORE_REVERSE")"; then
+    export REVERSE_RESOURCE_COUNT_MATCHES="true"
+  fi
+  if test "$(jq -S -c . "$LOCAL_STATE_AFTER_REVERSE" | sha256sum | awk '{print $1}')" = \
+    "$(jq -S -c . "$REMOTE_STATE_BEFORE_REVERSE" | sha256sum | awk '{print $1}')"; then
+    export REVERSE_DIGEST_MATCHES="true"
+  fi
+
+  test "$REVERSE_LOCAL_MODE" = "0600"
+  test "$REVERSE_LINEAGE_MATCHES" = "true"
+  test "$REVERSE_RESOURCE_COUNT_MATCHES" = "true"
+  test "$REVERSE_DIGEST_MATCHES" = "true"
 fi
 ```
 
@@ -2130,60 +2323,95 @@ their initialized roots must report zero managed resource instances:
 export MAIN_STATE_KEY="$BACKEND_ENVIRONMENT/main.tfstate"
 export PROBE_STATE_KEY="$BACKEND_ENVIRONMENT/capacity-probe.tfstate"
 
-if test "$REMOVAL_PATH" = "abandoned_pre_migration_cleanup"; then
-  export MAIN_STATE_EXISTS="$(
-    az storage blob exists \
-      --auth-mode login \
-      --account-name "$STORAGE_ACCOUNT_NAME" \
-      --container-name "$STATE_CONTAINER_NAME" \
-      --name "$MAIN_STATE_KEY" \
-      --query exists \
-      --output tsv
-  )"
-  export PROBE_STATE_EXISTS="$(
-    az storage blob exists \
-      --auth-mode login \
-      --account-name "$STORAGE_ACCOUNT_NAME" \
-      --container-name "$STATE_CONTAINER_NAME" \
-      --name "$PROBE_STATE_KEY" \
-      --query exists \
-      --output tsv
-  )"
+export MAIN_STATE_EXISTS="$(
+  az storage blob exists \
+    --auth-mode login \
+    --account-name "$STORAGE_ACCOUNT_NAME" \
+    --container-name "$STATE_CONTAINER_NAME" \
+    --name "$MAIN_STATE_KEY" \
+    --query exists \
+    --output tsv
+)"
+export PROBE_STATE_EXISTS="$(
+  az storage blob exists \
+    --auth-mode login \
+    --account-name "$STORAGE_ACCOUNT_NAME" \
+    --container-name "$STATE_CONTAINER_NAME" \
+    --name "$PROBE_STATE_KEY" \
+    --query exists \
+    --output tsv
+)"
 
+if test "$REMOVAL_PATH" = "abandoned_pre_migration_cleanup"; then
+  export MAIN_STATE_STATUS="unreadable"
+  export PROBE_STATE_STATUS="unreadable"
   test "$MAIN_STATE_EXISTS" = "false"
   test "$PROBE_STATE_EXISTS" = "false"
 
-  export MAIN_STATE_STATUS="absent"
-  export MAIN_MANAGED_RESOURCE_COUNT="0"
-  export PROBE_STATE_STATUS="absent"
-  export PROBE_MANAGED_RESOURCE_COUNT="0"
+  if test "$MAIN_STATE_EXISTS" = "false" &&
+    test "$PROBE_STATE_EXISTS" = "false"; then
+    export MAIN_STATE_STATUS="absent"
+    export MAIN_MANAGED_RESOURCE_COUNT="0"
+    export PROBE_STATE_STATUS="absent"
+    export PROBE_MANAGED_RESOURCE_COUNT="0"
+  fi
 else
-  terraform -chdir=terraform init \
-    -reconfigure \
-    -input=false \
-    -backend-config=backend.hcl
-  terraform -chdir=terraform/capacity-probe init \
-    -reconfigure \
-    -input=false \
-    -backend-config=backend.hcl
+  if test "$MAIN_STATE_EXISTS" = "true"; then
+    terraform -chdir=terraform init \
+      -reconfigure \
+      -input=false \
+      -backend-config=backend.hcl
+    if MAIN_STATE_ADDRESSES="$(terraform -chdir=terraform state list)"; then
+      export MAIN_MANAGED_RESOURCE_COUNT="$(
+        awk 'NF {count++} END {print count + 0}' <<<"$MAIN_STATE_ADDRESSES"
+      )"
+      if test "$MAIN_MANAGED_RESOURCE_COUNT" -eq 0; then
+        export MAIN_STATE_STATUS="empty"
+      else
+        export MAIN_STATE_STATUS="managed"
+      fi
+    else
+      export MAIN_STATE_STATUS="unreadable"
+      export MAIN_MANAGED_RESOURCE_COUNT="-1"
+    fi
+  else
+    export MAIN_STATE_STATUS="absent"
+    export MAIN_MANAGED_RESOURCE_COUNT="0"
+  fi
 
-  export MAIN_MANAGED_RESOURCE_COUNT="$(
-    terraform -chdir=terraform state list | wc -l
-  )"
-  export PROBE_MANAGED_RESOURCE_COUNT="$(
-    terraform -chdir=terraform/capacity-probe state list | wc -l
-  )"
+  if test "$PROBE_STATE_EXISTS" = "true"; then
+    terraform -chdir=terraform/capacity-probe init \
+      -reconfigure \
+      -input=false \
+      -backend-config=backend.hcl
+    if PROBE_STATE_ADDRESSES="$(
+      terraform -chdir=terraform/capacity-probe state list
+    )"; then
+      export PROBE_MANAGED_RESOURCE_COUNT="$(
+        awk 'NF {count++} END {print count + 0}' <<<"$PROBE_STATE_ADDRESSES"
+      )"
+      if test "$PROBE_MANAGED_RESOURCE_COUNT" -eq 0; then
+        export PROBE_STATE_STATUS="empty"
+      else
+        export PROBE_STATE_STATUS="managed"
+      fi
+    else
+      export PROBE_STATE_STATUS="unreadable"
+      export PROBE_MANAGED_RESOURCE_COUNT="-1"
+    fi
+  else
+    export PROBE_STATE_STATUS="absent"
+    export PROBE_MANAGED_RESOURCE_COUNT="0"
+  fi
 
   test "$MAIN_MANAGED_RESOURCE_COUNT" -eq 0
   test "$PROBE_MANAGED_RESOURCE_COUNT" -eq 0
-
-  export MAIN_STATE_STATUS="empty"
-  export PROBE_STATE_STATUS="empty"
 fi
 ```
 
 For abandoned cleanup, stop if either existence result is `true`. For acceptance, stop if either
-resource count is nonzero. Separately destroy and verify that dependent root before returning to
+resource count is nonzero or unreadable; an absent state is allowed only when that dependent root
+was never created. Separately destroy and verify any nonempty dependent root before returning to
 A10. Do not relabel an existing state blob as absent or an uninspected state as empty.
 
 ### A10.3 Bind the authoritative local state
@@ -2229,7 +2457,11 @@ in an interactive terminal, not through a noninteractive task runner:
 read -r -p "Authorized unlock review reference: " \
   UNLOCK_APPROVAL_REFERENCE
 test -n "$UNLOCK_APPROVAL_REFERENCE"
+```
 
+If the prompt returns EOF or the reference is empty, stop without running the next block:
+
+```bash
 export UNLOCK_TFVARS="$BOOTSTRAP_STATE_DIR/unlock.tfvars.json"
 export UNLOCK_INPUT_MANIFEST="$BOOTSTRAP_STATE_DIR/unlock-inputs.json"
 export UNLOCK_PLAN="$BOOTSTRAP_STATE_DIR/unlock.tfplan"
@@ -2459,7 +2691,7 @@ terraform -chdir=terraform/bootstrap apply \
   -input=false \
   "$UNLOCK_STALE_PLAN" >"$UNLOCK_STALE_LOG" 2>&1
 UNLOCK_STALE_STATUS="$?"
-set -e
+set +e
 
 test "$UNLOCK_STALE_STATUS" -ne 0
 grep -Fq "Saved plan is stale" "$UNLOCK_STALE_LOG"
@@ -2477,7 +2709,11 @@ both approval events. Run the `read` command directly in an interactive terminal
 read -r -p "Authorized destroy review reference: " \
   DESTROY_APPROVAL_REFERENCE
 test -n "$DESTROY_APPROVAL_REFERENCE"
+```
 
+If the prompt returns EOF or the reference is empty, stop without running the next block:
+
+```bash
 export DESTROY_TFVARS="$BOOTSTRAP_STATE_DIR/destroy.tfvars.json"
 export DESTROY_INPUT_MANIFEST="$BOOTSTRAP_STATE_DIR/destroy-inputs.json"
 export DESTROY_PLAN="$BOOTSTRAP_STATE_DIR/destroy.tfplan"
@@ -2590,7 +2826,7 @@ printf 'jsonencode(local.backend_lifecycle)\n' |
   jq -r 'fromjson' |
   tee "$DESTROY_LIFECYCLE_EVIDENCE"
 DESTROY_PIPE_STATUSES=("${PIPESTATUS[@]}")
-set -e
+set +e
 
 test "${DESTROY_PIPE_STATUSES[0]}" -eq 0
 test "${DESTROY_PIPE_STATUSES[1]}" -eq 0
@@ -2703,7 +2939,7 @@ terraform -chdir=terraform/bootstrap apply \
   -input=false \
   "$DESTROY_STALE_PLAN" >"$DESTROY_STALE_LOG" 2>&1
 DESTROY_STALE_STATUS="$?"
-set -e
+set +e
 
 test "$DESTROY_STALE_STATUS" -ne 0
 grep -Fq "Saved plan is stale" "$DESTROY_STALE_LOG"
@@ -2830,6 +3066,14 @@ original run ID; do not substitute the cleanup-only removal run ID:
 ```bash
 if test "$REMOVAL_PATH" = "acceptance"; then
   export ACCEPTANCE_RUN_ID="<original-run-id>"
+  export LIVE_ACCEPTANCE_STATUS="<passed-or-failed>"
+  case "$LIVE_ACCEPTANCE_STATUS" in
+    passed|failed) ;;
+    *)
+      printf 'LIVE_ACCEPTANCE_STATUS must be passed or failed.\n' >&2
+      LIVE_ACCEPTANCE_STATUS="failed"
+      ;;
+  esac
   export ACCEPTANCE_EVIDENCE_ROOT="/evidence/quickstart/$ACCEPTANCE_RUN_ID"
   export ACCEPTANCE_BACKEND_EVIDENCE="$ACCEPTANCE_EVIDENCE_ROOT/backend-bootstrap"
   export RECOVERY_RESULTS="$ACCEPTANCE_BACKEND_EVIDENCE/operator-recovery.json"
@@ -2854,7 +3098,7 @@ if test "$REMOVAL_PATH" = "acceptance"; then
     '("(account_key|access_token|client_secret|password|sas_token)"[[:space:]]*:|-----BEGIN [A-Z ]*PRIVATE KEY-----|AccountKey=|SharedAccessSignature=|[?&]sig=)' \
     "$ACCEPTANCE_EVIDENCE_ROOT" >"$EVIDENCE_SECRET_SCAN_LOG"
   EVIDENCE_SECRET_SCAN_STATUS="$?"
-  set -e
+  set +e
 
   test "$GIT_SECRET_SCAN_STATUS" -eq 1
   test "$EVIDENCE_SECRET_SCAN_STATUS" -eq 1
@@ -2877,13 +3121,50 @@ if test "$REMOVAL_PATH" = "acceptance"; then
   test -f "$RECOVERY_RESULTS"
   test -f "$UNLOCK_LIFECYCLE_EVIDENCE"
   test -f "$DESTROY_LIFECYCLE_EVIDENCE"
-  export DEPENDENT_STAGE_REFERENCE="<actual-Part-B-cleanup-evidence-path>"
+  export DEPENDENT_STAGE_REFERENCE="$ACCEPTANCE_EVIDENCE_ROOT/slurm-demo/main-cleanup.json"
+  export PROBE_CLEANUP_REFERENCE="$ACCEPTANCE_EVIDENCE_ROOT/slurm-demo/capacity-probe/capacity-probe.json"
   test -f "$DEPENDENT_STAGE_REFERENCE"
+  test -f "$PROBE_CLEANUP_REFERENCE"
+  jq -e \
+    '.status == "passed" and
+     .main.managed_resource_count == 0 and
+     .capacity_probe.managed_resource_count == 0 and
+     .capacity_probe.cleanup_verified' \
+    "$DEPENDENT_STAGE_REFERENCE" >/dev/null
+  jq -e \
+    '.allocation_state == "allocated" and .cleanup_state == "verified"' \
+    "$PROBE_CLEANUP_REFERENCE" >/dev/null
 
-  tee_output "$LIVE_ACCEPTANCE_EVIDENCE" \
+  LIVE_ACCEPTANCE_GATES_PASSED="false"
+  if test -f "$RECOVERY_RESULTS" &&
+    test -f "$BOOTSTRAP_TIMING" &&
+    test "$REVERSE_LOCAL_MODE" = "0600" &&
+    test "$REVERSE_LINEAGE_MATCHES" = "true" &&
+    test "$REVERSE_RESOURCE_COUNT_MATCHES" = "true" &&
+    test "$REVERSE_DIGEST_MATCHES" = "true" &&
+    test "$GIT_SECRET_SCAN_STATUS" -eq 1 &&
+    test "$EVIDENCE_SECRET_SCAN_STATUS" -eq 1 &&
+    test "$PROHIBITED_ARTIFACT_COUNT" -eq 0 &&
+    test -f "$DEPENDENT_STAGE_REFERENCE" &&
+    test -f "$PROBE_CLEANUP_REFERENCE" &&
+    jq -e \
+      '.status == "passed" and
+       .main.managed_resource_count == 0 and
+       .capacity_probe.managed_resource_count == 0 and
+       .capacity_probe.cleanup_verified' \
+      "$DEPENDENT_STAGE_REFERENCE" >/dev/null &&
+    jq -e \
+      '.allocation_state == "allocated" and .cleanup_state == "verified"' \
+      "$PROBE_CLEANUP_REFERENCE" >/dev/null; then
+    LIVE_ACCEPTANCE_GATES_PASSED="true"
+  fi
+
+  if test "$LIVE_ACCEPTANCE_GATES_PASSED" = "true"; then
+    tee_output "$LIVE_ACCEPTANCE_EVIDENCE" \
     jq -n \
       --arg source_commit "$SOURCE_COMMIT" \
       --arg run_id "$ACCEPTANCE_RUN_ID" \
+      --arg acceptance_status "$LIVE_ACCEPTANCE_STATUS" \
       --slurpfile timing "$BOOTSTRAP_TIMING" \
       --slurpfile recovery "$RECOVERY_RESULTS" \
       --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -2955,13 +3236,13 @@ if test "$REMOVAL_PATH" = "acceptance"; then
           undocumented_command_count: 0,
           workflow_substitution_count: 0
         },
-        status: "passed"
+        status: $acceptance_status
       }'
 
-  tee_output "$LIVE_ACCEPTANCE_EVIDENCE.sha256" \
-    sha256sum "$LIVE_ACCEPTANCE_EVIDENCE"
+    tee_output "$LIVE_ACCEPTANCE_EVIDENCE.sha256" \
+      sha256sum "$LIVE_ACCEPTANCE_EVIDENCE"
 
-  .venv/bin/python - "$LIVE_ACCEPTANCE_EVIDENCE" "$LIVE_ACCEPTANCE_SCHEMA" <<'PY'
+    .venv/bin/python - "$LIVE_ACCEPTANCE_EVIDENCE" "$LIVE_ACCEPTANCE_SCHEMA" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -2976,7 +3257,11 @@ Draft202012Validator(
 ).validate(evidence)
 PY
 
-  sha256sum -c "$LIVE_ACCEPTANCE_EVIDENCE.sha256"
+    sha256sum -c "$LIVE_ACCEPTANCE_EVIDENCE.sha256"
+  else
+    printf 'Live-acceptance gates failed; no success-shaped evidence was written.\n' >&2
+  fi
+  test "$LIVE_ACCEPTANCE_GATES_PASSED" = "true"
 fi
 ```
 
@@ -3000,13 +3285,14 @@ only for a combined backend and Slurm acceptance run.
    bootstrap state to Azure Blob, prove remote state and locking, and export current final
    readiness.
 2. Complete A8 to initialize the main and capacity-probe roots with their exact distinct keys.
-3. Complete A9 when replacement-operator recovery is part of the acceptance run.
-4. Do **not** execute A10 yet. Keep the storage account, container, deletion lock, role
+3. Do **not** execute A9 or A10 yet. Keep the storage account, container, deletion lock, role
    assignments, and all three state namespaces available.
-5. Continue to Part B using the same `RUN_ID`, `SOURCE_COMMIT`, final readiness evidence, backend
+4. Continue through B10 using the same `RUN_ID`, `SOURCE_COMMIT`, final readiness evidence, backend
    coordinates, and execution context.
-6. After Part B cleanup proves the main and capacity-probe namespaces contain zero managed
-   resources, return to A10. For a completed combined run, reverse-migrate bootstrap state and use
+5. Execute A9 while bootstrap, main, and capacity-probe state blobs remain available.
+6. Execute B11 to remove the main deployment and verify both dependent states are empty.
+7. After B11 passes, return to A10. For a completed combined run, reverse-migrate bootstrap state
+   and use
    `state_migration_status = "reverse_migrated"` with
    `reverse_migration_verified = true`.
 
@@ -3055,8 +3341,8 @@ old evidence timestamp.
 # Part B: Slurm bursting demo
 
 Part B assumes the combined-run path in A11 retained the managed backend, produced current final
-readiness, and initialized the main and capacity-probe roots. Return to A10 only after Part B
-cleanup.
+readiness, and initialized the main and capacity-probe roots. After B10, execute A9, then return to
+B11 for cleanup. Return to A10 only after B11 passes.
 
 ## B1. Prepare the protected demo inputs
 
@@ -3066,6 +3352,8 @@ export TFVARS_FILE="$PWD/terraform/environments/demo.tfvars"
 cp terraform/environments/demo.tfvars.example "$TFVARS_FILE"
 chmod 0600 "$TFVARS_FILE"
 git check-ignore -v "$TFVARS_FILE"
+
+persist_run_context
 ```
 
 Edit the file with approved:
@@ -3113,12 +3401,24 @@ Export and render static preflight evidence:
 ```bash
 export PREFLIGHT_RESULTS_FILE="$DEMO_EVIDENCE_DIR/preflight.json"
 
-tee_output "$PREFLIGHT_RESULTS_FILE" \
-  tests/end-to-end/preflight.sh
+persist_run_context
 
-tee_output "$DEMO_EVIDENCE_DIR/preflight-summary.md" \
-  tests/end-to-end/render_preflight_summary.sh \
-    "$PREFLIGHT_RESULTS_FILE"
+if tee_output "$PREFLIGHT_RESULTS_FILE" \
+  tests/end-to-end/preflight.sh; then
+  PREFLIGHT_STATUS=0
+  tee_output "$DEMO_EVIDENCE_DIR/preflight-summary.md" \
+    tests/end-to-end/render_preflight_summary.sh \
+      "$PREFLIGHT_RESULTS_FILE"
+  PREFLIGHT_SUMMARY_STATUS="$?"
+else
+  PREFLIGHT_STATUS="$?"
+  PREFLIGHT_SUMMARY_STATUS=1
+  printf 'Preflight failed with exit status %s; summary generation was skipped.\n' \
+    "$PREFLIGHT_STATUS" >&2
+fi
+
+test "$PREFLIGHT_STATUS" -eq 0
+test "$PREFLIGHT_SUMMARY_STATUS" -eq 0
 ```
 
 Review the Markdown summary in VS Code, but treat the JSON as authoritative. Confirm:
@@ -3152,6 +3452,8 @@ install -d -m 0700 "$PROBE_EVIDENCE_DIR"
 
 cp terraform/capacity-probe/probe.tfvars.example "$PROBE_TFVARS_FILE"
 chmod 0600 "$PROBE_TFVARS_FILE"
+
+persist_run_context
 ```
 
 Edit `$PROBE_TFVARS_FILE` with the exact selected subscription, tenant, environment, burst
@@ -3179,18 +3481,73 @@ Review the exact saved plan, calculate the already emitted digest, and create
 Apply only that reviewed plan:
 
 ```bash
-tests/end-to-end/capacity_probe.sh apply
+if tests/end-to-end/capacity_probe.sh apply; then
+  PROBE_APPLY_STATUS=0
+else
+  PROBE_APPLY_STATUS="$?"
+  printf 'Capacity-probe apply failed with exit status %s; acceptance stops, but continue only with the reviewed cleanup path.\n' \
+    "$PROBE_APPLY_STATUS" >&2
+fi
+test "$PROBE_APPLY_STATUS" -eq 0
 ```
 
-Require one exact burst node to allocate within 15 minutes. Create and separately approve cleanup:
+Require one exact burst node to allocate within 15 minutes. Generate the cleanup plan, capturing
+failure without terminating the operator shell:
 
 ```bash
-tests/end-to-end/capacity_probe.sh cleanup-plan
-tests/end-to-end/capacity_probe.sh cleanup
+if tests/end-to-end/capacity_probe.sh cleanup-plan; then
+  PROBE_CLEANUP_PLAN_STATUS=0
+else
+  PROBE_CLEANUP_PLAN_STATUS="$?"
+  printf 'Capacity-probe cleanup planning failed with exit status %s.\n' \
+    "$PROBE_CLEANUP_PLAN_STATUS" >&2
+fi
+test "$PROBE_CLEANUP_PLAN_STATUS" -eq 0
+```
 
-jq -e \
-  '.allocation_state == "allocated" and .cleanup_state == "verified"' \
-  "$PROBE_EVIDENCE_DIR/capacity-probe.json"
+Review the exact destroy plan and digest. Only afterward, create its separate protected approval:
+
+```bash
+terraform -chdir=terraform/capacity-probe show -no-color \
+  "$PROBE_DESTROY_PLAN_FILE"
+
+if read -r -p "Authorized capacity-probe cleanup reference: " \
+  PROBE_CLEANUP_APPROVAL_REFERENCE &&
+  test -n "$PROBE_CLEANUP_APPROVAL_REFERENCE"; then
+  jq -n \
+    --arg plan_digest "$(
+      sha256sum "$PROBE_DESTROY_PLAN_FILE" | awk '{print $1}'
+    )" \
+    --arg approval_reference "$PROBE_CLEANUP_APPROVAL_REFERENCE" \
+    '{
+      plan_digest: $plan_digest,
+      cost_acknowledged: true,
+      approval_reference: $approval_reference
+    }' >"$PROBE_CLEANUP_APPROVAL_FILE"
+  chmod 0600 "$PROBE_CLEANUP_APPROVAL_FILE"
+else
+  printf 'No capacity-probe cleanup approval was recorded; stop.\n' >&2
+fi
+test -f "$PROBE_CLEANUP_APPROVAL_FILE"
+```
+
+Apply only the approved cleanup plan and verify the bounded result:
+
+```bash
+if tests/end-to-end/capacity_probe.sh cleanup; then
+  PROBE_CLEANUP_STATUS=0
+else
+  PROBE_CLEANUP_STATUS="$?"
+  printf 'Capacity-probe cleanup failed with exit status %s; retain logs and stop.\n' \
+    "$PROBE_CLEANUP_STATUS" >&2
+fi
+
+if test "$PROBE_CLEANUP_STATUS" -eq 0; then
+  jq -e \
+    '.allocation_state == "allocated" and .cleanup_state == "verified"' \
+    "$PROBE_EVIDENCE_DIR/capacity-probe.json"
+fi
+test "$PROBE_CLEANUP_STATUS" -eq 0
 ```
 
 Stop if allocation or cleanup fails. Probe success is point-in-time evidence, not a future or
@@ -3205,16 +3562,23 @@ export PLAN_FILE="$DEMO_STATE_DIR/main.tfplan"
 export APPROVAL_FILE="$DEMO_STATE_DIR/main-plan-approval.json"
 export CAPACITY_PROBE_RESULTS_FILE="$PROBE_EVIDENCE_DIR/capacity-probe.json"
 
-terraform -chdir=terraform validate
+persist_run_context
 
-terraform -chdir=terraform plan \
-  -input=false \
-  -var-file="$TFVARS_FILE" \
-  -out="$PLAN_FILE"
-
-tee_output "$DEMO_STATE_DIR/main.tfplan.sha256" \
-  sha256sum "$PLAN_FILE"
-terraform -chdir=terraform show -no-color "$PLAN_FILE"
+if terraform -chdir=terraform validate &&
+  terraform -chdir=terraform plan \
+    -input=false \
+    -var-file="$TFVARS_FILE" \
+    -out="$PLAN_FILE"; then
+  MAIN_PLAN_STATUS=0
+  tee_output "$DEMO_STATE_DIR/main.tfplan.sha256" \
+    sha256sum "$PLAN_FILE"
+  terraform -chdir=terraform show -no-color "$PLAN_FILE"
+else
+  MAIN_PLAN_STATUS="$?"
+  printf 'Main planning failed with exit status %s; no approval may be created.\n' \
+    "$MAIN_PLAN_STATUS" >&2
+fi
+test "$MAIN_PLAN_STATUS" -eq 0
 ```
 
 Review interactively and confirm:
@@ -3250,7 +3614,14 @@ approval.
 ```bash
 export EVIDENCE_DIR="$DEMO_EVIDENCE_DIR"
 
-tests/end-to-end/provision.sh
+if tests/end-to-end/provision.sh; then
+  MAIN_APPLY_STATUS=0
+else
+  MAIN_APPLY_STATUS="$?"
+  printf 'Main apply failed with exit status %s; retain protected logs and stop.\n' \
+    "$MAIN_APPLY_STATUS" >&2
+fi
+test "$MAIN_APPLY_STATUS" -eq 0
 ```
 
 The script verifies all three approved digests, rejects stale preflight evidence, applies only
@@ -3335,10 +3706,13 @@ export IDLE_TIMEOUT_MINUTES="<idle-timeout>"
 export DEMO_UID_GID="<numeric-demo-uid>"
 export EVIDENCE_DIR="<protected-temporary-directory-on-scheduler>"
 
+set +e
 tests/end-to-end/run_burst_demo.sh 2>&1 |
   tee "$EVIDENCE_DIR/run-burst-demo.log"
+BURST_PIPE_STATUSES=("${PIPESTATUS[@]}")
 
-test "${PIPESTATUS[0]}" -eq 0
+test "${BURST_PIPE_STATUSES[0]}" -eq 0
+test "${BURST_PIPE_STATUSES[1]}" -eq 0
 ```
 
 Require, within 15 minutes under normal regional capacity:
@@ -3364,7 +3738,14 @@ export VALIDATION_RESULTS_FILE="$DEMO_EVIDENCE_DIR/validation-results.json"
 export EVIDENCE_DIR="$DEMO_EVIDENCE_DIR/audit"
 
 install -d -m 0700 "$EVIDENCE_DIR"
-tests/end-to-end/collect_audit_evidence.sh
+if tests/end-to-end/collect_audit_evidence.sh; then
+  AUDIT_EVIDENCE_STATUS=0
+else
+  AUDIT_EVIDENCE_STATUS="$?"
+  printf 'Audit evidence collection failed with exit status %s; stop.\n' \
+    "$AUDIT_EVIDENCE_STATUS" >&2
+fi
+test "$AUDIT_EVIDENCE_STATUS" -eq 0
 ```
 
 Confirm the package contains 90-day validation, administration, secret-access, configuration,
@@ -3382,10 +3763,11 @@ terraform -chdir=terraform plan \
   -var-file="$TFVARS_FILE" \
   -no-color 2>&1 |
   tee "$DEMO_STATE_DIR/final-no-change-plan.log"
-FINAL_PLAN_STATUS="${PIPESTATUS[0]}"
-set -e
+FINAL_PLAN_PIPE_STATUSES=("${PIPESTATUS[@]}")
+FINAL_PLAN_STATUS="${FINAL_PLAN_PIPE_STATUSES[0]}"
 
 test "$FINAL_PLAN_STATUS" -eq 0
+test "${FINAL_PLAN_PIPE_STATUSES[1]}" -eq 0
 ```
 
 For `-detailed-exitcode`, `0` means no changes, `1` means an error, and `2` means changes are
@@ -3394,6 +3776,255 @@ unreviewed raw plan.
 
 Confirm Chef and template-processor reruns remain no-op, then record the completion time and
 secret-scan result.
+
+After B10 passes, execute A9 before continuing.
+
+## B11. Remove the main deployment and verify dependent states
+
+Return from A9 to the original operator shell. Re-establish the protected paths if necessary, then
+create a distinct main-destroy plan. Never use `terraform destroy -auto-approve`:
+
+For a successful T057 run, execute B11 after B10 and A9. If B3 through B10 fails after Azure
+resources may have been created, the acceptance run is permanently failed, but the operator may
+still execute A9, then B11, then A10 to clean up safely. Set the A10 live-acceptance status to
+`failed`; successful cleanup must never relabel the failed run as passed.
+
+```bash
+export TFVARS_FILE="$PWD/terraform/environments/demo.tfvars"
+export DEMO_STATE_DIR="/state/slurm-demo/$RUN_ID"
+export DEMO_EVIDENCE_DIR="/evidence/quickstart/$RUN_ID/slurm-demo"
+export MAIN_DESTROY_PLAN="$DEMO_STATE_DIR/main-destroy.tfplan"
+export MAIN_DESTROY_PLAN_DIGEST="$DEMO_STATE_DIR/main-destroy.tfplan.sha256"
+export MAIN_DESTROY_STALE_PLAN="$DEMO_STATE_DIR/main-destroy-stale.tfplan"
+export MAIN_DESTROY_STALE_LOG="$DEMO_STATE_DIR/main-destroy-stale.log"
+export MAIN_DESTROY_INPUT_MANIFEST="$DEMO_STATE_DIR/main-destroy-inputs.json"
+export MAIN_DESTROY_APPROVAL="$DEMO_STATE_DIR/main-destroy-approval.json"
+export MAIN_DESTROY_APPROVAL_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-plan-approval.schema.json"
+export MAIN_CLEANUP_EVIDENCE="$DEMO_EVIDENCE_DIR/main-cleanup.json"
+
+test -f "$TFVARS_FILE"
+test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+
+terraform -chdir=terraform state pull \
+  >"$DEMO_STATE_DIR/main-state-before-destroy.json"
+chmod 0600 "$DEMO_STATE_DIR/main-state-before-destroy.json"
+
+if MAIN_PRE_DESTROY_ADDRESSES="$(terraform -chdir=terraform state list)"; then
+  MAIN_PRE_DESTROY_STATE_STATUS=0
+else
+  MAIN_PRE_DESTROY_STATE_STATUS="$?"
+fi
+test "$MAIN_PRE_DESTROY_STATE_STATUS" -eq 0
+export MAIN_PRE_DESTROY_RESOURCE_COUNT="$(
+  awk 'NF {count++} END {print count + 0}' \
+    <<<"$MAIN_PRE_DESTROY_ADDRESSES"
+)"
+
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg tfvars_sha256 "$(sha256sum "$TFVARS_FILE" | awk '{print $1}')" \
+  --arg state_lineage "$(
+    jq -r '.lineage' "$DEMO_STATE_DIR/main-state-before-destroy.json"
+  )" \
+  --argjson managed_resource_count "$MAIN_PRE_DESTROY_RESOURCE_COUNT" \
+  '{
+    source_commit: $source_commit,
+    tfvars_sha256: $tfvars_sha256,
+    state_lineage: $state_lineage,
+    managed_resource_count: $managed_resource_count
+  }' >"$MAIN_DESTROY_INPUT_MANIFEST"
+chmod 0600 "$MAIN_DESTROY_INPUT_MANIFEST"
+```
+
+Generate the saved destroy plan and capture failure without enabling `errexit`:
+
+```bash
+if terraform -chdir=terraform plan \
+  -destroy \
+  -input=false \
+  -var-file="$TFVARS_FILE" \
+  -out="$MAIN_DESTROY_PLAN"; then
+  MAIN_DESTROY_PLAN_STATUS=0
+  sha256sum "$MAIN_DESTROY_PLAN" >"$MAIN_DESTROY_PLAN_DIGEST"
+  cp --preserve=mode "$MAIN_DESTROY_PLAN" "$MAIN_DESTROY_STALE_PLAN"
+  chmod 0600 \
+    "$MAIN_DESTROY_PLAN" \
+    "$MAIN_DESTROY_PLAN_DIGEST" \
+    "$MAIN_DESTROY_STALE_PLAN"
+else
+  MAIN_DESTROY_PLAN_STATUS="$?"
+  printf 'Main destroy planning failed with exit status %s; stop.\n' \
+    "$MAIN_DESTROY_PLAN_STATUS" >&2
+fi
+test "$MAIN_DESTROY_PLAN_STATUS" -eq 0
+```
+
+Mechanically reject an empty plan or any action other than deletion, then review the human-readable
+plan:
+
+```bash
+export MAIN_DESTROY_CHANGE_SUMMARY="$(
+  terraform -chdir=terraform show -json "$MAIN_DESTROY_PLAN" |
+    jq -c '[
+      .resource_changes[]? |
+      select(.change.actions != ["no-op"]) |
+      {address: .address, actions: .change.actions}
+    ]'
+)"
+
+test "$(jq 'length' <<<"$MAIN_DESTROY_CHANGE_SUMMARY")" -gt 0
+jq -e 'all(.[]; .actions == ["delete"])' \
+  <<<"$MAIN_DESTROY_CHANGE_SUMMARY" >/dev/null
+terraform -chdir=terraform show -no-color "$MAIN_DESTROY_PLAN"
+```
+
+Only after review, create a post-generation protected approval record:
+
+```bash
+if read -r -p "Authorized main cleanup reference: " \
+  MAIN_DESTROY_APPROVAL_REFERENCE &&
+  test -n "$MAIN_DESTROY_APPROVAL_REFERENCE"; then
+  jq -n \
+    --arg source_commit "$SOURCE_COMMIT" \
+    --arg input_digest "$(
+      sha256sum "$MAIN_DESTROY_INPUT_MANIFEST" | awk '{print $1}'
+    )" \
+    --arg plan_digest "$(sha256sum "$MAIN_DESTROY_PLAN" | awk '{print $1}')" \
+    --arg plan_created_at "$(
+      date -u -r "$MAIN_DESTROY_PLAN" +%Y-%m-%dT%H:%M:%SZ
+    )" \
+    --arg approved_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg approval_reference "$MAIN_DESTROY_APPROVAL_REFERENCE" \
+    '{
+      schema_version: "1.0",
+      action: "destroy",
+      source_commit: $source_commit,
+      input_digest: $input_digest,
+      plan_digest: $plan_digest,
+      plan_created_at: $plan_created_at,
+      approved_at: $approved_at,
+      approval_reference: $approval_reference
+    }' >"$MAIN_DESTROY_APPROVAL"
+  chmod 0600 "$MAIN_DESTROY_APPROVAL"
+else
+  printf 'No main cleanup approval was recorded; stop.\n' >&2
+fi
+test -f "$MAIN_DESTROY_APPROVAL"
+
+.venv/bin/python - "$MAIN_DESTROY_APPROVAL" "$MAIN_DESTROY_APPROVAL_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+approval = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(approval)
+PY
+```
+
+Revalidate every binding and apply only the exact approved plan:
+
+```bash
+sha256sum -c "$MAIN_DESTROY_PLAN_DIGEST"
+test "$(jq -r '.source_commit' "$MAIN_DESTROY_APPROVAL")" = "$SOURCE_COMMIT"
+test "$(jq -r '.input_digest' "$MAIN_DESTROY_APPROVAL")" = \
+  "$(sha256sum "$MAIN_DESTROY_INPUT_MANIFEST" | awk '{print $1}')"
+test "$(jq -r '.plan_digest' "$MAIN_DESTROY_APPROVAL")" = \
+  "$(sha256sum "$MAIN_DESTROY_PLAN" | awk '{print $1}')"
+
+if terraform -chdir=terraform apply \
+  -input=false \
+  "$MAIN_DESTROY_PLAN"; then
+  MAIN_DESTROY_APPLY_STATUS=0
+else
+  MAIN_DESTROY_APPLY_STATUS="$?"
+  printf 'Main cleanup apply failed with exit status %s; retain state and stop.\n' \
+    "$MAIN_DESTROY_APPLY_STATUS" >&2
+fi
+test "$MAIN_DESTROY_APPLY_STATUS" -eq 0
+```
+
+Prove the duplicate saved plan is stale without allowing its expected failure to terminate the
+shell:
+
+```bash
+set +e
+MAIN_DESTROY_STALE_REJECTED="false"
+terraform -chdir=terraform apply \
+  -input=false \
+  "$MAIN_DESTROY_STALE_PLAN" >"$MAIN_DESTROY_STALE_LOG" 2>&1
+MAIN_DESTROY_STALE_STATUS="$?"
+
+if test "$MAIN_DESTROY_STALE_STATUS" -eq 0; then
+  printf 'The duplicate main destroy plan was unexpectedly accepted; stop.\n' >&2
+else
+  grep -Eiq 'saved plan is stale|state has changed' \
+    "$MAIN_DESTROY_STALE_LOG"
+  MAIN_DESTROY_STALE_REJECTED="true"
+fi
+test "$MAIN_DESTROY_STALE_STATUS" -ne 0
+test "$MAIN_DESTROY_STALE_REJECTED" = "true"
+```
+
+Finally, verify that main and capacity-probe state are readable and empty, then emit bounded
+dependent-cleanup evidence:
+
+```bash
+if MAIN_REMAINING_ADDRESSES="$(
+  terraform -chdir=terraform state list \
+    2>"$DEMO_STATE_DIR/main-state-list-after-cleanup.log"
+)"; then
+  MAIN_STATE_LIST_STATUS=0
+else
+  MAIN_STATE_LIST_STATUS="$?"
+fi
+
+if PROBE_REMAINING_ADDRESSES="$(
+  terraform -chdir=terraform/capacity-probe state list \
+    2>"$DEMO_STATE_DIR/probe-state-list-after-cleanup.log"
+)"; then
+  PROBE_STATE_LIST_STATUS=0
+else
+  PROBE_STATE_LIST_STATUS="$?"
+fi
+
+test "$MAIN_STATE_LIST_STATUS" -eq 0
+test "$PROBE_STATE_LIST_STATUS" -eq 0
+test -z "$MAIN_REMAINING_ADDRESSES"
+test -z "$PROBE_REMAINING_ADDRESSES"
+
+tee_output "$MAIN_CLEANUP_EVIDENCE" \
+  jq -n \
+    --arg source_commit "$SOURCE_COMMIT" \
+    --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg plan_digest "$(sha256sum "$MAIN_DESTROY_PLAN" | awk '{print $1}')" \
+    --arg approval_reference "$MAIN_DESTROY_APPROVAL_REFERENCE" \
+    --argjson stale_plan_rejected "$MAIN_DESTROY_STALE_REJECTED" \
+    '{
+      schema_version: "1.0",
+      source_commit: $source_commit,
+      completed_at: $completed_at,
+      main: {
+        managed_resource_count: 0,
+        destroy_plan_digest: $plan_digest,
+        approval_reference: $approval_reference,
+        applied_plan_digest_matches: true,
+        stale_plan_rejected: $stale_plan_rejected
+      },
+      capacity_probe: {
+        managed_resource_count: 0,
+        cleanup_verified: true
+      },
+      status: "passed"
+    }'
+```
+
+Do not return to A10 unless B11 ends with both dependent resource counts equal to zero.
 
 ## 3. Final acceptance and stop rules
 

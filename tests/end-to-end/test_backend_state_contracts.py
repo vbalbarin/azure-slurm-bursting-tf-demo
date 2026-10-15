@@ -321,7 +321,8 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
         not in runbook
     )
     assert "from referencing import Registry, Resource" in runbook
-    assert "A1 through A9, continue with Part B" in runbook
+    assert "run A1 through A8" in runbook
+    assert "execute A9 after B10 and before B11" in runbook
     assert "return to a10 only after" in runbook.lower()
     assert "FINAL_RESOURCE_CHANGE_COUNT" in runbook
     assert "FINAL_OUTPUT_CHANGE_COUNT" in runbook
@@ -331,6 +332,36 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     assert 'test "$REVERSE_DIGEST_MATCHES" = "true"' in runbook
     assert "backend-live-acceptance.json" in runbook
     assert "abandoned_pre_migration_cleanup" in runbook
+    assert "## B11. Remove the main deployment" in runbook
+    assert "MAIN_DESTROY_APPROVAL" in runbook
+    assert "MAIN_DESTROY_STALE_REJECTED" in runbook
+    assert "BURST_PIPE_STATUSES" in runbook
+    assert "FINAL_PLAN_PIPE_STATUSES" in runbook
+    assert not any(line.strip() == "set -e" for line in runbook.splitlines())
+
+
+def test_runbook_persists_only_protected_run_context() -> None:
+    runbook = (ROOT / "docs/quickstart-evidence-runbook.md").read_text()
+    helper = runbook.split("persist_run_context() {", 1)[1].split("```", 1)[0]
+
+    assert 'RUN_CONTEXT_DIR="/state/evidence-runs/$RUN_ID"' in helper
+    assert 'printf "export ' not in helper
+    assert "printf 'export RUN_ID=%q\\n'" in helper
+    assert "declare -f persist_run_context" in helper
+    assert 'chmod 0600 "$temporary_file"' in helper
+    assert 'test ! -L "$RUN_CONTEXT_FILE"' in helper
+    assert 'stat -c \'%u\'' in helper
+    assert runbook.count("persist_run_context\n") >= 6
+    assert 'source "$RUN_CONTEXT_FILE"' in runbook
+    assert 'bash -n "$RUN_CONTEXT_FILE"' in runbook
+    for forbidden in (
+        "access_token",
+        "account_key",
+        "client_secret",
+        "password",
+        "sas_token",
+    ):
+        assert forbidden not in helper.lower()
 
 
 def test_migration_contract_records_digest_only_disposition() -> None:
