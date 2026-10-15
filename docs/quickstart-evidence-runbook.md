@@ -564,42 +564,223 @@ backend-coordinates-validation.json
 
 ## A5. Perform preliminary readiness from the actual runner
 
-Run each observation directly from the runner that will use the backend:
+The commands in this subsection cover the managed `restricted_public` path with an interactive
+`User` identity. Private mode and service-principal execution require a separately approved
+execution-context procedure. Do not reinterpret these commands for another mode.
+
+Prepare protected paths and derive non-secret coordinates from the canonical A4 evidence:
 
 ```bash
-az account show \
-  --query '{subscription_id:id,tenant_id:tenantId,user_type:user.type}' \
-  --output json
+export PRELIMINARY_ASSERTIONS="$BOOTSTRAP_STATE_DIR/readiness-assertions-preliminary.json"
+export PRELIMINARY_TFVARS="$BOOTSTRAP_STATE_DIR/readiness-preliminary.tfvars.json"
+export PRELIMINARY_PLAN="$BOOTSTRAP_STATE_DIR/readiness-preliminary.tfplan"
+export PRELIMINARY_PLAN_DIGEST="$BOOTSTRAP_STATE_DIR/readiness-preliminary.tfplan.sha256"
+export PRELIMINARY_INPUT_MANIFEST="$BOOTSTRAP_STATE_DIR/readiness-preliminary-inputs.json"
+export PRELIMINARY_APPROVAL="$BOOTSTRAP_STATE_DIR/readiness-preliminary-approval.json"
+export READINESS_ASSERTIONS_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-readiness-assertions.schema.json"
+export PLAN_APPROVAL_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-plan-approval.schema.json"
 
-az storage account show \
-  --ids "<storage-account-resource-id>" \
-  --query '{id:id,publicNetworkAccess:publicNetworkAccess,allowSharedKeyAccess:allowSharedKeyAccess}' \
-  --output json
+export STORAGE_ACCOUNT_NAME="$(
+  jq -er '.storage_account_name' "$BACKEND_COORDINATES_FILE"
+)"
+export STORAGE_ACCOUNT_RESOURCE_ID="$(
+  jq -er '.resource_ids.storage_account' "$BACKEND_COORDINATES_FILE"
+)"
+export STATE_CONTAINER_NAME="$(
+  jq -er '.container_name' "$BACKEND_COORDINATES_FILE"
+)"
+export BLOB_HOST="$STORAGE_ACCOUNT_NAME.blob.core.windows.net"
 
-az storage container show \
-  --auth-mode login \
-  --account-name "<storage-account>" \
-  --name tfstate \
-  --query '{name:name}' \
-  --output json
+test "$(jq -r '.network_mode' "$BACKEND_COORDINATES_FILE")" = "restricted_public"
+test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+test -n "$READINESS_PRINCIPAL_ID"
 
-getent ahostsv4 "<storage-account>.blob.core.windows.net"
-
-curl --fail-with-body --silent --show-error --head \
-  "https://<storage-account>.blob.core.windows.net/tfstate?restype=container"
-
-az storage blob list \
-  --auth-mode login \
-  --account-name "<storage-account>" \
-  --container-name tfstate \
-  --num-results 1 \
-  --query 'length(@)'
+export ASSESSMENT_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-Record only bounded, non-secret values in a protected assertions file under
-`$BOOTSTRAP_STATE_DIR`, matching
-[`backend-readiness-assertions.schema.json`](../specs/003-terraform-backend-bootstrap/contracts/backend-readiness-assertions.schema.json).
-Use these exact stable command IDs:
+Run every observation directly. Keep raw results only in shell variables long enough to validate
+and reduce them to bounded values; do not write raw output to evidence.
+
+### A5.1 Account and active identity
+
+```bash
+export ACCOUNT_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+set +e
+ACCOUNT_JSON="$(
+  az account show \
+    --query '{subscription_id:id,tenant_id:tenantId,user_type:user.type}' \
+    --output json
+)"
+ACCOUNT_EXIT="$?"
+set -e
+test "$ACCOUNT_EXIT" -eq 0
+test "$(jq -r '.subscription_id' <<<"$ACCOUNT_JSON")" = \
+  "$(jq -r '.subscription_id' "$BACKEND_COORDINATES_FILE")"
+test "$(jq -r '.tenant_id' <<<"$ACCOUNT_JSON")" = \
+  "$(jq -r '.tenant_id' "$BACKEND_COORDINATES_FILE")"
+test "$(jq -r '.user_type' <<<"$ACCOUNT_JSON")" = "user"
+test "$(
+  az ad signed-in-user show --query id --output tsv
+)" = "$READINESS_PRINCIPAL_ID"
+```
+
+### A5.2 Storage account and container
+
+```bash
+export BACKEND_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+set +e
+BACKEND_JSON="$(
+  az storage account show \
+    --ids "$STORAGE_ACCOUNT_RESOURCE_ID" \
+    --query '{id:id,publicNetworkAccess:publicNetworkAccess,allowSharedKeyAccess:allowSharedKeyAccess}' \
+    --output json
+)"
+BACKEND_EXIT="$?"
+set -e
+test "$BACKEND_EXIT" -eq 0
+test "$(jq -r '.id' <<<"$BACKEND_JSON")" = "$STORAGE_ACCOUNT_RESOURCE_ID"
+test "$(jq -r '.publicNetworkAccess' <<<"$BACKEND_JSON")" = "Enabled"
+test "$(jq -r '.allowSharedKeyAccess' <<<"$BACKEND_JSON")" = "false"
+
+export CONTAINER_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+set +e
+CONTAINER_NAME_OBSERVED="$(
+  az storage container show \
+    --auth-mode login \
+    --account-name "$STORAGE_ACCOUNT_NAME" \
+    --name "$STATE_CONTAINER_NAME" \
+    --query name \
+    --output tsv
+)"
+CONTAINER_EXIT="$?"
+set -e
+test "$CONTAINER_EXIT" -eq 0
+test "$CONTAINER_NAME_OBSERVED" = "$STATE_CONTAINER_NAME"
+```
+
+If the container lookup fails immediately after role creation, stop the assessment, record the
+role-propagation interval separately, refresh Azure authentication, and begin a new assessment.
+Do not label a failed authorization command as passed.
+
+### A5.3 DNS and network reachability
+
+```bash
+export DNS_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+set +e
+DNS_OUTPUT="$(getent ahostsv4 "$BLOB_HOST")"
+DNS_EXIT="$?"
+set -e
+test "$DNS_EXIT" -eq 0
+
+export RESOLVED_BLOB_IPV4_JSON="$(
+  awk '{print $1}' <<<"$DNS_OUTPUT" |
+    sort -u |
+    jq -R . |
+    jq -s .
+)"
+test "$(jq 'length' <<<"$RESOLVED_BLOB_IPV4_JSON")" -gt 0
+
+export NETWORK_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+set +e
+NETWORK_HTTP_STATUS="$(
+  curl --ipv4 \
+    --silent \
+    --show-error \
+    --head \
+    --output /dev/null \
+    --write-out '%{http_code}' \
+    "https://$BLOB_HOST/$STATE_CONTAINER_NAME?restype=container"
+)"
+NETWORK_EXIT="$?"
+set -e
+test "$NETWORK_EXIT" -eq 0
+case "$NETWORK_HTTP_STATUS" in
+  200|400|401|403) ;;
+  *) printf 'Unexpected Blob HTTP status: %s\n' "$NETWORK_HTTP_STATUS" >&2; false ;;
+esac
+```
+
+An unauthenticated HTTP `403` is acceptable for the network check because it proves the private
+container endpoint is reachable; the authenticated Blob command below separately proves
+authorization. HTTP `000`, DNS failure, timeout, or transport failure blocks readiness.
+
+### A5.4 Blob authorization and state-key separation
+
+```bash
+export AUTHORIZATION_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+set +e
+BLOB_RESULT_COUNT="$(
+  az storage blob list \
+    --auth-mode login \
+    --account-name "$STORAGE_ACCOUNT_NAME" \
+    --container-name "$STATE_CONTAINER_NAME" \
+    --num-results 1 \
+    --query 'length(@)' \
+    --output tsv
+)"
+AUTHORIZATION_EXIT="$?"
+set -e
+test "$AUTHORIZATION_EXIT" -eq 0
+case "$BLOB_RESULT_COUNT" in
+  0|1) ;;
+  *) printf 'Unexpected Blob query count: %s\n' "$BLOB_RESULT_COUNT" >&2; false ;;
+esac
+
+export KEY_SEPARATION_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+set +e
+jq -e \
+  --arg environment "$BACKEND_ENVIRONMENT" \
+  '.state_keys.bootstrap == ($environment + "/bootstrap.tfstate") and
+   .state_keys.main == ($environment + "/main.tfstate") and
+   .state_keys.capacity_probe == ($environment + "/capacity-probe.tfstate") and
+   ([.state_keys[]] | unique | length) == 3' \
+  "$BACKEND_COORDINATES_FILE" >/dev/null
+KEY_SEPARATION_EXIT="$?"
+set -e
+test "$KEY_SEPARATION_EXIT" -eq 0
+```
+
+### A5.5 Bind the actual runner context
+
+Use the same approved external-source method used to prepare the restricted-public firewall input:
+
+```bash
+export PUBLIC_SOURCE_IPV4="$(
+  curl --ipv4 --fail --silent --show-error https://api.ipify.org
+)"
+
+export RUNNER_CONTEXT_JSON="$(
+  jq -cnS \
+    --arg subscription_id "$(jq -r '.subscription_id' "$BACKEND_COORDINATES_FILE")" \
+    --arg tenant_id "$(jq -r '.tenant_id' "$BACKEND_COORDINATES_FILE")" \
+    --arg principal_id "$READINESS_PRINCIPAL_ID" \
+    --arg network_mode "restricted_public" \
+    --arg public_source_ipv4 "$PUBLIC_SOURCE_IPV4" \
+    --argjson resolved_blob_ipv4_addresses "$RESOLVED_BLOB_IPV4_JSON" \
+    '{
+      subscription_id: $subscription_id,
+      tenant_id: $tenant_id,
+      principal_id: $principal_id,
+      network_mode: $network_mode,
+      observed_public_source_ipv4: $public_source_ipv4,
+      resolved_blob_ipv4_addresses: $resolved_blob_ipv4_addresses
+    }'
+)"
+
+export RUNNER_CONTEXT_DIGEST="$(
+  printf '%s' "$RUNNER_CONTEXT_JSON" |
+    sha256sum |
+    awk '{print $1}'
+)"
+export ASSESSMENT_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```
+
+Changing the identity, public source address, route, or resolved endpoint invalidates this
+assessment.
+
+### A5.6 Create and validate protected assertions
+
+The exact stable command IDs are:
 
 | Check | Command ID |
 |---|---|
@@ -613,27 +794,299 @@ Use these exact stable command IDs:
 | Migration | `terraform_state_pull` |
 | Locking | `terraform_lock_conflict` |
 
-Each observation contains its UTC time, exit code, `passed`, `failed`, or `not_run` status, and a
-bounded non-secret value. Preliminary readiness permits only migration and locking to be
-`not_run`, with null exit codes and empty observed values.
+Create the protected assertions atomically. Preliminary readiness records only migration and
+locking as `not_run`:
 
-Bind the assertions to:
+```bash
+export PRELIMINARY_ASSERTIONS_TMP="$PRELIMINARY_ASSERTIONS.tmp"
 
-- `$SOURCE_COMMIT`;
-- `$COORDINATES_DIGEST`;
-- the active tenant and principal;
-- the selected network mode;
-- sorted resolved Blob IPv4 addresses;
-- the observed public source IPv4 for restricted-public mode, or a canonical private-network
-  context digest for private mode; and
-- a SHA-256 digest of the canonical non-secret runner context.
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg coordinates_digest "$COORDINATES_DIGEST" \
+  --arg assessment_started_at "$ASSESSMENT_STARTED_AT" \
+  --arg assessment_completed_at "$ASSESSMENT_COMPLETED_AT" \
+  --arg runner_context_digest "$RUNNER_CONTEXT_DIGEST" \
+  --arg public_source_ipv4 "$PUBLIC_SOURCE_IPV4" \
+  --argjson resolved_blob_ipv4_addresses "$RESOLVED_BLOB_IPV4_JSON" \
+  --arg account_observed_at "$ACCOUNT_OBSERVED_AT" \
+  --argjson account_exit "$ACCOUNT_EXIT" \
+  --arg backend_observed_at "$BACKEND_OBSERVED_AT" \
+  --argjson backend_exit "$BACKEND_EXIT" \
+  --arg container_observed_at "$CONTAINER_OBSERVED_AT" \
+  --argjson container_exit "$CONTAINER_EXIT" \
+  --arg dns_observed_at "$DNS_OBSERVED_AT" \
+  --argjson dns_exit "$DNS_EXIT" \
+  --argjson resolved_count "$(jq 'length' <<<"$RESOLVED_BLOB_IPV4_JSON")" \
+  --arg network_observed_at "$NETWORK_OBSERVED_AT" \
+  --argjson network_exit "$NETWORK_EXIT" \
+  --arg network_http_status "$NETWORK_HTTP_STATUS" \
+  --arg authorization_observed_at "$AUTHORIZATION_OBSERVED_AT" \
+  --argjson authorization_exit "$AUTHORIZATION_EXIT" \
+  --arg blob_result_count "$BLOB_RESULT_COUNT" \
+  --arg key_observed_at "$KEY_SEPARATION_OBSERVED_AT" \
+  --argjson key_exit "$KEY_SEPARATION_EXIT" \
+  '{
+    schema_version: "1.0",
+    source_commit: $source_commit,
+    coordinates_digest: $coordinates_digest,
+    assessment_started_at: $assessment_started_at,
+    assessment_completed_at: $assessment_completed_at,
+    execution_context: {
+      network_mode: "restricted_public",
+      runner_context_digest: $runner_context_digest,
+      observed_public_source_ipv4: $public_source_ipv4,
+      private_network_context_digest: null,
+      resolved_blob_ipv4_addresses: $resolved_blob_ipv4_addresses,
+      observed_at: $assessment_completed_at
+    },
+    checks: {
+      account_context: {
+        command_id: "az_account_show",
+        observed_at: $account_observed_at,
+        exit_code: $account_exit,
+        status: "passed",
+        observed_value: "subscription_tenant_identity_match"
+      },
+      backend_exists: {
+        command_id: "az_storage_account_show",
+        observed_at: $backend_observed_at,
+        exit_code: $backend_exit,
+        status: "passed",
+        observed_value: "account_present_public_enabled_shared_key_disabled"
+      },
+      container_exists: {
+        command_id: "az_storage_container_show",
+        observed_at: $container_observed_at,
+        exit_code: $container_exit,
+        status: "passed",
+        observed_value: "container_name_match"
+      },
+      dns: {
+        command_id: "getent_blob_endpoint",
+        observed_at: $dns_observed_at,
+        exit_code: $dns_exit,
+        status: "passed",
+        observed_value: ("resolved_ipv4_count=" + ($resolved_count | tostring))
+      },
+      network: {
+        command_id: "curl_blob_endpoint",
+        observed_at: $network_observed_at,
+        exit_code: $network_exit,
+        status: "passed",
+        observed_value: ("http_status=" + $network_http_status)
+      },
+      authorization: {
+        command_id: "az_storage_blob_list",
+        observed_at: $authorization_observed_at,
+        exit_code: $authorization_exit,
+        status: "passed",
+        observed_value: ("blob_query_count=" + $blob_result_count)
+      },
+      state_key_separation: {
+        command_id: "terraform_coordinate_check",
+        observed_at: $key_observed_at,
+        exit_code: $key_exit,
+        status: "passed",
+        observed_value: "three_exact_pairwise_distinct_keys"
+      },
+      migration: {
+        command_id: "terraform_state_pull",
+        observed_at: $assessment_completed_at,
+        exit_code: null,
+        status: "not_run",
+        observed_value: ""
+      },
+      locking: {
+        command_id: "terraform_lock_conflict",
+        observed_at: $assessment_completed_at,
+        exit_code: null,
+        status: "not_run",
+        observed_value: ""
+      }
+    }
+  }' >"$PRELIMINARY_ASSERTIONS_TMP"
 
-A changed source address, route/context, identity, coordinate, or resolved endpoint invalidates
-readiness and requires a new assessment. Put the assertions into the protected bootstrap inputs,
-set `readiness_phase = "preliminary"`, create and approve an exact output plan, then apply only
-that plan.
+chmod 0600 "$PRELIMINARY_ASSERTIONS_TMP"
+mv "$PRELIMINARY_ASSERTIONS_TMP" "$PRELIMINARY_ASSERTIONS"
 
-Export the native Terraform classification:
+.venv/bin/python - \
+  "$PRELIMINARY_ASSERTIONS" \
+  "$READINESS_ASSERTIONS_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+assertions = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(assertions)
+PY
+```
+
+The assertions file is protected Terraform input and remains under `/state`; do not copy it into
+evidence.
+
+### A5.7 Create and approve the preliminary output plan
+
+Wrap the assertions in a protected JSON variable file:
+
+```bash
+export PRELIMINARY_TFVARS_TMP="$PRELIMINARY_TFVARS.tmp"
+
+jq -n \
+  --slurpfile assertions "$PRELIMINARY_ASSERTIONS" \
+  '{
+    readiness_phase: "preliminary",
+    readiness_assertions: $assertions[0]
+  }' >"$PRELIMINARY_TFVARS_TMP"
+
+chmod 0600 "$PRELIMINARY_TFVARS_TMP"
+mv "$PRELIMINARY_TFVARS_TMP" "$PRELIMINARY_TFVARS"
+```
+
+Create the exact output-only plan and protected input manifest:
+
+```bash
+terraform -chdir=terraform/bootstrap plan \
+  -input=false \
+  -var-file="$BOOTSTRAP_TFVARS" \
+  -var-file="$PRELIMINARY_TFVARS" \
+  -out="$PRELIMINARY_PLAN"
+
+tee_output "$PRELIMINARY_PLAN_DIGEST" \
+  sha256sum "$PRELIMINARY_PLAN"
+
+jq -n \
+  --arg bootstrap_tfvars_sha256 "$(
+    sha256sum "$BOOTSTRAP_TFVARS" |
+    awk '{print $1}'
+  )" \
+  --arg preliminary_tfvars_sha256 "$(
+    sha256sum "$PRELIMINARY_TFVARS" |
+    awk '{print $1}'
+  )" \
+  '{
+    bootstrap_tfvars_sha256: $bootstrap_tfvars_sha256,
+    preliminary_tfvars_sha256: $preliminary_tfvars_sha256
+  }' >"$PRELIMINARY_INPUT_MANIFEST"
+
+chmod 0600 \
+  "$PRELIMINARY_PLAN" \
+  "$PRELIMINARY_PLAN_DIGEST" \
+  "$PRELIMINARY_INPUT_MANIFEST"
+
+terraform -chdir=terraform/bootstrap show -no-color "$PRELIMINARY_PLAN"
+
+export PRELIMINARY_RESOURCE_CHANGE_COUNT="$(
+  terraform -chdir=terraform/bootstrap show -json "$PRELIMINARY_PLAN" |
+    jq '[
+      .resource_changes[]? |
+      select(.change.actions != ["no-op"])
+    ] | length'
+)"
+export PRELIMINARY_READINESS_OUTPUT_ACTIONS="$(
+  terraform -chdir=terraform/bootstrap show -json "$PRELIMINARY_PLAN" |
+    jq -c '.output_changes.backend_readiness.actions'
+)"
+export PRELIMINARY_OUTPUT_CHANGE_COUNT="$(
+  terraform -chdir=terraform/bootstrap show -json "$PRELIMINARY_PLAN" |
+    jq '[
+      .output_changes |
+      to_entries[] |
+      select(.value.actions != ["no-op"])
+    ] | length'
+)"
+
+test "$PRELIMINARY_RESOURCE_CHANGE_COUNT" -eq 0
+test "$PRELIMINARY_READINESS_OUTPUT_ACTIONS" = '["update"]'
+test "$PRELIMINARY_OUTPUT_CHANGE_COUNT" -eq 1
+```
+
+These checks reject any resource addition, update, replacement, or deletion and require the
+readiness output to be the only expected update. After an authorized reviewer approves that exact
+plan, create a separate protected approval record. Preliminary readiness remains part of the
+managed create lifecycle, so the current approval contract uses `action = "create"`:
+
+```bash
+read -r -p "Authorized preliminary-readiness approval reference: " \
+  PRELIMINARY_APPROVAL_REFERENCE
+test -n "$PRELIMINARY_APPROVAL_REFERENCE"
+test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+
+export PRELIMINARY_PLAN_CREATED_AT="$(
+  date -u -r "$PRELIMINARY_PLAN" +%Y-%m-%dT%H:%M:%SZ
+)"
+export PRELIMINARY_APPROVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export PRELIMINARY_INPUT_DIGEST="$(
+  sha256sum "$PRELIMINARY_INPUT_MANIFEST" |
+  awk '{print $1}'
+)"
+export PRELIMINARY_APPROVAL_TMP="$PRELIMINARY_APPROVAL.tmp"
+
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg input_digest "$PRELIMINARY_INPUT_DIGEST" \
+  --arg plan_digest "$(
+    sha256sum "$PRELIMINARY_PLAN" |
+    awk '{print $1}'
+  )" \
+  --arg plan_created_at "$PRELIMINARY_PLAN_CREATED_AT" \
+  --arg approved_at "$PRELIMINARY_APPROVED_AT" \
+  --arg approval_reference "$PRELIMINARY_APPROVAL_REFERENCE" \
+  '{
+    schema_version: "1.0",
+    action: "create",
+    source_commit: $source_commit,
+    input_digest: $input_digest,
+    plan_digest: $plan_digest,
+    plan_created_at: $plan_created_at,
+    approved_at: $approved_at,
+    approval_reference: $approval_reference
+  }' >"$PRELIMINARY_APPROVAL_TMP"
+
+chmod 0600 "$PRELIMINARY_APPROVAL_TMP"
+mv "$PRELIMINARY_APPROVAL_TMP" "$PRELIMINARY_APPROVAL"
+
+.venv/bin/python - \
+  "$PRELIMINARY_APPROVAL" \
+  "$PLAN_APPROVAL_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+approval = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(approval)
+PY
+```
+
+Immediately before apply, recheck every binding and apply only the saved plan:
+
+```bash
+sha256sum -c "$PRELIMINARY_PLAN_DIGEST"
+test "$(jq -r '.source_commit' "$PRELIMINARY_APPROVAL")" = "$SOURCE_COMMIT"
+test "$(jq -r '.input_digest' "$PRELIMINARY_APPROVAL")" = \
+  "$(sha256sum "$PRELIMINARY_INPUT_MANIFEST" | awk '{print $1}')"
+test "$(jq -r '.plan_digest' "$PRELIMINARY_APPROVAL")" = \
+  "$(sha256sum "$PRELIMINARY_PLAN" | awk '{print $1}')"
+
+terraform -chdir=terraform/bootstrap apply \
+  -input=false \
+  "$PRELIMINARY_PLAN"
+```
+
+### A5.8 Export and validate preliminary evidence
+
+Export the native Terraform classification and adjacent digest:
 
 ```bash
 tee_output "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json" \
@@ -643,7 +1096,72 @@ tee_output "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json.sha256" \
   sha256sum "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json"
 ```
 
-Preliminary status is not final readiness. Stop on any failed or inconclusive applicable check.
+Validate the exact preliminary state:
+
+```bash
+sha256sum -c \
+  "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json.sha256"
+
+jq -e \
+  '.status == "failed" and
+   .failure_class == "configuration_mismatch" and
+   .checks.account_context.status == "passed" and
+   .checks.backend_exists.status == "passed" and
+   .checks.container_exists.status == "passed" and
+   .checks.dns.status == "passed" and
+   .checks.network.status == "passed" and
+   .checks.authorization.status == "passed" and
+   .checks.state_key_separation.status == "passed" and
+   .checks.migration.status == "not_run" and
+   .checks.locking.status == "not_run"' \
+  "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json"
+
+tee_output \
+  "$BACKEND_EVIDENCE_DIR/preliminary-readiness-plan.json" \
+  jq -n \
+    --arg source_commit "$SOURCE_COMMIT" \
+    --arg plan_digest "$(
+      sha256sum "$PRELIMINARY_PLAN" |
+      awk '{print $1}'
+    )" \
+    --arg input_digest "$PRELIMINARY_INPUT_DIGEST" \
+    --arg approval_reference "$PRELIMINARY_APPROVAL_REFERENCE" \
+    --arg resource_change_count "$PRELIMINARY_RESOURCE_CHANGE_COUNT" \
+    --arg readiness_output_actions "$PRELIMINARY_READINESS_OUTPUT_ACTIONS" \
+    --arg output_change_count "$PRELIMINARY_OUTPUT_CHANGE_COUNT" \
+    --arg readiness_digest "$(
+      sha256sum "$BACKEND_EVIDENCE_DIR/backend-readiness-preliminary.json" |
+      awk '{print $1}'
+    )" \
+    '{
+      schema_version: "1.0",
+      stage: "preliminary_readiness",
+      source_commit: $source_commit,
+      plan_sha256: $plan_digest,
+      input_manifest_sha256: $input_digest,
+      approval_reference: $approval_reference,
+      readiness_sha256: $readiness_digest,
+      planned_resource_change_count: (
+        $resource_change_count |
+        tonumber
+      ),
+      readiness_output_actions: (
+        $readiness_output_actions |
+        fromjson
+      ),
+      planned_output_change_count: (
+        $output_change_count |
+        tonumber
+      ),
+      applicable_checks_passed: true,
+      migration_and_locking_not_run: true
+    }'
+```
+
+The top-level preliminary status is deliberately `failed/configuration_mismatch` because only
+final readiness may be `ready/none`. Preliminary success is represented by all seven applicable
+checks being `passed` and only migration and locking being `not_run`. Any other failed,
+inconclusive, or unrun applicable check blocks A6.
 
 ## A6. Migrate bootstrap state to Azure Blob
 
