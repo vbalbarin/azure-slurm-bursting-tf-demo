@@ -59,9 +59,12 @@ order is:
 - Reverse migration to `/state` is mandatory before managed unlock or destroy when bootstrap state
   was migrated to Azure Blob.
 - An abandoned pre-migration deployment may be removed without first uploading state. It must
+  record `removal_path = "abandoned_pre_migration_cleanup"`,
   record `state_migration_status = "never_migrated"`,
   `reverse_migration_verified = false`, and independently verify that the protected local state is
   authoritative. This cleanup does not satisfy local-to-remote-to-local acceptance.
+- Acceptance removal records `removal_path = "acceptance"` and is rejected unless state is
+  `reverse_migrated` with reverse migration verified.
 
 ## Removal rules
 

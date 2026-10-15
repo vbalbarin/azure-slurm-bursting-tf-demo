@@ -205,7 +205,7 @@ validate this document only and never invoke Terraform, Azure CLI, or control-pl
 | `action` | `migrate_local`, `unlock`, or `destroy` |
 | `coordinates` | Exact Backend Coordinates subset |
 | `namespaces` | Main and capacity-probe presence and managed-resource counts |
-| `bootstrap_state` | Local/remote/missing location, digest, `never_migrated`/`reverse_migrated` provenance, and reverse-migration status |
+| `bootstrap_state` | Local/remote/missing location, digest, acceptance/abandoned-cleanup path, `never_migrated`/`reverse_migrated` provenance, and reverse-migration status |
 | `approval_reference` | Accountable external review/change reference |
 
 ## Plan Approval

@@ -73,6 +73,7 @@
         "location",
         "digest",
         "expected_digest",
+        "removal_path",
         "migration_status",
         "reverse_migration_verified"
       ],
@@ -87,6 +88,9 @@
         "expected_digest": {
           "type": ["string", "null"],
           "pattern": "^[a-f0-9]{64}$"
+        },
+        "removal_path": {
+          "enum": ["acceptance", "abandoned_pre_migration_cleanup"]
         },
         "migration_status": {
           "enum": ["never_migrated", "reverse_migrated"]
@@ -155,6 +159,62 @@
             }
           },
           "required": ["failure_class"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "bootstrap_state": {
+            "properties": {
+              "removal_path": {
+                "const": "acceptance"
+              }
+            },
+            "required": ["removal_path"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "bootstrap_state": {
+            "properties": {
+              "migration_status": {
+                "const": "reverse_migrated"
+              },
+              "reverse_migration_verified": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "bootstrap_state": {
+            "properties": {
+              "removal_path": {
+                "const": "abandoned_pre_migration_cleanup"
+              }
+            },
+            "required": ["removal_path"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "bootstrap_state": {
+            "properties": {
+              "migration_status": {
+                "const": "never_migrated"
+              },
+              "reverse_migration_verified": {
+                "const": false
+              }
+            }
+          }
         }
       }
     }

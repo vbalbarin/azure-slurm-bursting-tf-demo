@@ -9,6 +9,7 @@
     "source_commit",
     "removal_run_id",
     "completed_at",
+    "removal_path",
     "state_migration_status",
     "reverse_migration_verified",
     "dependent_namespaces",
@@ -32,6 +33,9 @@
     "completed_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "removal_path": {
+      "const": "abandoned_pre_migration_cleanup"
     },
     "state_migration_status": {
       "const": "never_migrated"

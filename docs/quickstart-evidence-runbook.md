@@ -1188,6 +1188,16 @@ export LOCAL_STATE_DIGEST="$(
   awk '{print $1}'
 )"
 
+export MIGRATION_STALE_PLAN="$BOOTSTRAP_STATE_DIR/pre-migration-stale.tfplan"
+
+terraform -chdir=terraform/bootstrap plan \
+  -input=false \
+  -refresh-only \
+  -var-file="$BOOTSTRAP_TFVARS" \
+  -var-file="$PRELIMINARY_TFVARS" \
+  -out="$MIGRATION_STALE_PLAN"
+chmod 0600 "$MIGRATION_STALE_PLAN"
+
 rm terraform/bootstrap/backend.local.tf
 cp terraform/bootstrap/backend.azurerm.tf.example \
   terraform/bootstrap/backend.azurerm.tf
@@ -1219,15 +1229,191 @@ test "$LOCAL_LINEAGE" = "$REMOTE_LINEAGE"
 test "$LOCAL_RESOURCE_COUNT" -eq "$REMOTE_RESOURCE_COUNT"
 ```
 
-Run a remote no-change plan and require status `0`. Then deliberately overlap two Terraform
-operations against the bootstrap namespace and verify that the first acquires/releases the native
-lock while the second is rejected with a lock conflict. Do not disable locking.
+Reject the plan created against the pre-migration state context:
+
+```bash
+export MIGRATION_STALE_LOG="$BOOTSTRAP_STATE_DIR/pre-migration-stale.log"
+
+set +e
+terraform -chdir=terraform/bootstrap apply \
+  -input=false \
+  "$MIGRATION_STALE_PLAN" >"$MIGRATION_STALE_LOG" 2>&1
+MIGRATION_STALE_STATUS="$?"
+set -e
+
+test "$MIGRATION_STALE_STATUS" -ne 0
+export MIGRATION_STALE_REJECTED="true"
+```
+
+Run a remote no-change plan and retain only the protected raw log:
+
+```bash
+export REMOTE_NO_CHANGE_LOG="$BOOTSTRAP_STATE_DIR/remote-no-change.log"
+
+set +e
+terraform -chdir=terraform/bootstrap plan \
+  -input=false \
+  -refresh-only \
+  -var-file="$BOOTSTRAP_TFVARS" \
+  -var-file="$PRELIMINARY_TFVARS" \
+  -detailed-exitcode \
+  -no-color 2>&1 |
+  tee "$REMOTE_NO_CHANGE_LOG"
+REMOTE_NO_CHANGE_PIPE_STATUSES=("${PIPESTATUS[@]}")
+set -e
+
+test "${REMOTE_NO_CHANGE_PIPE_STATUSES[0]}" -eq 0
+test "${REMOTE_NO_CHANGE_PIPE_STATUSES[1]}" -eq 0
+export REMOTE_NO_CHANGE_STATUS="${REMOTE_NO_CHANGE_PIPE_STATUSES[0]}"
+export REMOTE_NO_CHANGES="true"
+```
+
+Acquire an infinite Azure Blob lease directly on the bootstrap state blob. AzureRM uses this native
+lease as its state lock, so holding it makes the conflict deterministic without a timing race:
+
+```bash
+export BOOTSTRAP_STATE_KEY="$BACKEND_ENVIRONMENT/bootstrap.tfstate"
+export LOCK_LEASE_ID="$(
+  az storage blob lease acquire \
+    --auth-mode login \
+    --account-name "$STORAGE_ACCOUNT_NAME" \
+    --container-name "$STATE_CONTAINER_NAME" \
+    --blob-name "$BOOTSTRAP_STATE_KEY" \
+    --lease-duration -1 \
+    --query leaseId \
+    --output tsv
+)"
+test -n "$LOCK_LEASE_ID"
+export FIRST_OPERATION_ACQUIRED="true"
+```
+
+While the native lease is held, require Terraform to reject the competing operation:
+
+```bash
+export LOCK_CONFLICT_LOG="$BOOTSTRAP_STATE_DIR/lock-conflict.log"
+
+set +e
+terraform -chdir=terraform/bootstrap plan \
+  -input=false \
+  -refresh-only \
+  -lock-timeout=0s \
+  -var-file="$BOOTSTRAP_TFVARS" \
+  -var-file="$PRELIMINARY_TFVARS" \
+  -out="$BOOTSTRAP_STATE_DIR/lock-contender.tfplan" \
+  >"$LOCK_CONFLICT_LOG" 2>&1
+LOCK_CONFLICT_STATUS="$?"
+set -e
+
+test "$LOCK_CONFLICT_STATUS" -ne 0
+grep -Eiq 'state lock|already locked|lease' "$LOCK_CONFLICT_LOG"
+export SECOND_OPERATION_REJECTED="true"
+```
+
+Release the exact lease, clear its protected ID, and run one more plan to prove immediate lock
+acquisition and release by Terraform:
+
+```bash
+az storage blob lease release \
+  --auth-mode login \
+  --account-name "$STORAGE_ACCOUNT_NAME" \
+  --container-name "$STATE_CONTAINER_NAME" \
+  --blob-name "$BOOTSTRAP_STATE_KEY" \
+  --lease-id "$LOCK_LEASE_ID" \
+  --output none
+unset LOCK_LEASE_ID
+export FIRST_OPERATION_RELEASED="true"
+
+terraform -chdir=terraform/bootstrap plan \
+  -input=false \
+  -refresh-only \
+  -lock-timeout=30s \
+  -var-file="$BOOTSTRAP_TFVARS" \
+  -var-file="$PRELIMINARY_TFVARS" \
+  -out="$BOOTSTRAP_STATE_DIR/lock-release-check.tfplan"
+```
 
 Record the migration result in a secret-free document matching
 [`backend-migration-acceptance.schema.json`](../specs/003-terraform-backend-bootstrap/contracts/backend-migration-acceptance.schema.json).
-Include state digests, lineage, resource counts, three distinct keys, no-change status, stale-plan
-rejection, lock-conflict result, and confirmation that the local copy was retained until
-verification. Never include state content.
+Create and validate that bounded evidence:
+
+```bash
+export MIGRATION_EVIDENCE="$BACKEND_EVIDENCE_DIR/backend-migration-acceptance.json"
+export MIGRATION_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-migration-acceptance.schema.json"
+
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg observed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg coordinates_digest "$COORDINATES_DIGEST" \
+  --arg local_lineage "$LOCAL_LINEAGE" \
+  --argjson local_count "$LOCAL_RESOURCE_COUNT" \
+  --arg local_digest "$LOCAL_STATE_DIGEST" \
+  --arg remote_lineage "$REMOTE_LINEAGE" \
+  --argjson remote_count "$REMOTE_RESOURCE_COUNT" \
+  --arg bootstrap_key "$BACKEND_ENVIRONMENT/bootstrap.tfstate" \
+  --argjson no_change_status "$REMOTE_NO_CHANGE_STATUS" \
+  --argjson stale_status "$MIGRATION_STALE_STATUS" \
+  --arg main_key "$BACKEND_ENVIRONMENT/main.tfstate" \
+  --arg probe_key "$BACKEND_ENVIRONMENT/capacity-probe.tfstate" \
+  '{
+    schema_version: "1.0",
+    source_commit: $source_commit,
+    observed_at: $observed_at,
+    coordinates_digest: $coordinates_digest,
+    local_state: {
+      path_class: "protected_state_volume",
+      mode: "0600",
+      lineage: $local_lineage,
+      resource_count: $local_count,
+      digest: $local_digest,
+      retained_until_verified: true,
+      named_files_absent_after_deletion: false
+    },
+    remote_state: {
+      pull_succeeded: true,
+      lineage: $remote_lineage,
+      resource_count: $remote_count,
+      key: $bootstrap_key
+    },
+    lineage_matches: ($local_lineage == $remote_lineage),
+    resource_count_matches: ($local_count == $remote_count),
+    no_change_plan: {
+      exit_code: $no_change_status,
+      result: true
+    },
+    stale_plan_rejection: {
+      exit_code: $stale_status,
+      result: true
+    },
+    lock_conflict: {
+      first_operation_acquired: true,
+      first_operation_released: true,
+      second_operation_rejected: true
+    },
+    namespaces: {
+      bootstrap: $bootstrap_key,
+      main: $main_key,
+      capacity_probe: $probe_key,
+      pairwise_distinct: true,
+      isolation_verified: true
+    },
+    verification_status: "failed"
+  }' >"$MIGRATION_EVIDENCE"
+
+.venv/bin/python - "$MIGRATION_EVIDENCE" "$MIGRATION_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+evidence = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(evidence)
+PY
+```
 
 After all checks pass, delete only the named local state files:
 
@@ -1243,15 +1429,244 @@ find "$BOOTSTRAP_STATE_DIR" -maxdepth 1 \
 ```
 
 Review any timestamped backup paths before deleting those exact named files. Do not use a broad
-recursive deletion. Confirm the recognized local state files are absent and record that result.
+recursive deletion. Confirm the recognized local state files are absent, then finalize migration
+evidence:
+
+```bash
+test ! -e "$BOOTSTRAP_RETAINED_STATE"
+test ! -e "$BOOTSTRAP_LOCAL_STATE"
+test ! -e "$BOOTSTRAP_STATE_DIR/terraform.tfstate.backup"
+
+jq \
+  '.local_state.named_files_absent_after_deletion = true |
+   .verification_status = "passed"' \
+  "$MIGRATION_EVIDENCE" >"$MIGRATION_EVIDENCE.tmp"
+mv "$MIGRATION_EVIDENCE.tmp" "$MIGRATION_EVIDENCE"
+
+.venv/bin/python - "$MIGRATION_EVIDENCE" "$MIGRATION_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+evidence = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(evidence)
+PY
+
+tee_output "$MIGRATION_EVIDENCE.sha256" \
+  sha256sum "$MIGRATION_EVIDENCE"
+```
 
 ## A7. Produce final readiness
 
-Update the protected assertions so migration and locking are `passed`, with their actual UTC
-times, exit codes, stable command IDs, and bounded results. Set `readiness_phase = "final"`.
-Recalculate the current runner-context digest immediately before planning and require it to match.
+Recalculate the current runner context and require it to match the preliminary assessment:
 
-Create, review, approve, and apply an exact output-only plan, then export:
+```bash
+export FINAL_PUBLIC_SOURCE_IPV4="$(
+  curl --ipv4 --fail --silent --show-error https://api.ipify.org
+)"
+export FINAL_RESOLVED_BLOB_IPV4_JSON="$(
+  getent ahostsv4 "$BLOB_HOST" |
+    awk '{print $1}' |
+    sort -u |
+    jq -R . |
+    jq -s .
+)"
+export FINAL_RUNNER_CONTEXT_JSON="$(
+  jq -cnS \
+    --arg subscription_id "$(jq -r '.subscription_id' "$BACKEND_COORDINATES_FILE")" \
+    --arg tenant_id "$(jq -r '.tenant_id' "$BACKEND_COORDINATES_FILE")" \
+    --arg principal_id "$READINESS_PRINCIPAL_ID" \
+    --arg network_mode "restricted_public" \
+    --arg public_source_ipv4 "$FINAL_PUBLIC_SOURCE_IPV4" \
+    --argjson resolved_blob_ipv4_addresses "$FINAL_RESOLVED_BLOB_IPV4_JSON" \
+    '{
+      subscription_id: $subscription_id,
+      tenant_id: $tenant_id,
+      principal_id: $principal_id,
+      network_mode: $network_mode,
+      observed_public_source_ipv4: $public_source_ipv4,
+      resolved_blob_ipv4_addresses: $resolved_blob_ipv4_addresses
+    }'
+)"
+export FINAL_RUNNER_CONTEXT_DIGEST="$(
+  printf '%s' "$FINAL_RUNNER_CONTEXT_JSON" |
+    sha256sum |
+    awk '{print $1}'
+)"
+
+test "$FINAL_RUNNER_CONTEXT_DIGEST" = \
+  "$(jq -r '.execution_context.runner_context_digest' "$PRELIMINARY_ASSERTIONS")"
+```
+
+Create final protected assertions from the validated preliminary assertions:
+
+```bash
+export FINAL_ASSERTIONS="$BOOTSTRAP_STATE_DIR/readiness-assertions-final.json"
+export FINAL_TFVARS="$BOOTSTRAP_STATE_DIR/readiness-final.tfvars.json"
+export FINAL_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+jq \
+  --arg observed_at "$FINAL_OBSERVED_AT" \
+  '.assessment_completed_at = $observed_at |
+   .execution_context.observed_at = $observed_at |
+   .checks.migration = {
+     command_id: "terraform_state_pull",
+     observed_at: $observed_at,
+     exit_code: 0,
+     status: "passed",
+     observed_value: "lineage_resource_count_no_change_verified"
+   } |
+   .checks.locking = {
+     command_id: "terraform_lock_conflict",
+     observed_at: $observed_at,
+     exit_code: 0,
+     status: "passed",
+     observed_value: "native_lock_conflict_and_release_verified"
+   }' \
+  "$PRELIMINARY_ASSERTIONS" >"$FINAL_ASSERTIONS"
+chmod 0600 "$FINAL_ASSERTIONS"
+
+.venv/bin/python - "$FINAL_ASSERTIONS" "$READINESS_ASSERTIONS_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+assertions = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(assertions)
+PY
+
+jq -n \
+  --slurpfile assertions "$FINAL_ASSERTIONS" \
+  '{
+    readiness_phase: "final",
+    readiness_assertions: $assertions[0]
+  }' >"$FINAL_TFVARS"
+chmod 0600 "$FINAL_TFVARS"
+```
+
+Generate and mechanically restrict the final plan to one readiness-output update:
+
+```bash
+export FINAL_PLAN="$BOOTSTRAP_STATE_DIR/readiness-final.tfplan"
+export FINAL_PLAN_DIGEST="$BOOTSTRAP_STATE_DIR/readiness-final.tfplan.sha256"
+export FINAL_INPUT_MANIFEST="$BOOTSTRAP_STATE_DIR/readiness-final-inputs.json"
+export FINAL_APPROVAL="$BOOTSTRAP_STATE_DIR/readiness-final-approval.json"
+
+terraform -chdir=terraform/bootstrap plan \
+  -input=false \
+  -var-file="$BOOTSTRAP_TFVARS" \
+  -var-file="$FINAL_TFVARS" \
+  -out="$FINAL_PLAN"
+
+sha256sum "$FINAL_PLAN" >"$FINAL_PLAN_DIGEST"
+chmod 0600 "$FINAL_PLAN" "$FINAL_PLAN_DIGEST"
+
+jq -n \
+  --arg bootstrap_tfvars_sha256 "$(
+    sha256sum "$BOOTSTRAP_TFVARS" | awk '{print $1}'
+  )" \
+  --arg final_tfvars_sha256 "$(
+    sha256sum "$FINAL_TFVARS" | awk '{print $1}'
+  )" \
+  '{
+    bootstrap_tfvars_sha256: $bootstrap_tfvars_sha256,
+    final_tfvars_sha256: $final_tfvars_sha256
+  }' >"$FINAL_INPUT_MANIFEST"
+chmod 0600 "$FINAL_INPUT_MANIFEST"
+
+export FINAL_RESOURCE_CHANGE_COUNT="$(
+  terraform -chdir=terraform/bootstrap show -json "$FINAL_PLAN" |
+    jq '[.resource_changes[]? | select(.change.actions != ["no-op"])] | length'
+)"
+export FINAL_OUTPUT_CHANGE_COUNT="$(
+  terraform -chdir=terraform/bootstrap show -json "$FINAL_PLAN" |
+    jq '[.output_changes | to_entries[] | select(.value.actions != ["no-op"])] | length'
+)"
+export FINAL_READINESS_ACTIONS="$(
+  terraform -chdir=terraform/bootstrap show -json "$FINAL_PLAN" |
+    jq -c '.output_changes.backend_readiness.actions'
+)"
+
+test "$FINAL_RESOURCE_CHANGE_COUNT" -eq 0
+test "$FINAL_OUTPUT_CHANGE_COUNT" -eq 1
+test "$FINAL_READINESS_ACTIONS" = '["update"]'
+terraform -chdir=terraform/bootstrap show -no-color "$FINAL_PLAN"
+```
+
+After an authorized reviewer approves that exact plan, create and validate its separate protected
+approval record. The current approval contract uses `action = "create"` for readiness output plans
+within the managed-create lifecycle:
+
+```bash
+read -r -p "Authorized final-readiness approval reference: " \
+  FINAL_APPROVAL_REFERENCE
+test -n "$FINAL_APPROVAL_REFERENCE"
+
+jq -n \
+  --arg source_commit "$SOURCE_COMMIT" \
+  --arg input_digest "$(
+    sha256sum "$FINAL_INPUT_MANIFEST" | awk '{print $1}'
+  )" \
+  --arg plan_digest "$(
+    sha256sum "$FINAL_PLAN" | awk '{print $1}'
+  )" \
+  --arg plan_created_at "$(
+    date -u -r "$FINAL_PLAN" +%Y-%m-%dT%H:%M:%SZ
+  )" \
+  --arg approved_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg approval_reference "$FINAL_APPROVAL_REFERENCE" \
+  '{
+    schema_version: "1.0",
+    action: "create",
+    source_commit: $source_commit,
+    input_digest: $input_digest,
+    plan_digest: $plan_digest,
+    plan_created_at: $plan_created_at,
+    approved_at: $approved_at,
+    approval_reference: $approval_reference
+  }' >"$FINAL_APPROVAL"
+chmod 0600 "$FINAL_APPROVAL"
+
+.venv/bin/python - "$FINAL_APPROVAL" "$PLAN_APPROVAL_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+approval = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(approval)
+PY
+
+sha256sum -c "$FINAL_PLAN_DIGEST"
+test "$(jq -r '.source_commit' "$FINAL_APPROVAL")" = "$SOURCE_COMMIT"
+test "$(jq -r '.input_digest' "$FINAL_APPROVAL")" = \
+  "$(sha256sum "$FINAL_INPUT_MANIFEST" | awk '{print $1}')"
+test "$(jq -r '.plan_digest' "$FINAL_APPROVAL")" = \
+  "$(sha256sum "$FINAL_PLAN" | awk '{print $1}')"
+
+terraform -chdir=terraform/bootstrap apply \
+  -input=false \
+  "$FINAL_PLAN"
+```
+
+Export final readiness and timing evidence:
 
 ```bash
 tee_output "$BACKEND_EVIDENCE_DIR/backend-readiness.json" \
@@ -1271,6 +1686,21 @@ export BOOTSTRAP_ELAPSED_SECONDS="$((
   ROLE_PROPAGATION_DELAY_SECONDS
 ))"
 test "$BOOTSTRAP_ELAPSED_SECONDS" -le 1200
+
+tee_output "$BACKEND_EVIDENCE_DIR/bootstrap-timing.json" \
+  jq -n \
+    --arg started_at "$(
+      jq -r '.started_at' "$RUN_EVIDENCE_DIR/run-metadata.json"
+    )" \
+    --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson bootstrap_elapsed_seconds "$BOOTSTRAP_ELAPSED_SECONDS" \
+    --argjson role_propagation_delay_seconds "$ROLE_PROPAGATION_DELAY_SECONDS" \
+    '{
+      started_at: $started_at,
+      completed_at: $completed_at,
+      bootstrap_elapsed_seconds: $bootstrap_elapsed_seconds,
+      role_propagation_delay_seconds: $role_propagation_delay_seconds
+    }'
 ```
 
 Final readiness is valid for at most one hour and only for the recorded source, identity,
@@ -1307,16 +1737,251 @@ resource planning.
 Add a second authorized operator to the approved Entra group. Start timing after that operator
 refreshes Azure authentication; measure role-propagation delay separately.
 
-Within 15 minutes, the replacement operator must directly:
+Perform recovery after the bootstrap, main, and capacity-probe state blobs have each been created.
+The main and capacity-probe roots may contain resources, but their protected inputs must still
+describe the reviewed configuration. Use a fresh shell authenticated only as the replacement
+operator. Do not distribute a storage key, SAS, copied token, or shared credential.
 
-1. resolve and reach the selected Blob endpoint;
-2. initialize the bootstrap, main, and capacity-probe namespaces;
-3. read each state; and
-4. acquire and release a native lock in each namespace.
+Re-establish the protected paths and begin timing immediately after authentication:
 
-Do not distribute a storage key, SAS, copied token, or shared credential. Record only the
-replacement principal ID/type, tenant, authenticated/completed times, elapsed seconds, and
-per-namespace Boolean results required by
+```bash
+umask 077
+
+az login --tenant "<approved-tenant-id>"
+az account set --subscription "<approved-subscription-id>"
+
+export RECOVERY_AUTHENTICATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export RECOVERY_STARTED_EPOCH="$(date +%s)"
+export SOURCE_COMMIT="$(git rev-parse HEAD)"
+export RUN_ID="<original-run-id>"
+export BACKEND_ENVIRONMENT="demo"
+export BOOTSTRAP_STATE_ROOT="${BOOTSTRAP_STATE_ROOT:-/state/terraform-backend}"
+export BOOTSTRAP_STATE_DIR="$BOOTSTRAP_STATE_ROOT/$BACKEND_ENVIRONMENT"
+export BOOTSTRAP_TFVARS="$BOOTSTRAP_STATE_DIR/bootstrap.tfvars"
+export FINAL_TFVARS="$BOOTSTRAP_STATE_DIR/readiness-final.tfvars.json"
+export DEMO_STATE_DIR="${DEMO_STATE_DIR:-/state/slurm-bursting}"
+export TFVARS_FILE="$PWD/terraform/environments/demo.tfvars"
+export PROBE_TFVARS_FILE="$DEMO_STATE_DIR/probe.tfvars"
+export RECOVERY_PLAN_DIR="$BOOTSTRAP_STATE_DIR/replacement-operator"
+export RECOVERY_EVIDENCE_DIR="/evidence/quickstart/$RUN_ID/backend-bootstrap"
+export BACKEND_EVIDENCE_DIR="$RECOVERY_EVIDENCE_DIR"
+export RECOVERY_RESULTS="$RECOVERY_EVIDENCE_DIR/operator-recovery.json"
+
+install -d -m 0700 "$RECOVERY_PLAN_DIR"
+install -d -m 0700 "$RECOVERY_EVIDENCE_DIR"
+
+test -f "$BOOTSTRAP_TFVARS"
+test -f "$FINAL_TFVARS"
+test -f "$TFVARS_FILE"
+test -f "$PROBE_TFVARS_FILE"
+test -f terraform/bootstrap/backend.azurerm.tf
+test -f terraform/backend.hcl
+test -f terraform/capacity-probe/backend.hcl
+```
+
+Capture the replacement identity without credentials and normalize the Azure CLI principal type to
+the contract values:
+
+```bash
+export RECOVERY_TENANT_ID="$(az account show --query tenantId --output tsv)"
+export RECOVERY_AZURE_PRINCIPAL_TYPE="$(
+  az account show --query user.type --output tsv
+)"
+case "$RECOVERY_AZURE_PRINCIPAL_TYPE" in
+  user)
+    export RECOVERY_PRINCIPAL_TYPE="User"
+    export RECOVERY_PRINCIPAL_ID="$(
+      az ad signed-in-user show --query id --output tsv
+    )"
+    ;;
+  servicePrincipal)
+    export RECOVERY_PRINCIPAL_TYPE="ServicePrincipal"
+    export RECOVERY_PRINCIPAL_ID="$(
+      az ad sp show \
+        --id "$(az account show --query user.name --output tsv)" \
+        --query id \
+        --output tsv
+    )"
+    ;;
+  *)
+    printf 'Unsupported Azure principal type: %s\n' \
+      "$RECOVERY_AZURE_PRINCIPAL_TYPE" >&2
+    false
+    ;;
+esac
+
+test "$RECOVERY_TENANT_ID" = \
+  "$(jq -r '.tenant_id' "$BACKEND_EVIDENCE_DIR/backend-coordinates.json")"
+```
+
+For service-principal authentication, replace the fallback principal lookup with the approved
+service-principal object ID and verify it against the approval record. Do not record a client ID,
+token, certificate, or secret in evidence.
+
+Resolve the selected endpoint and prove Entra-authenticated Blob reachability:
+
+```bash
+export RECOVERY_STORAGE_ACCOUNT_NAME="$(
+  jq -r '.storage_account_name' \
+    "$BACKEND_EVIDENCE_DIR/backend-coordinates.json"
+)"
+export RECOVERY_CONTAINER_NAME="$(
+  jq -r '.container_name' \
+    "$BACKEND_EVIDENCE_DIR/backend-coordinates.json"
+)"
+export RECOVERY_BLOB_HOST="$RECOVERY_STORAGE_ACCOUNT_NAME.blob.core.windows.net"
+
+getent ahostsv4 "$RECOVERY_BLOB_HOST" |
+  awk '{print $1}' |
+  sort -u |
+  grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
+
+az storage container show \
+  --auth-mode login \
+  --account-name "$RECOVERY_STORAGE_ACCOUNT_NAME" \
+  --name "$RECOVERY_CONTAINER_NAME" \
+  --output none
+```
+
+Initialize each root and read each state directly:
+
+```bash
+terraform -chdir=terraform/bootstrap init \
+  -reconfigure \
+  -input=false
+terraform -chdir=terraform init \
+  -reconfigure \
+  -input=false \
+  -backend-config=backend.hcl
+terraform -chdir=terraform/capacity-probe init \
+  -reconfigure \
+  -input=false \
+  -backend-config=backend.hcl
+
+terraform -chdir=terraform/bootstrap state pull \
+  >"$RECOVERY_PLAN_DIR/bootstrap-state.json"
+terraform -chdir=terraform state pull \
+  >"$RECOVERY_PLAN_DIR/main-state.json"
+terraform -chdir=terraform/capacity-probe state pull \
+  >"$RECOVERY_PLAN_DIR/capacity-probe-state.json"
+chmod 0600 "$RECOVERY_PLAN_DIR/"*-state.json
+
+jq -e '.lineage | type == "string" and length > 0' \
+  "$RECOVERY_PLAN_DIR/bootstrap-state.json" >/dev/null
+jq -e '.lineage | type == "string" and length > 0' \
+  "$RECOVERY_PLAN_DIR/main-state.json" >/dev/null
+jq -e '.lineage | type == "string" and length > 0' \
+  "$RECOVERY_PLAN_DIR/capacity-probe-state.json" >/dev/null
+```
+
+Successful no-refresh plans natively acquire and release each backend lock. Save all plans under
+protected state, never apply them, and do not copy plans or raw logs into evidence:
+
+```bash
+set +e
+terraform -chdir=terraform/bootstrap plan \
+  -refresh=false \
+  -detailed-exitcode \
+  -input=false \
+  -lock=true \
+  -lock-timeout=0s \
+  -var-file="$BOOTSTRAP_TFVARS" \
+  -var-file="$FINAL_TFVARS" \
+  -out="$RECOVERY_PLAN_DIR/bootstrap.tfplan"
+BOOTSTRAP_RECOVERY_PLAN_STATUS="$?"
+
+terraform -chdir=terraform plan \
+  -refresh=false \
+  -detailed-exitcode \
+  -input=false \
+  -lock=true \
+  -lock-timeout=0s \
+  -var-file="$TFVARS_FILE" \
+  -out="$RECOVERY_PLAN_DIR/main.tfplan"
+MAIN_RECOVERY_PLAN_STATUS="$?"
+
+terraform -chdir=terraform/capacity-probe plan \
+  -refresh=false \
+  -detailed-exitcode \
+  -input=false \
+  -lock=true \
+  -lock-timeout=0s \
+  -var-file="$PROBE_TFVARS_FILE" \
+  -out="$RECOVERY_PLAN_DIR/capacity-probe.tfplan"
+PROBE_RECOVERY_PLAN_STATUS="$?"
+set -e
+
+test "$BOOTSTRAP_RECOVERY_PLAN_STATUS" -ne 1
+test "$BOOTSTRAP_RECOVERY_PLAN_STATUS" -le 2
+test "$MAIN_RECOVERY_PLAN_STATUS" -ne 1
+test "$MAIN_RECOVERY_PLAN_STATUS" -le 2
+test "$PROBE_RECOVERY_PLAN_STATUS" -ne 1
+test "$PROBE_RECOVERY_PLAN_STATUS" -le 2
+chmod 0600 "$RECOVERY_PLAN_DIR/"*.tfplan
+```
+
+Exit status zero means no changes and two means a plan with changes; both prove that Terraform
+acquired the native lock, completed planning, and released the lock. Exit status one includes lock
+acquisition or another planning failure and blocks recovery acceptance. Review but never apply
+these recovery plans; their only acceptance purpose is native lock acquisition and release.
+
+Finish the 15-minute measurement and write only bounded recovery results:
+
+```bash
+export RECOVERY_COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export RECOVERY_COMPLETED_EPOCH="$(date +%s)"
+export RECOVERY_ELAPSED_SECONDS="$((RECOVERY_COMPLETED_EPOCH - RECOVERY_STARTED_EPOCH))"
+test "$RECOVERY_ELAPSED_SECONDS" -le 900
+
+tee_output "$RECOVERY_RESULTS" \
+  jq -n \
+    --arg tenant_id "$RECOVERY_TENANT_ID" \
+    --arg principal_id "$RECOVERY_PRINCIPAL_ID" \
+    --arg principal_type "$RECOVERY_PRINCIPAL_TYPE" \
+    --arg authenticated_at "$RECOVERY_AUTHENTICATED_AT" \
+    --arg completed_at "$RECOVERY_COMPLETED_AT" \
+    --argjson elapsed_seconds "$RECOVERY_ELAPSED_SECONDS" \
+    '{
+      replacement_operator: {
+        tenant_id: $tenant_id,
+        principal_id: $principal_id,
+        principal_type: $principal_type,
+        authenticated_at: $authenticated_at,
+        completed_at: $completed_at,
+        elapsed_seconds: $elapsed_seconds
+      },
+      namespace_access: {
+        bootstrap: {
+          initialized: true,
+          read_succeeded: true,
+          lock_succeeded: true
+        },
+        main: {
+          initialized: true,
+          read_succeeded: true,
+          lock_succeeded: true
+        },
+        capacity_probe: {
+          initialized: true,
+          read_succeeded: true,
+          lock_succeeded: true
+        }
+      }
+    }'
+
+jq -e \
+  '.replacement_operator.elapsed_seconds <= 900 and
+   ([
+      .namespace_access[] |
+      .initialized,
+      .read_succeeded,
+      .lock_succeeded
+    ] | all)' \
+  "$RECOVERY_RESULTS" >/dev/null
+```
+
+Record this file as the recovery-stage reference. A10 incorporates these exact bounded fields into
+the final
 [`backend-live-acceptance.schema.json`](../specs/003-terraform-backend-bootstrap/contracts/backend-live-acceptance.schema.json).
 
 ## A10. Validate managed removal
@@ -1326,12 +1991,12 @@ Existing mode has no unlock or backend-destroy operation.
 For managed mode, first prove that main and capacity-probe state are readable and contain zero
 managed resources. Destroy and verify those environments separately before backend removal.
 
-The procedure below covers an abandoned managed deployment whose bootstrap state never left the
-protected local backend. It does not claim local-to-remote-to-local acceptance. If state was
-migrated to Azure Blob, stop and reverse-migrate it with `terraform init -migrate-state` before
-using the unlock and destroy steps. In that case use
-`state_migration_status = "reverse_migrated"` and
-`reverse_migration_verified = true`.
+Choose exactly one removal path:
+
+- `acceptance`: bootstrap state was migrated to Azure Blob and MUST be reverse-migrated and
+  verified before unlock. This path can satisfy FR-027 and live acceptance.
+- `abandoned_pre_migration_cleanup`: authoritative bootstrap state never left the protected local
+  backend. This recovery path is recorded separately and MUST NOT be reported as acceptance.
 
 ### A10.1 Re-establish protected paths
 
@@ -1352,25 +2017,91 @@ export REMOVAL_EVIDENCE_DIR="/evidence/quickstart/$REMOVAL_RUN_ID/backend-bootst
 export LIFECYCLE_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-lifecycle.schema.json"
 export PLAN_APPROVAL_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-plan-approval.schema.json"
 export MANAGED_REMOVAL_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-managed-removal.schema.json"
+export LIVE_ACCEPTANCE_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-live-acceptance.schema.json"
+
+export REMOVAL_PATH="<acceptance-or-abandoned_pre_migration_cleanup>"
+case "$REMOVAL_PATH" in
+  acceptance)
+    export STATE_MIGRATION_STATUS="reverse_migrated"
+    export REVERSE_MIGRATION_VERIFIED="true"
+    ;;
+  abandoned_pre_migration_cleanup)
+    export STATE_MIGRATION_STATUS="never_migrated"
+    export REVERSE_MIGRATION_VERIFIED="false"
+    ;;
+  *)
+    printf 'Unsupported removal path: %s\n' "$REMOVAL_PATH" >&2
+    false
+    ;;
+esac
 
 install -d -m 0700 "$REMOVAL_EVIDENCE_DIR"
 
 test -f "$BOOTSTRAP_TFVARS"
-test -f "$BOOTSTRAP_LOCAL_STATE"
-test "$(stat -c '%a' "$BOOTSTRAP_LOCAL_STATE")" = "600"
-test -f terraform/bootstrap/backend.local.tf
-test ! -e terraform/bootstrap/backend.azurerm.tf
 test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
 
-terraform -chdir=terraform/bootstrap init \
-  -reconfigure \
-  -input=false \
-  -backend-config="path=$BOOTSTRAP_LOCAL_STATE"
+if test "$REMOVAL_PATH" = "acceptance"; then
+  test -f terraform/bootstrap/backend.azurerm.tf
+  test ! -e terraform/bootstrap/backend.local.tf
+else
+  test -f "$BOOTSTRAP_LOCAL_STATE"
+  test "$(stat -c '%a' "$BOOTSTRAP_LOCAL_STATE")" = "600"
+  test -f terraform/bootstrap/backend.local.tf
+  test ! -e terraform/bootstrap/backend.azurerm.tf
+
+  terraform -chdir=terraform/bootstrap init \
+    -reconfigure \
+    -input=false \
+    -backend-config="path=$BOOTSTRAP_LOCAL_STATE"
+fi
 ```
 
-The last two backend-file checks prove this path is applicable only while the configured backend is
-local. They do not prove that remote migration never happened if files were manually changed.
-Review the stopped run’s migration evidence and state history before continuing.
+The backend-file checks bind the selected path to its expected starting backend. They do not prove
+state provenance if files were manually changed. Review migration evidence and state history before
+continuing.
+
+For `acceptance`, preserve the remote state before switching back to the local backend:
+
+```bash
+if test "$REMOVAL_PATH" = "acceptance"; then
+  export REMOTE_STATE_BEFORE_REVERSE="$BOOTSTRAP_STATE_DIR/remote-state-before-reverse.json"
+  export LOCAL_STATE_AFTER_REVERSE="$BOOTSTRAP_STATE_DIR/local-state-after-reverse.json"
+  export REVERSE_LOCAL_MODE="failed"
+  export REVERSE_LINEAGE_MATCHES="false"
+  export REVERSE_RESOURCE_COUNT_MATCHES="false"
+  export REVERSE_DIGEST_MATCHES="false"
+
+  terraform -chdir=terraform/bootstrap state pull \
+    >"$REMOTE_STATE_BEFORE_REVERSE"
+  chmod 0600 "$REMOTE_STATE_BEFORE_REVERSE"
+
+  rm terraform/bootstrap/backend.azurerm.tf
+  cp terraform/bootstrap/backend.local.tf.example \
+    terraform/bootstrap/backend.local.tf
+
+  terraform -chdir=terraform/bootstrap init \
+    -migrate-state \
+    -force-copy \
+    -input=false \
+    -backend-config="path=$BOOTSTRAP_LOCAL_STATE"
+
+  terraform -chdir=terraform/bootstrap state pull \
+    >"$LOCAL_STATE_AFTER_REVERSE"
+  chmod 0600 "$LOCAL_STATE_AFTER_REVERSE" "$BOOTSTRAP_LOCAL_STATE"
+
+  test "$(stat -c '%a' "$BOOTSTRAP_LOCAL_STATE")" = "600"
+  export REVERSE_LOCAL_MODE="0600"
+  test "$(jq -r '.lineage' "$LOCAL_STATE_AFTER_REVERSE")" = \
+    "$(jq -r '.lineage' "$REMOTE_STATE_BEFORE_REVERSE")"
+  export REVERSE_LINEAGE_MATCHES="true"
+  test "$(jq '[.resources[]?] | length' "$LOCAL_STATE_AFTER_REVERSE")" -eq \
+    "$(jq '[.resources[]?] | length' "$REMOTE_STATE_BEFORE_REVERSE")"
+  export REVERSE_RESOURCE_COUNT_MATCHES="true"
+  test "$(jq -S -c . "$LOCAL_STATE_AFTER_REVERSE" | sha256sum | awk '{print $1}')" = \
+    "$(jq -S -c . "$REMOTE_STATE_BEFORE_REVERSE" | sha256sum | awk '{print $1}')"
+  export REVERSE_DIGEST_MATCHES="true"
+fi
+```
 
 Derive the non-secret resource coordinates from the authoritative local state:
 
@@ -1392,42 +2123,68 @@ export STATE_CONTAINER_NAME="$(
 ### A10.2 Prove dependent namespaces are absent
 
 For a stopped pre-migration run, neither dependent namespace may have a state blob. Query only
-existence; do not copy state content into evidence:
+existence; do not copy state content into evidence. For acceptance, both state blobs must exist and
+their initialized roots must report zero managed resource instances:
 
 ```bash
 export MAIN_STATE_KEY="$BACKEND_ENVIRONMENT/main.tfstate"
 export PROBE_STATE_KEY="$BACKEND_ENVIRONMENT/capacity-probe.tfstate"
 
-export MAIN_STATE_EXISTS="$(
-  az storage blob exists \
-    --auth-mode login \
-    --account-name "$STORAGE_ACCOUNT_NAME" \
-    --container-name "$STATE_CONTAINER_NAME" \
-    --name "$MAIN_STATE_KEY" \
-    --query exists \
-    --output tsv
-)"
-export PROBE_STATE_EXISTS="$(
-  az storage blob exists \
-    --auth-mode login \
-    --account-name "$STORAGE_ACCOUNT_NAME" \
-    --container-name "$STATE_CONTAINER_NAME" \
-    --name "$PROBE_STATE_KEY" \
-    --query exists \
-    --output tsv
-)"
+if test "$REMOVAL_PATH" = "abandoned_pre_migration_cleanup"; then
+  export MAIN_STATE_EXISTS="$(
+    az storage blob exists \
+      --auth-mode login \
+      --account-name "$STORAGE_ACCOUNT_NAME" \
+      --container-name "$STATE_CONTAINER_NAME" \
+      --name "$MAIN_STATE_KEY" \
+      --query exists \
+      --output tsv
+  )"
+  export PROBE_STATE_EXISTS="$(
+    az storage blob exists \
+      --auth-mode login \
+      --account-name "$STORAGE_ACCOUNT_NAME" \
+      --container-name "$STATE_CONTAINER_NAME" \
+      --name "$PROBE_STATE_KEY" \
+      --query exists \
+      --output tsv
+  )"
 
-test "$MAIN_STATE_EXISTS" = "false"
-test "$PROBE_STATE_EXISTS" = "false"
+  test "$MAIN_STATE_EXISTS" = "false"
+  test "$PROBE_STATE_EXISTS" = "false"
 
-export MAIN_STATE_STATUS="absent"
-export MAIN_MANAGED_RESOURCE_COUNT="0"
-export PROBE_STATE_STATUS="absent"
-export PROBE_MANAGED_RESOURCE_COUNT="0"
+  export MAIN_STATE_STATUS="absent"
+  export MAIN_MANAGED_RESOURCE_COUNT="0"
+  export PROBE_STATE_STATUS="absent"
+  export PROBE_MANAGED_RESOURCE_COUNT="0"
+else
+  terraform -chdir=terraform init \
+    -reconfigure \
+    -input=false \
+    -backend-config=backend.hcl
+  terraform -chdir=terraform/capacity-probe init \
+    -reconfigure \
+    -input=false \
+    -backend-config=backend.hcl
+
+  export MAIN_MANAGED_RESOURCE_COUNT="$(
+    terraform -chdir=terraform state list | wc -l
+  )"
+  export PROBE_MANAGED_RESOURCE_COUNT="$(
+    terraform -chdir=terraform/capacity-probe state list | wc -l
+  )"
+
+  test "$MAIN_MANAGED_RESOURCE_COUNT" -eq 0
+  test "$PROBE_MANAGED_RESOURCE_COUNT" -eq 0
+
+  export MAIN_STATE_STATUS="empty"
+  export PROBE_STATE_STATUS="empty"
+fi
 ```
 
-If either result is `true`, stop. Initialize that dependent root, inspect its state, and separately
-destroy and verify it before returning to A10. Do not relabel an existing state blob as absent.
+For abandoned cleanup, stop if either existence result is `true`. For acceptance, stop if either
+resource count is nonzero. Separately destroy and verify that dependent root before returning to
+A10. Do not relabel an existing state blob as absent or an uninspected state as empty.
 
 ### A10.3 Bind the authoritative local state
 
@@ -1496,6 +2253,9 @@ jq -n \
   --arg probe_state_status "$PROBE_STATE_STATUS" \
   --argjson probe_count "$PROBE_MANAGED_RESOURCE_COUNT" \
   --arg state_digest "$OBSERVED_LOCAL_STATE_DIGEST" \
+  --arg removal_path "$REMOVAL_PATH" \
+  --arg state_migration_status "$STATE_MIGRATION_STATUS" \
+  --argjson reverse_migration_verified "$REVERSE_MIGRATION_VERIFIED" \
   '{
     source_commit: $source_commit,
     lifecycle_action: "unlock",
@@ -1509,8 +2269,9 @@ jq -n \
       bootstrap_state_location: "local",
       bootstrap_state_digest: $state_digest,
       expected_state_digest: $state_digest,
-      state_migration_status: "never_migrated",
-      reverse_migration_verified: false
+      removal_path: $removal_path,
+      state_migration_status: $state_migration_status,
+      reverse_migration_verified: $reverse_migration_verified
     }
   }' >"$UNLOCK_TFVARS"
 chmod 0600 "$UNLOCK_TFVARS"
@@ -1671,10 +2432,12 @@ PY
 
 test "$(jq -r '.status' "$UNLOCK_LIFECYCLE_EVIDENCE")" = "ready"
 test "$(jq -r '.action' "$UNLOCK_LIFECYCLE_EVIDENCE")" = "unlock"
+test "$(jq -r '.bootstrap_state.removal_path' "$UNLOCK_LIFECYCLE_EVIDENCE")" = \
+  "$REMOVAL_PATH"
 test "$(jq -r '.bootstrap_state.migration_status' "$UNLOCK_LIFECYCLE_EVIDENCE")" = \
-  "never_migrated"
+  "$STATE_MIGRATION_STATUS"
 test "$(jq -r '.bootstrap_state.reverse_migration_verified' "$UNLOCK_LIFECYCLE_EVIDENCE")" = \
-  "false"
+  "$REVERSE_MIGRATION_VERIFIED"
 
 test "$(
   az lock list \
@@ -1736,6 +2499,9 @@ jq -n \
   --arg probe_state_status "$PROBE_STATE_STATUS" \
   --argjson probe_count "$PROBE_MANAGED_RESOURCE_COUNT" \
   --arg state_digest "$EXPECTED_LOCAL_STATE_DIGEST" \
+  --arg removal_path "$REMOVAL_PATH" \
+  --arg state_migration_status "$STATE_MIGRATION_STATUS" \
+  --argjson reverse_migration_verified "$REVERSE_MIGRATION_VERIFIED" \
   '{
     source_commit: $source_commit,
     lifecycle_action: "destroy",
@@ -1749,8 +2515,9 @@ jq -n \
       bootstrap_state_location: "local",
       bootstrap_state_digest: $state_digest,
       expected_state_digest: $state_digest,
-      state_migration_status: "never_migrated",
-      reverse_migration_verified: false
+      removal_path: $removal_path,
+      state_migration_status: $state_migration_status,
+      reverse_migration_verified: $reverse_migration_verified
     }
   }' >"$DESTROY_TFVARS"
 chmod 0600 "$DESTROY_TFVARS"
@@ -1975,6 +2742,7 @@ Record only bounded digests, references, stale-plan results, and absence Boolean
 [`backend-managed-removal.schema.json`](../specs/003-terraform-backend-bootstrap/contracts/backend-managed-removal.schema.json):
 
 ```bash
+if test "$REMOVAL_PATH" = "abandoned_pre_migration_cleanup"; then
 tee_output "$REMOVAL_EVIDENCE_DIR/managed-removal.json" \
   jq -n \
     --arg source_commit "$SOURCE_COMMIT" \
@@ -1999,6 +2767,7 @@ tee_output "$REMOVAL_EVIDENCE_DIR/managed-removal.json" \
       source_commit: $source_commit,
       removal_run_id: $removal_run_id,
       completed_at: $completed_at,
+      removal_path: "abandoned_pre_migration_cleanup",
       state_migration_status: "never_migrated",
       reverse_migration_verified: false,
       dependent_namespaces: {
@@ -2052,6 +2821,163 @@ PY
 
 sha256sum -c \
   "$REMOVAL_EVIDENCE_DIR/managed-removal.json.sha256"
+fi
+```
+
+For acceptance, verify secret hygiene and assemble the complete live-acceptance record. Restore the
+original run ID; do not substitute the cleanup-only removal run ID:
+
+```bash
+if test "$REMOVAL_PATH" = "acceptance"; then
+  export ACCEPTANCE_RUN_ID="<original-run-id>"
+  export ACCEPTANCE_EVIDENCE_ROOT="/evidence/quickstart/$ACCEPTANCE_RUN_ID"
+  export ACCEPTANCE_BACKEND_EVIDENCE="$ACCEPTANCE_EVIDENCE_ROOT/backend-bootstrap"
+  export RECOVERY_RESULTS="$ACCEPTANCE_BACKEND_EVIDENCE/operator-recovery.json"
+  export BOOTSTRAP_TIMING="$ACCEPTANCE_BACKEND_EVIDENCE/bootstrap-timing.json"
+  export LIVE_ACCEPTANCE_EVIDENCE="$REMOVAL_EVIDENCE_DIR/backend-live-acceptance.json"
+  export GIT_SECRET_SCAN_LOG="$BOOTSTRAP_STATE_DIR/git-secret-scan.log"
+  export EVIDENCE_SECRET_SCAN_LOG="$BOOTSTRAP_STATE_DIR/evidence-secret-scan.log"
+
+  test -f "$RECOVERY_RESULTS"
+  test -f "$BOOTSTRAP_TIMING"
+  test "$REVERSE_LOCAL_MODE" = "0600"
+  test "$REVERSE_LINEAGE_MATCHES" = "true"
+  test "$REVERSE_RESOURCE_COUNT_MATCHES" = "true"
+  test "$REVERSE_DIGEST_MATCHES" = "true"
+
+  set +e
+  git grep -I -n -E \
+    '(-----BEGIN [A-Z ]*PRIVATE K[E]Y-----|Account[K]ey=|SharedAccess[S]ignature=|[?&]s[i]g=)' \
+    >"$GIT_SECRET_SCAN_LOG"
+  GIT_SECRET_SCAN_STATUS="$?"
+  grep -R -I -n -E \
+    '("(account_key|access_token|client_secret|password|sas_token)"[[:space:]]*:|-----BEGIN [A-Z ]*PRIVATE KEY-----|AccountKey=|SharedAccessSignature=|[?&]sig=)' \
+    "$ACCEPTANCE_EVIDENCE_ROOT" >"$EVIDENCE_SECRET_SCAN_LOG"
+  EVIDENCE_SECRET_SCAN_STATUS="$?"
+  set -e
+
+  test "$GIT_SECRET_SCAN_STATUS" -eq 1
+  test "$EVIDENCE_SECRET_SCAN_STATUS" -eq 1
+  test ! -s "$GIT_SECRET_SCAN_LOG"
+  test ! -s "$EVIDENCE_SECRET_SCAN_LOG"
+
+  export PROHIBITED_ARTIFACT_COUNT="$(
+    find "$ACCEPTANCE_EVIDENCE_ROOT" -type f \
+      \( -name '*.tfstate' -o -name '*.tfplan' -o -name '*.tfvars' \
+         -o -name '*.pem' -o -name '*.key' \) |
+      wc -l
+  )"
+  test "$PROHIBITED_ARTIFACT_COUNT" -eq 0
+
+  test -f "$ACCEPTANCE_EVIDENCE_ROOT/run-metadata.json"
+  test -f "$ACCEPTANCE_BACKEND_EVIDENCE/backend-coordinates.json"
+  test -f "$ACCEPTANCE_BACKEND_EVIDENCE/backend-readiness-preliminary.json"
+  test -f "$ACCEPTANCE_BACKEND_EVIDENCE/backend-migration-acceptance.json"
+  test -f "$ACCEPTANCE_BACKEND_EVIDENCE/backend-readiness.json"
+  test -f "$RECOVERY_RESULTS"
+  test -f "$UNLOCK_LIFECYCLE_EVIDENCE"
+  test -f "$DESTROY_LIFECYCLE_EVIDENCE"
+  export DEPENDENT_STAGE_REFERENCE="<actual-Part-B-cleanup-evidence-path>"
+  test -f "$DEPENDENT_STAGE_REFERENCE"
+
+  tee_output "$LIVE_ACCEPTANCE_EVIDENCE" \
+    jq -n \
+      --arg source_commit "$SOURCE_COMMIT" \
+      --arg run_id "$ACCEPTANCE_RUN_ID" \
+      --slurpfile timing "$BOOTSTRAP_TIMING" \
+      --slurpfile recovery "$RECOVERY_RESULTS" \
+      --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg local_mode "$REVERSE_LOCAL_MODE" \
+      --argjson lineage_matches "$REVERSE_LINEAGE_MATCHES" \
+      --argjson resource_count_matches "$REVERSE_RESOURCE_COUNT_MATCHES" \
+      --argjson digest_matches "$REVERSE_DIGEST_MATCHES" \
+      --arg unlock_plan_digest "$(sha256sum "$UNLOCK_PLAN" | awk '{print $1}')" \
+      --arg unlock_reference "$UNLOCK_APPROVAL_REFERENCE" \
+      --argjson unlock_stale "$UNLOCK_STALE_PLAN_REJECTED" \
+      --arg destroy_plan_digest "$(sha256sum "$DESTROY_PLAN" | awk '{print $1}')" \
+      --arg destroy_reference "$DESTROY_APPROVAL_REFERENCE" \
+      --argjson destroy_stale "$DESTROY_STALE_PLAN_REJECTED" \
+      --argjson account_absent "$ACCOUNT_ABSENT" \
+      --argjson container_absent "$CONTAINER_ABSENT" \
+      --argjson prohibited_artifact_count "$PROHIBITED_ARTIFACT_COUNT" \
+      --arg bootstrap_reference "$ACCEPTANCE_BACKEND_EVIDENCE/backend-coordinates.json" \
+      --arg preliminary_reference "$ACCEPTANCE_BACKEND_EVIDENCE/backend-readiness-preliminary.json" \
+      --arg migration_reference "$ACCEPTANCE_BACKEND_EVIDENCE/backend-migration-acceptance.json" \
+      --arg dependent_reference "$DEPENDENT_STAGE_REFERENCE" \
+      --arg recovery_reference "$RECOVERY_RESULTS" \
+      --arg unlock_reference_file "$UNLOCK_LIFECYCLE_EVIDENCE" \
+      --arg removal_reference "$DESTROY_LIFECYCLE_EVIDENCE" \
+      '{
+        schema_version: "1.0",
+        source_commit: $source_commit,
+        run_id: $run_id,
+        started_at: $timing[0].started_at,
+        completed_at: $completed_at,
+        bootstrap_elapsed_seconds: $timing[0].bootstrap_elapsed_seconds,
+        role_propagation_delay_seconds: $timing[0].role_propagation_delay_seconds,
+        replacement_operator: $recovery[0].replacement_operator,
+        namespace_access: $recovery[0].namespace_access,
+        reverse_migration: {
+          local_mode: $local_mode,
+          lineage_matches: $lineage_matches,
+          resource_count_matches: $resource_count_matches,
+          digest_matches: $digest_matches
+        },
+        unlock: {
+          plan_digest: $unlock_plan_digest,
+          approval_reference: $unlock_reference,
+          stale_plan_rejected: $unlock_stale,
+          applied_digest_matches: true
+        },
+        destroy: {
+          plan_digest: $destroy_plan_digest,
+          approval_reference: $destroy_reference,
+          stale_plan_rejected: $destroy_stale,
+          applied_digest_matches: true
+        },
+        backend_absence: {
+          account_absent: $account_absent,
+          container_absent: $container_absent
+        },
+        secret_hygiene: {
+          git_scan_passed: true,
+          evidence_scan_passed: true,
+          prohibited_artifact_count: $prohibited_artifact_count
+        },
+        stages: {
+          bootstrap: {recorded: true, reference: $bootstrap_reference},
+          preliminary_readiness: {recorded: true, reference: $preliminary_reference},
+          migration_final_readiness: {recorded: true, reference: $migration_reference},
+          dependent_initialization_deployment: {recorded: true, reference: $dependent_reference},
+          recovery: {recorded: true, reference: $recovery_reference},
+          unlock: {recorded: true, reference: $unlock_reference_file},
+          removal: {recorded: true, reference: $removal_reference},
+          undocumented_command_count: 0,
+          workflow_substitution_count: 0
+        },
+        status: "passed"
+      }'
+
+  tee_output "$LIVE_ACCEPTANCE_EVIDENCE.sha256" \
+    sha256sum "$LIVE_ACCEPTANCE_EVIDENCE"
+
+  .venv/bin/python - "$LIVE_ACCEPTANCE_EVIDENCE" "$LIVE_ACCEPTANCE_SCHEMA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+evidence = json.loads(Path(sys.argv[1]).read_text())
+schema = json.loads(Path(sys.argv[2]).read_text())
+Draft202012Validator(
+    schema,
+    format_checker=FormatChecker(),
+).validate(evidence)
+PY
+
+  sha256sum -c "$LIVE_ACCEPTANCE_EVIDENCE.sha256"
+fi
 ```
 
 Do not delete the protected local state, plans, approvals, manifests, or raw stale-plan logs until

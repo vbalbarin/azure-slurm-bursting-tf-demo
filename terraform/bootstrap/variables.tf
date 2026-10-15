@@ -345,10 +345,12 @@ variable "lifecycle_action" {
         try(var.lifecycle_assertions.bootstrap_state_location, "") == "local" &&
         (
           (
+            try(var.lifecycle_assertions.removal_path, "acceptance") == "acceptance" &&
             try(var.lifecycle_assertions.state_migration_status, "reverse_migrated") == "reverse_migrated" &&
             try(var.lifecycle_assertions.reverse_migration_verified, false)
           ) ||
           (
+            try(var.lifecycle_assertions.removal_path, "") == "abandoned_pre_migration_cleanup" &&
             try(var.lifecycle_assertions.state_migration_status, "") == "never_migrated" &&
             !try(var.lifecycle_assertions.reverse_migration_verified, true)
           )
@@ -374,11 +376,20 @@ variable "lifecycle_assertions" {
     bootstrap_state_location     = string
     bootstrap_state_digest       = optional(string)
     expected_state_digest        = optional(string)
+    removal_path                 = optional(string, "acceptance")
     state_migration_status       = optional(string, "reverse_migrated")
     reverse_migration_verified   = bool
   })
   default  = null
   nullable = true
+
+  validation {
+    condition = var.lifecycle_assertions == null || contains(
+      ["acceptance", "abandoned_pre_migration_cleanup"],
+      var.lifecycle_assertions.removal_path
+    )
+    error_message = "removal_path must be acceptance or abandoned_pre_migration_cleanup."
+  }
 
   validation {
     condition = var.lifecycle_assertions == null || contains(

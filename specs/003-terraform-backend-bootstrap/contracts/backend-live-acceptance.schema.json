@@ -138,6 +138,92 @@
         "recorded": { "type": "boolean" },
         "reference": { "type": "string", "minLength": 1 }
       }
+    },
+    "passed_access_result": {
+      "allOf": [
+        { "$ref": "#/$defs/access_result" },
+        {
+          "properties": {
+            "initialized": { "const": true },
+            "read_succeeded": { "const": true },
+            "lock_succeeded": { "const": true }
+          }
+        }
+      ]
+    },
+    "passed_approved_plan": {
+      "allOf": [
+        { "$ref": "#/$defs/approved_plan" },
+        {
+          "properties": {
+            "stale_plan_rejected": { "const": true },
+            "applied_digest_matches": { "const": true }
+          }
+        }
+      ]
+    },
+    "recorded_stage": {
+      "allOf": [
+        { "$ref": "#/$defs/approval_reference" },
+        {
+          "properties": {
+            "recorded": { "const": true }
+          }
+        }
+      ]
     }
-  }
+  },
+  "allOf": [
+      {
+        "if": {
+          "properties": {
+            "status": { "const": "passed" }
+          },
+          "required": ["status"]
+        },
+        "then": {
+          "properties": {
+            "namespace_access": {
+              "properties": {
+                "bootstrap": { "$ref": "#/$defs/passed_access_result" },
+                "main": { "$ref": "#/$defs/passed_access_result" },
+                "capacity_probe": { "$ref": "#/$defs/passed_access_result" }
+              }
+            },
+            "reverse_migration": {
+              "properties": {
+                "lineage_matches": { "const": true },
+                "resource_count_matches": { "const": true },
+                "digest_matches": { "const": true }
+              }
+            },
+            "unlock": { "$ref": "#/$defs/passed_approved_plan" },
+            "destroy": { "$ref": "#/$defs/passed_approved_plan" },
+            "backend_absence": {
+              "properties": {
+                "account_absent": { "const": true },
+                "container_absent": { "const": true }
+              }
+            },
+            "secret_hygiene": {
+              "properties": {
+                "git_scan_passed": { "const": true },
+                "evidence_scan_passed": { "const": true }
+              }
+            },
+            "stages": {
+              "properties": {
+                "bootstrap": { "$ref": "#/$defs/recorded_stage" },
+                "preliminary_readiness": { "$ref": "#/$defs/recorded_stage" },
+                "migration_final_readiness": { "$ref": "#/$defs/recorded_stage" },
+                "dependent_initialization_deployment": { "$ref": "#/$defs/recorded_stage" },
+                "recovery": { "$ref": "#/$defs/recorded_stage" },
+                "unlock": { "$ref": "#/$defs/recorded_stage" },
+                "removal": { "$ref": "#/$defs/recorded_stage" }
+              }
+            }
+          }
+        }
+      }
+  ]
 }

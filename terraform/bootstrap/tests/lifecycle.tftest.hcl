@@ -115,6 +115,7 @@ run "never_migrated_local_state_can_be_removed" {
       bootstrap_state_location     = "local"
       bootstrap_state_digest       = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       expected_state_digest        = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      removal_path                 = "abandoned_pre_migration_cleanup"
       state_migration_status       = "never_migrated"
       reverse_migration_verified   = false
     }
@@ -139,6 +140,7 @@ run "never_migrated_local_state_can_be_removed" {
   assert {
     condition = (
       output.backend_lifecycle.status == "ready" &&
+      output.backend_lifecycle.bootstrap_state.removal_path == "abandoned_pre_migration_cleanup" &&
       output.backend_lifecycle.bootstrap_state.migration_status == "never_migrated" &&
       !output.backend_lifecycle.bootstrap_state.reverse_migration_verified
     )
@@ -160,7 +162,54 @@ run "never_migrated_state_rejects_reverse_migration_claim" {
       bootstrap_state_location     = "local"
       bootstrap_state_digest       = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       expected_state_digest        = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      removal_path                 = "abandoned_pre_migration_cleanup"
       state_migration_status       = "never_migrated"
+      reverse_migration_verified   = true
+    }
+  }
+
+  expect_failures = [var.lifecycle_action]
+}
+
+run "acceptance_rejects_never_migrated_state" {
+  command = plan
+
+  variables {
+    lifecycle_assertions = {
+      assessed_at                  = "2026-10-14T13:04:00Z"
+      approval_reference           = "approval-unlock-local-001"
+      main_state_status            = "absent"
+      main_managed_resource_count  = 0
+      probe_state_status           = "absent"
+      probe_managed_resource_count = 0
+      bootstrap_state_location     = "local"
+      bootstrap_state_digest       = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      expected_state_digest        = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      removal_path                 = "acceptance"
+      state_migration_status       = "never_migrated"
+      reverse_migration_verified   = false
+    }
+  }
+
+  expect_failures = [var.lifecycle_action]
+}
+
+run "abandoned_cleanup_rejects_reverse_migrated_state" {
+  command = plan
+
+  variables {
+    lifecycle_assertions = {
+      assessed_at                  = "2026-10-14T13:04:30Z"
+      approval_reference           = "approval-unlock-local-001"
+      main_state_status            = "absent"
+      main_managed_resource_count  = 0
+      probe_state_status           = "absent"
+      probe_managed_resource_count = 0
+      bootstrap_state_location     = "local"
+      bootstrap_state_digest       = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      expected_state_digest        = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      removal_path                 = "abandoned_pre_migration_cleanup"
+      state_migration_status       = "reverse_migrated"
       reverse_migration_verified   = true
     }
   }

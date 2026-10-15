@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
@@ -92,6 +93,40 @@ def test_rejects_stopped_run_and_secret_shaped_fields() -> None:
 
     evidence = live_evidence()
     evidence["account_key"] = "prohibited"
+    assert list(_validator().iter_errors(evidence))
+
+
+@pytest.mark.parametrize(
+    ("section", "field"),
+    [
+        ("namespace_access", "bootstrap"),
+        ("namespace_access", "main"),
+        ("namespace_access", "capacity_probe"),
+    ],
+)
+def test_passed_evidence_requires_successful_namespace_access(
+    section: str, field: str
+) -> None:
+    evidence = live_evidence()
+    cast(dict[str, Any], evidence[section])[field]["lock_succeeded"] = False
+    assert list(_validator().iter_errors(evidence))
+
+
+def test_passed_evidence_requires_all_acceptance_invariants() -> None:
+    mutations = (
+        ("reverse_migration", "digest_matches"),
+        ("unlock", "stale_plan_rejected"),
+        ("destroy", "applied_digest_matches"),
+        ("backend_absence", "account_absent"),
+        ("secret_hygiene", "evidence_scan_passed"),
+    )
+    for section, field in mutations:
+        evidence = live_evidence()
+        cast(dict[str, Any], evidence[section])[field] = False
+        assert list(_validator().iter_errors(evidence))
+
+    evidence = live_evidence()
+    cast(dict[str, Any], evidence["stages"])["recovery"]["recorded"] = False
     assert list(_validator().iter_errors(evidence))
 
 

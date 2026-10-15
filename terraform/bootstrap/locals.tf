@@ -208,10 +208,12 @@ locals {
     var.lifecycle_assertions != null &&
     (
       (
+        var.lifecycle_assertions.removal_path == "acceptance" &&
         var.lifecycle_assertions.state_migration_status == "reverse_migrated" &&
         var.lifecycle_assertions.reverse_migration_verified
       ) ||
       (
+        var.lifecycle_assertions.removal_path == "abandoned_pre_migration_cleanup" &&
         var.lifecycle_assertions.state_migration_status == "never_migrated" &&
         !var.lifecycle_assertions.reverse_migration_verified
       )

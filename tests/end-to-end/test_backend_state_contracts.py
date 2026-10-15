@@ -155,6 +155,7 @@ def managed_removal() -> dict[str, object]:
         "source_commit": "a" * 40,
         "removal_run_id": "20261015T010203Z",
         "completed_at": "2026-10-15T01:05:00Z",
+        "removal_path": "abandoned_pre_migration_cleanup",
         "state_migration_status": "never_migrated",
         "reverse_migration_verified": False,
         "dependent_namespaces": {
@@ -219,6 +220,19 @@ def test_rejects_failed_readiness_with_none_failure_class() -> None:
     document = readiness()
     document["status"] = "failed"
     assert list(validator.iter_errors(document))
+
+
+def test_abandoned_cleanup_cannot_claim_acceptance_or_reverse_migration() -> None:
+    validator = _validator("backend-managed-removal.schema.json")
+
+    acceptance = managed_removal()
+    acceptance["removal_path"] = "acceptance"
+    assert list(validator.iter_errors(acceptance))
+
+    reverse_migrated = managed_removal()
+    reverse_migrated["state_migration_status"] = "reverse_migrated"
+    reverse_migrated["reverse_migration_verified"] = True
+    assert list(validator.iter_errors(reverse_migrated))
 
 
 def test_approval_digest_matches_exact_plan(tmp_path: Path) -> None:
@@ -309,6 +323,14 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     assert "from referencing import Registry, Resource" in runbook
     assert "A1 through A9, continue with Part B" in runbook
     assert "return to a10 only after" in runbook.lower()
+    assert "FINAL_RESOURCE_CHANGE_COUNT" in runbook
+    assert "FINAL_OUTPUT_CHANGE_COUNT" in runbook
+    assert "BOOTSTRAP_RECOVERY_PLAN_STATUS" in runbook
+    assert "RECOVERY_ELAPSED_SECONDS" in runbook
+    assert 'test "$RECOVERY_ELAPSED_SECONDS" -le 900' in runbook
+    assert 'test "$REVERSE_DIGEST_MATCHES" = "true"' in runbook
+    assert "backend-live-acceptance.json" in runbook
+    assert "abandoned_pre_migration_cleanup" in runbook
 
 
 def test_migration_contract_records_digest_only_disposition() -> None:
