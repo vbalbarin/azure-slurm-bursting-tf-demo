@@ -847,28 +847,43 @@ export RESOLVED_BLOB_IPV4_JSON="$(
 test "$(jq 'length' <<<"$RESOLVED_BLOB_IPV4_JSON")" -gt 0
 
 export NETWORK_OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export NETWORK_HEADER_FILE="$BOOTSTRAP_STATE_DIR/blob-network-headers.txt"
 set +e
 NETWORK_HTTP_STATUS="$(
   curl --ipv4 \
     --silent \
     --show-error \
     --head \
+    --dump-header "$NETWORK_HEADER_FILE" \
     --output /dev/null \
     --write-out '%{http_code}' \
     "https://$BLOB_HOST/$STATE_CONTAINER_NAME?restype=container"
 )"
 NETWORK_EXIT="$?"
 set +e
+chmod 0600 "$NETWORK_HEADER_FILE"
 test "$NETWORK_EXIT" -eq 0
 case "$NETWORK_HTTP_STATUS" in
-  200|400|401|403) ;;
+  200|400|401|403)
+    export NETWORK_OBSERVED_VALUE="http_status=$NETWORK_HTTP_STATUS"
+    ;;
+  409)
+    grep -Eiq \
+      '^HTTP/[0-9.]+ 409 Public access is not permitted on this storage account\.?$' \
+      "$NETWORK_HEADER_FILE"
+    export NETWORK_OBSERVED_VALUE="http_status=409_public_access_not_permitted"
+    ;;
   *) printf 'Unexpected Blob HTTP status: %s\n' "$NETWORK_HTTP_STATUS" >&2; false ;;
 esac
 ```
 
 An unauthenticated HTTP `403` is acceptable for the network check because it proves the private
-container endpoint is reachable; the authenticated Blob command below separately proves
-authorization. HTTP `000`, DNS failure, timeout, or transport failure blocks readiness.
+container endpoint is reachable. HTTP `409` is acceptable only when the response reason is exactly
+`Public access is not permitted on this storage account`; that response proves the selected
+endpoint is reachable and the configured anonymous-public-access prohibition is active. The
+authenticated Blob command below separately proves authorization. Any other `409`, HTTP `000`,
+DNS failure, timeout, or transport failure blocks readiness. Keep the raw headers under `/state`,
+not `/evidence`.
 
 ### A5.4 Blob authorization and state-key separation
 
@@ -989,7 +1004,7 @@ jq -n \
   --argjson resolved_count "$(jq 'length' <<<"$RESOLVED_BLOB_IPV4_JSON")" \
   --arg network_observed_at "$NETWORK_OBSERVED_AT" \
   --argjson network_exit "$NETWORK_EXIT" \
-  --arg network_http_status "$NETWORK_HTTP_STATUS" \
+  --arg network_observed_value "$NETWORK_OBSERVED_VALUE" \
   --arg authorization_observed_at "$AUTHORIZATION_OBSERVED_AT" \
   --argjson authorization_exit "$AUTHORIZATION_EXIT" \
   --arg blob_result_count "$BLOB_RESULT_COUNT" \
@@ -1043,7 +1058,7 @@ jq -n \
         observed_at: $network_observed_at,
         exit_code: $network_exit,
         status: "passed",
-        observed_value: ("http_status=" + $network_http_status)
+        observed_value: $network_observed_value
       },
       authorization: {
         command_id: "az_storage_blob_list",
