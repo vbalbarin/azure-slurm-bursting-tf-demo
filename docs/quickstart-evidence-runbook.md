@@ -3701,7 +3701,8 @@ pinned Slurm project/version, role-specific images, services, identities, `/sche
 the headless-template contracts.
 
 `/evidence` exists only in the development container. Capture logs to a protected temporary
-directory on each VM, then transfer them through an approved protected channel into:
+directory on each VM. Do not copy them directly into `/evidence`; use the B8.1 Bastion transfer
+procedure to stage, verify, and promote them into:
 
 ```text
 $DEMO_EVIDENCE_DIR/cyclecloud-converge-1.log
@@ -3732,8 +3733,8 @@ Confirm:
 - the imported headless cluster is visible; and
 - an untrusted public client cannot resolve or connect.
 
-Transfer the resulting secret-free JSON through an approved protected channel into
-`$DEMO_EVIDENCE_DIR`.
+Transfer the resulting secret-free JSON with the B8.1 Windows Bastion handoff. Stage it under
+`$DEMO_STATE_DIR/incoming/windows-admin/` before promotion into `$DEMO_EVIDENCE_DIR`.
 
 ## B8. Run the one-node burst job
 
@@ -3766,8 +3767,182 @@ Require, within 15 minutes under normal regional capacity:
    while the scheduler remains in the source region; and
 5. the node disappears after the configured idle timeout while scheduler health remains good.
 
-Transfer the resulting evidence through an approved protected channel into
+Transfer the resulting evidence with the B8.1 scheduler tunnel into
+`$DEMO_STATE_DIR/incoming/scheduler/` before promotion into
 `$DEMO_EVIDENCE_DIR/burst-job/`.
+
+## B8.1 Transfer node evidence through Bastion
+
+The Premium private-only Bastion has native-client tunneling enabled. The tunnel is pinned to an
+exact Azure VM resource ID and carries SSH, SCP, or RDP traffic without adding public VM ingress.
+The pinned Bastion module makes tunneling incompatible with Bastion session recording, so session
+recording is disabled; the archive manifest, protected transfer logs, host-key record, and promoted
+files are the transfer audit evidence. Do not use the Terraform `tfstate` container as an
+evidence-transfer channel.
+
+On each Linux VM, create a protected archive and manifest from the expected evidence directory.
+Exclude the archive and manifest themselves:
+
+```bash
+export REMOTE_EVIDENCE_DIR="<protected-temporary-directory-on-vm>"
+export REMOTE_ARCHIVE="/tmp/${HOSTNAME}-evidence.tar.gz"
+export REMOTE_FILE_LIST="/tmp/${HOSTNAME}-evidence-files"
+
+cd "$REMOTE_EVIDENCE_DIR"
+find . -type f \
+  ! -name MANIFEST.sha256 \
+  -print0 |
+  sort -z |
+  xargs -0 sha256sum >MANIFEST.sha256
+chmod 0600 MANIFEST.sha256
+{
+  printf 'MANIFEST.sha256\0'
+  find . -type f ! -name MANIFEST.sha256 -printf '%P\0'
+} >"$REMOTE_FILE_LIST"
+chmod 0600 "$REMOTE_FILE_LIST"
+tar --null --files-from="$REMOTE_FILE_LIST" -czf "$REMOTE_ARCHIVE"
+chmod 0600 "$REMOTE_ARCHIVE"
+```
+
+On the development container, create the protected incoming layout and derive names only from the
+validated inventory:
+
+```bash
+export INCOMING_ROOT="$DEMO_STATE_DIR/incoming"
+install -d -m 0700 \
+  "$INCOMING_ROOT/cyclecloud" \
+  "$INCOMING_ROOT/scheduler" \
+  "$INCOMING_ROOT/windows-admin"
+
+export BASTION_NAME="$(
+  jq -er '.application_access.bastion_name' "$INVENTORY_FILE"
+)"
+export BASTION_ID="$(
+  az network bastion list \
+    --query "[?name == '$BASTION_NAME'].id | [0]" \
+    --output tsv
+)"
+export BASTION_RESOURCE_GROUP="$(
+  awk -F/ '{print $5}' <<<"$BASTION_ID"
+)"
+
+test -n "$BASTION_ID"
+test -n "$BASTION_RESOURCE_GROUP"
+```
+
+For `cyclecloud` and `scheduler`, choose a different unused local port and run the tunnel in a
+dedicated terminal:
+
+```bash
+export HOST_ROLE="<cyclecloud-or-scheduler>"
+export TARGET_VM_NAME="$(
+  jq -er --arg role "$HOST_ROLE" \
+    '.private_hosts[$role].name' \
+    "$INVENTORY_FILE"
+)"
+export TARGET_VM_ID="$(
+  az vm list \
+    --query "[?name == '$TARGET_VM_NAME'].id | [0]" \
+    --output tsv
+)"
+export LOCAL_TUNNEL_PORT="<unused-loopback-port>"
+
+test -n "$TARGET_VM_ID"
+
+az network bastion tunnel \
+  --name "$BASTION_NAME" \
+  --resource-group "$BASTION_RESOURCE_GROUP" \
+  --target-resource-id "$TARGET_VM_ID" \
+  --resource-port 22 \
+  --port "$LOCAL_TUNNEL_PORT"
+```
+
+Leave that foreground command running. In another development-container terminal, record the host
+key inside protected state and copy the archive. The Bastion target resource ID binds the tunnel to
+the reviewed VM:
+
+```bash
+export SSH_USERNAME="<approved-linux-admin-user>"
+export KNOWN_HOSTS_FILE="$DEMO_STATE_DIR/bastion-known-hosts"
+export REMOTE_ARCHIVE="<remote-archive-path>"
+
+ssh-keyscan -p "$LOCAL_TUNNEL_PORT" 127.0.0.1 \
+  >>"$KNOWN_HOSTS_FILE"
+chmod 0600 "$KNOWN_HOSTS_FILE"
+
+scp \
+  -P "$LOCAL_TUNNEL_PORT" \
+  -o "UserKnownHostsFile=$KNOWN_HOSTS_FILE" \
+  "$SSH_USERNAME@127.0.0.1:$REMOTE_ARCHIVE" \
+  "$INCOMING_ROOT/$HOST_ROLE/evidence.tar.gz"
+```
+
+Stop the foreground tunnel after SCP completes. Reject unsafe archive paths, extract into the
+role-specific protected directory, verify every manifest digest, and require the secret-pattern
+scan to find no matches:
+
+```bash
+export INCOMING_ROLE_DIR="$INCOMING_ROOT/$HOST_ROLE"
+
+if tar -tzf "$INCOMING_ROLE_DIR/evidence.tar.gz" |
+  grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+  printf 'Unsafe evidence archive path detected.\n' >&2
+  false
+fi
+
+tar -xzf "$INCOMING_ROLE_DIR/evidence.tar.gz" \
+  -C "$INCOMING_ROLE_DIR"
+
+(
+  cd "$INCOMING_ROLE_DIR"
+  sha256sum -c MANIFEST.sha256
+)
+
+set +e
+grep -R -I -n -E \
+  '("(account_key|access_token|client_secret|password|sas_token)"[[:space:]]*:|-----BEGIN [A-Z ]*PRIVATE KEY-----|AccountKey=|SharedAccessSignature=|[?&]sig=)' \
+  "$INCOMING_ROLE_DIR" \
+  >"$DEMO_STATE_DIR/$HOST_ROLE-incoming-secret-scan.log"
+INCOMING_SECRET_SCAN_STATUS="$?"
+set +e
+
+test "$INCOMING_SECRET_SCAN_STATUS" -eq 1
+test ! -s "$DEMO_STATE_DIR/$HOST_ROLE-incoming-secret-scan.log"
+```
+
+For Windows, create a port-3389 tunnel pinned to the validated `windows_admin` VM resource ID and
+use an approved native RDP client with protected-drive redirection. Copy only
+`private-administration.json` and its SHA-256 file into
+`$INCOMING_ROOT/windows-admin/`. Do not enable a public endpoint, SSH, WinRM, clipboard transfer,
+or an additional guest listener solely for evidence transfer. Verify its digest and scan it with
+the same protected staging gates above.
+
+After all staging checks pass, promote only the expected secret-free files:
+
+```bash
+install -m 0600 \
+  "$INCOMING_ROOT/cyclecloud/cyclecloud-converge-1.log" \
+  "$DEMO_EVIDENCE_DIR/cyclecloud-converge-1.log"
+install -m 0600 \
+  "$INCOMING_ROOT/cyclecloud/cyclecloud-converge-2.log" \
+  "$DEMO_EVIDENCE_DIR/cyclecloud-converge-2.log"
+install -m 0600 \
+  "$INCOMING_ROOT/scheduler/scheduler-converge-1.log" \
+  "$DEMO_EVIDENCE_DIR/scheduler-converge-1.log"
+install -m 0600 \
+  "$INCOMING_ROOT/scheduler/scheduler-converge-2.log" \
+  "$DEMO_EVIDENCE_DIR/scheduler-converge-2.log"
+install -m 0600 \
+  "$INCOMING_ROOT/windows-admin/private-administration.json" \
+  "$DEMO_EVIDENCE_DIR/private-administration.json"
+
+install -d -m 0700 "$DEMO_EVIDENCE_DIR/burst-job"
+find "$INCOMING_ROOT/scheduler/burst-job" -type f -maxdepth 1 \
+  -exec install -m 0600 {} "$DEMO_EVIDENCE_DIR/burst-job/" \;
+```
+
+Keep incoming archives and manifests under `/state` until B10 succeeds. Never copy archives,
+credentials, private keys, raw protected inputs, or unvalidated files into `/evidence`.
 
 ## B9. Collect audit evidence
 

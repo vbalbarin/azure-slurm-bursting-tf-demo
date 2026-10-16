@@ -12,6 +12,8 @@ def test_private_only_management_surfaces() -> None:
     source = terraform_file("network.tf") + terraform_file("security.tf") + terraform_file("compute.tf")
     assert re.search(r"public_network_access_enabled\s*=\s*false", source)
     assert re.search(r"private_only_enabled\s*=\s*true", source)
+    assert re.search(r"session_recording_enabled\s*=\s*false", source)
+    assert re.search(r"tunneling_enabled\s*=\s*true", source)
     assert re.search(r"create_public_ip_address\s*=\s*false", source)
 
 

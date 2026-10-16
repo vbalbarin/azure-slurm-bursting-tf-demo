@@ -378,6 +378,12 @@ This group is separate from the identity that runs Terraform:
 
 RBAC assignments can take several minutes to propagate after deployment.
 
+For the evidence run, the agent executes A1-A8, A11, and B1-B5. The operator then gathers
+host-local B6-B8 evidence through Bastion native-client sessions. After the protected incoming
+artifacts are available, the agent validates them and executes B9-B10, A9, B11, and A10. Native
+SSH/SCP and RDP clients are required for this handoff; browser-only Bastion access is not the
+evidence-transfer channel.
+
 1. Copy `terraform/environments/demo.tfvars.example` to a protected, ignored `.tfvars` file and
    supply the approved subscription, tenant, distinct source/burst regions, CIDRs, Entra group,
    exact scheduler and burst-compute image versions, VM SKUs, and versioned Key Vault references.
@@ -412,7 +418,13 @@ RBAC assignments can take several minutes to propagate after deployment.
 7. On the scheduler, run `tests/end-to-end/run_burst_demo.sh`. The output must identify one node
    in the configured burst region within 15 minutes and that node must disappear after idle
    timeout while the source-region scheduler remains healthy.
-8. Run `tests/end-to-end/collect_audit_evidence.sh`, validate inventory, and create a second
+8. Use the Premium private-only Bastion native-client tunnel to stage Linux evidence archives
+   under `/state/slurm-demo/<run-id>/incoming/`. Verify safe archive paths, SHA-256 manifests, and
+   secret-pattern scans before promoting only expected files into `/evidence`. Transfer the
+   Windows JSON through the Bastion RDP protected-drive handoff; never use the `tfstate` container.
+   The pinned Bastion module does not support tunneling and session recording together, so this
+   transfer mode disables session recording and relies on protected transfer artifacts for audit.
+9. Run `tests/end-to-end/collect_audit_evidence.sh`, validate inventory, and create a second
    unchanged Terraform plan. Any drift, secret leak, failed private probe, or non-idempotent result
    blocks completion.
 

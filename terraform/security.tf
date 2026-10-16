@@ -95,8 +95,8 @@ module "bastion" {
   parent_id                 = module.resource_group.resource_id
   sku                       = "Premium"
   private_only_enabled      = true
-  session_recording_enabled = true
-  tunneling_enabled         = false
+  session_recording_enabled = false
+  tunneling_enabled         = true
   enable_telemetry          = false
   tags                      = local.common_tags
 
