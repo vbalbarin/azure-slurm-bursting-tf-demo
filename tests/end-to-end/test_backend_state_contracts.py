@@ -332,7 +332,10 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     assert "BOOTSTRAP_RECOVERY_PLAN_STATUS" in runbook
     assert "RECOVERY_ELAPSED_SECONDS" in runbook
     assert 'test "$RECOVERY_ELAPSED_SECONDS" -le 900' in runbook
-    assert 'test "$REVERSE_DIGEST_MATCHES" = "true"' in runbook
+    assert 'test "$REVERSE_STABLE_STATE_MATCHES" = "true"' in runbook
+    assert "MIGRATION_SAVED_PLAN_CONTINUITY" in runbook
+    assert "MIGRATION_STALE_REJECTED" not in runbook
+    assert "jq -S -c '{lineage, outputs, resources}'" in runbook
     assert "backend-live-acceptance.json" in runbook
     assert "abandoned_pre_migration_cleanup" in runbook
     assert "## B11. Remove the main deployment" in runbook

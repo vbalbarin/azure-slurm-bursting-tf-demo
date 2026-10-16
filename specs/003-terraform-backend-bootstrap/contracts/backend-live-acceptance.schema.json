@@ -60,12 +60,12 @@
     "reverse_migration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["local_mode", "lineage_matches", "resource_count_matches", "digest_matches"],
+      "required": ["local_mode", "lineage_matches", "resource_count_matches", "stable_state_matches"],
       "properties": {
         "local_mode": { "const": "0600" },
         "lineage_matches": { "type": "boolean" },
         "resource_count_matches": { "type": "boolean" },
-        "digest_matches": { "type": "boolean" }
+        "stable_state_matches": { "type": "boolean" }
       }
     },
     "unlock": { "$ref": "#/$defs/approved_plan" },
@@ -194,7 +194,7 @@
               "properties": {
                 "lineage_matches": { "const": true },
                 "resource_count_matches": { "const": true },
-                "digest_matches": { "const": true }
+                "stable_state_matches": { "const": true }
               }
             },
             "unlock": { "$ref": "#/$defs/passed_approved_plan" },

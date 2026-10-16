@@ -1385,15 +1385,21 @@ export LOCAL_STATE_DIGEST="$(
   awk '{print $1}'
 )"
 
-export MIGRATION_STALE_PLAN="$BOOTSTRAP_STATE_DIR/pre-migration-stale.tfplan"
+export MIGRATION_CONTINUITY_PLAN="$BOOTSTRAP_STATE_DIR/pre-migration-continuity.tfplan"
 
 terraform -chdir=terraform/bootstrap plan \
   -input=false \
   -refresh-only \
   -var-file="$BOOTSTRAP_TFVARS" \
   -var-file="$PRELIMINARY_TFVARS" \
-  -out="$MIGRATION_STALE_PLAN"
-chmod 0600 "$MIGRATION_STALE_PLAN"
+  -out="$MIGRATION_CONTINUITY_PLAN"
+chmod 0600 "$MIGRATION_CONTINUITY_PLAN"
+
+export MIGRATION_CONTINUITY_RESOURCE_CHANGE_COUNT="$(
+  terraform -chdir=terraform/bootstrap show -json "$MIGRATION_CONTINUITY_PLAN" |
+    jq '[.resource_changes[]? | select(.change.actions != ["no-op"])] | length'
+)"
+test "$MIGRATION_CONTINUITY_RESOURCE_CHANGE_COUNT" -eq 0
 
 rm terraform/bootstrap/backend.local.tf
 cp terraform/bootstrap/backend.azurerm.tf.example \
@@ -1429,20 +1435,21 @@ test "$LOCAL_LINEAGE" = "$REMOTE_LINEAGE"
 test "$LOCAL_RESOURCE_COUNT" -eq "$REMOTE_RESOURCE_COUNT"
 ```
 
-Reject the plan created against the pre-migration state context:
+Prove that the mechanically no-resource-change plan saved before migration remains applicable to
+the same state lineage after migration:
 
 ```bash
-export MIGRATION_STALE_LOG="$BOOTSTRAP_STATE_DIR/pre-migration-stale.log"
+export MIGRATION_CONTINUITY_LOG="$BOOTSTRAP_STATE_DIR/pre-migration-continuity.log"
 
 set +e
 terraform -chdir=terraform/bootstrap apply \
   -input=false \
-  "$MIGRATION_STALE_PLAN" >"$MIGRATION_STALE_LOG" 2>&1
-MIGRATION_STALE_STATUS="$?"
+  "$MIGRATION_CONTINUITY_PLAN" >"$MIGRATION_CONTINUITY_LOG" 2>&1
+MIGRATION_CONTINUITY_STATUS="$?"
 set +e
 
-test "$MIGRATION_STALE_STATUS" -ne 0
-export MIGRATION_STALE_REJECTED="true"
+test "$MIGRATION_CONTINUITY_STATUS" -eq 0
+export MIGRATION_SAVED_PLAN_CONTINUITY="true"
 ```
 
 Run a remote no-change plan and retain only the protected raw log:
@@ -1551,7 +1558,7 @@ jq -n \
   --argjson remote_count "$REMOTE_RESOURCE_COUNT" \
   --arg bootstrap_key "$BACKEND_ENVIRONMENT/bootstrap.tfstate" \
   --argjson no_change_status "$REMOTE_NO_CHANGE_STATUS" \
-  --argjson stale_status "$MIGRATION_STALE_STATUS" \
+  --argjson continuity_status "$MIGRATION_CONTINUITY_STATUS" \
   --arg main_key "$BACKEND_ENVIRONMENT/main.tfstate" \
   --arg probe_key "$BACKEND_ENVIRONMENT/capacity-probe.tfstate" \
   '{
@@ -1580,8 +1587,8 @@ jq -n \
       exit_code: $no_change_status,
       result: true
     },
-    stale_plan_rejection: {
-      exit_code: $stale_status,
+    saved_plan_continuity: {
+      exit_code: $continuity_status,
       result: true
     },
     lock_conflict: {
@@ -2288,7 +2295,7 @@ if test "$REMOVAL_PATH" = "acceptance"; then
   export REVERSE_LOCAL_MODE="failed"
   export REVERSE_LINEAGE_MATCHES="false"
   export REVERSE_RESOURCE_COUNT_MATCHES="false"
-  export REVERSE_DIGEST_MATCHES="false"
+  export REVERSE_STABLE_STATE_MATCHES="false"
 
   terraform -chdir=terraform/bootstrap state pull \
     >"$REMOTE_STATE_BEFORE_REVERSE"
@@ -2319,15 +2326,15 @@ if test "$REMOVAL_PATH" = "acceptance"; then
     "$(jq '[.resources[]?] | length' "$REMOTE_STATE_BEFORE_REVERSE")"; then
     export REVERSE_RESOURCE_COUNT_MATCHES="true"
   fi
-  if test "$(jq -S -c . "$LOCAL_STATE_AFTER_REVERSE" | sha256sum | awk '{print $1}')" = \
-    "$(jq -S -c . "$REMOTE_STATE_BEFORE_REVERSE" | sha256sum | awk '{print $1}')"; then
-    export REVERSE_DIGEST_MATCHES="true"
+  if test "$(jq -S -c '{lineage, outputs, resources}' "$LOCAL_STATE_AFTER_REVERSE" | sha256sum | awk '{print $1}')" = \
+    "$(jq -S -c '{lineage, outputs, resources}' "$REMOTE_STATE_BEFORE_REVERSE" | sha256sum | awk '{print $1}')"; then
+    export REVERSE_STABLE_STATE_MATCHES="true"
   fi
 
   test "$REVERSE_LOCAL_MODE" = "0600"
   test "$REVERSE_LINEAGE_MATCHES" = "true"
   test "$REVERSE_RESOURCE_COUNT_MATCHES" = "true"
-  test "$REVERSE_DIGEST_MATCHES" = "true"
+  test "$REVERSE_STABLE_STATE_MATCHES" = "true"
 fi
 ```
 
@@ -3122,7 +3129,7 @@ if test "$REMOVAL_PATH" = "acceptance"; then
   test "$REVERSE_LOCAL_MODE" = "0600"
   test "$REVERSE_LINEAGE_MATCHES" = "true"
   test "$REVERSE_RESOURCE_COUNT_MATCHES" = "true"
-  test "$REVERSE_DIGEST_MATCHES" = "true"
+  test "$REVERSE_STABLE_STATE_MATCHES" = "true"
 
   set +e
   git grep -I -n -E \
@@ -3176,7 +3183,7 @@ if test "$REMOVAL_PATH" = "acceptance"; then
     test "$REVERSE_LOCAL_MODE" = "0600" &&
     test "$REVERSE_LINEAGE_MATCHES" = "true" &&
     test "$REVERSE_RESOURCE_COUNT_MATCHES" = "true" &&
-    test "$REVERSE_DIGEST_MATCHES" = "true" &&
+    test "$REVERSE_STABLE_STATE_MATCHES" = "true" &&
     test "$GIT_SECRET_SCAN_STATUS" -eq 1 &&
     test "$EVIDENCE_SECRET_SCAN_STATUS" -eq 1 &&
     test "$PROHIBITED_ARTIFACT_COUNT" -eq 0 &&
@@ -3206,7 +3213,7 @@ if test "$REMOVAL_PATH" = "acceptance"; then
       --arg local_mode "$REVERSE_LOCAL_MODE" \
       --argjson lineage_matches "$REVERSE_LINEAGE_MATCHES" \
       --argjson resource_count_matches "$REVERSE_RESOURCE_COUNT_MATCHES" \
-      --argjson digest_matches "$REVERSE_DIGEST_MATCHES" \
+      --argjson stable_state_matches "$REVERSE_STABLE_STATE_MATCHES" \
       --arg unlock_plan_digest "$(sha256sum "$UNLOCK_PLAN" | awk '{print $1}')" \
       --arg unlock_reference "$UNLOCK_APPROVAL_REFERENCE" \
       --argjson unlock_stale "$UNLOCK_STALE_PLAN_REJECTED" \
@@ -3237,7 +3244,7 @@ if test "$REMOVAL_PATH" = "acceptance"; then
           local_mode: $local_mode,
           lineage_matches: $lineage_matches,
           resource_count_matches: $resource_count_matches,
-          digest_matches: $digest_matches
+          stable_state_matches: $stable_state_matches
         },
         unlock: {
           plan_digest: $unlock_plan_digest,

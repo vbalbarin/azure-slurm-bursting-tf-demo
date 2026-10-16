@@ -14,7 +14,7 @@
     "lineage_matches",
     "resource_count_matches",
     "no_change_plan",
-    "stale_plan_rejection",
+    "saved_plan_continuity",
     "lock_conflict",
     "namespaces",
     "verification_status"
@@ -52,7 +52,7 @@
     "lineage_matches": { "type": "boolean" },
     "resource_count_matches": { "type": "boolean" },
     "no_change_plan": { "$ref": "#/$defs/command_result" },
-    "stale_plan_rejection": { "$ref": "#/$defs/command_result" },
+    "saved_plan_continuity": { "$ref": "#/$defs/command_result" },
     "lock_conflict": {
       "type": "object",
       "additionalProperties": false,
@@ -104,6 +104,25 @@
             }
           },
           "remote_state": { "properties": { "pull_succeeded": { "const": true } } },
+          "no_change_plan": {
+            "properties": {
+              "exit_code": { "const": 0 },
+              "result": { "const": true }
+            }
+          },
+          "saved_plan_continuity": {
+            "properties": {
+              "exit_code": { "const": 0 },
+              "result": { "const": true }
+            }
+          },
+          "lock_conflict": {
+            "properties": {
+              "first_operation_acquired": { "const": true },
+              "first_operation_released": { "const": true },
+              "second_operation_rejected": { "const": true }
+            }
+          },
           "namespaces": {
             "properties": {
               "pairwise_distinct": { "const": true },

@@ -161,7 +161,7 @@ document because a document cannot contain the SHA-256 digest of its own canonic
 | `lineage_matches` | True only when protected local and remote lineage are equal |
 | `resource_count_matches` | True only when protected local and remote resource counts are equal |
 | `no_change_plan` | Exit status and `no_changes` result without plan content |
-| `stale_plan_rejection` | Exit status and rejection result without raw diagnostic output |
+| `saved_plan_continuity` | Exit status and success result for the mechanically no-resource-change plan saved before migration and applied afterward |
 | `lock_conflict` | First-operation lock acquisition/release and second-operation rejection results |
 | `namespaces` | Exact bootstrap, main, and capacity-probe keys plus pairwise-isolation result |
 | `verification_status` | `passed` or `failed` |
@@ -181,7 +181,7 @@ tests validate this document only and never execute migration or control-plane c
 | `role_propagation_delay_seconds` | Separately measured nonnegative duration |
 | `replacement_operator` | Non-secret tenant, principal ID/type, authenticated start, completion, and elapsed seconds; maximum 900 |
 | `namespace_access` | Initialization, read, and lock results for bootstrap, main, and capacity-probe |
-| `reverse_migration` | Mode-`0600` local state, lineage/resource-count verification, and digest match |
+| `reverse_migration` | Mode-`0600` local state plus lineage, resource-count, and stable `{lineage, outputs, resources}` projection verification |
 | `unlock` | Exact unlock-only plan digest, approval reference, stale-plan result, and applied-plan digest match |
 | `destroy` | Separate destroy-plan digest, approval reference, stale-plan result, and applied-plan digest match |
 | `backend_absence` | Account/container absence result after approved managed cleanup |

@@ -57,7 +57,7 @@ def live_evidence() -> dict[str, object]:
             "local_mode": "0600",
             "lineage_matches": True,
             "resource_count_matches": True,
-            "digest_matches": True,
+            "stable_state_matches": True,
         },
         "unlock": plan,
         "destroy": {**plan, "approval_reference": "CHG-124"},
@@ -114,7 +114,7 @@ def test_passed_evidence_requires_successful_namespace_access(
 
 def test_passed_evidence_requires_all_acceptance_invariants() -> None:
     mutations = (
-        ("reverse_migration", "digest_matches"),
+        ("reverse_migration", "stable_state_matches"),
         ("unlock", "stale_plan_rejected"),
         ("destroy", "applied_digest_matches"),
         ("backend_absence", "account_absent"),

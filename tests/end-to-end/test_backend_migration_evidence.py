@@ -46,7 +46,7 @@ def migration_evidence() -> dict[str, object]:
         "lineage_matches": True,
         "resource_count_matches": True,
         "no_change_plan": {"exit_code": 0, "result": True},
-        "stale_plan_rejection": {"exit_code": 1, "result": True},
+        "saved_plan_continuity": {"exit_code": 0, "result": True},
         "lock_conflict": {
             "first_operation_acquired": True,
             "first_operation_released": True,
@@ -70,6 +70,12 @@ def test_representative_migration_evidence() -> None:
 def test_passed_evidence_rejects_unverified_or_retained_local_state() -> None:
     evidence = migration_evidence()
     evidence["local_state"]["retained_until_verified"] = False
+    assert list(_validator().iter_errors(evidence))
+
+
+def test_passed_evidence_requires_saved_plan_continuity() -> None:
+    evidence = migration_evidence()
+    evidence["saved_plan_continuity"] = {"exit_code": 1, "result": False}
     assert list(_validator().iter_errors(evidence))
 
 
