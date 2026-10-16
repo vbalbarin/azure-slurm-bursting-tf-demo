@@ -81,6 +81,12 @@ module "virtual_machine" {
 
   source_image_reference = var.burst_compute_image
 
+  plan = {
+    name      = var.burst_compute_image.sku
+    product   = var.burst_compute_image.offer
+    publisher = var.burst_compute_image.publisher
+  }
+
   account_credentials = {
     admin_credentials = {
       username                           = "probeadmin"

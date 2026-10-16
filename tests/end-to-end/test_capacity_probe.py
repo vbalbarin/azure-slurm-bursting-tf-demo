@@ -9,6 +9,7 @@ import subprocess
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 SCRIPT = REPOSITORY_ROOT / "tests/end-to-end/capacity_probe.sh"
+PROBE_CONFIGURATION = REPOSITORY_ROOT / "terraform/capacity-probe/main.tf"
 
 
 def _write_fake_terraform(directory: Path) -> None:
@@ -105,6 +106,16 @@ def _approve(plan: Path, approval: Path) -> None:
             }
         )
     )
+
+
+def test_probe_configuration_includes_burst_image_marketplace_plan() -> None:
+    configuration = PROBE_CONFIGURATION.read_text()
+
+    assert """  plan = {
+    name      = var.burst_compute_image.sku
+    product   = var.burst_compute_image.offer
+    publisher = var.burst_compute_image.publisher
+  }""" in configuration
 
 
 def test_probe_success_and_verified_cleanup(tmp_path: Path) -> None:
