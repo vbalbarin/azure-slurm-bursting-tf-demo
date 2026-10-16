@@ -1401,13 +1401,16 @@ cp terraform/bootstrap/backend.azurerm.tf.example \
 
 terraform -chdir=terraform/bootstrap init \
   -migrate-state \
+  -force-copy \
   -input=false \
   -backend-config="storage_account_name=<storage-account>" \
   -backend-config="container_name=tfstate" \
   -backend-config="key=$BACKEND_ENVIRONMENT/bootstrap.tfstate"
 ```
 
-Use `-migrate-state`, never `-reconfigure`, when state must be copied.
+Use `-migrate-state`, never `-reconfigure`, when state must be copied. The noninteractive command
+also requires `-force-copy`; without it Terraform cannot request migration approval and exits after
+initializing an empty destination state.
 
 Pull remote state to a protected temporary file and compare only bounded properties:
 

@@ -312,6 +312,9 @@ def test_local_backend_uses_runtime_protected_path_contract() -> None:
 
 def test_detailed_runbook_uses_supported_removal_commands() -> None:
     runbook = (ROOT / "docs/quickstart-evidence-runbook.md").read_text()
+    migration = runbook.split("## A6. Migrate bootstrap state", 1)[1].split(
+        "## A7. Produce final readiness", 1
+    )[0]
 
     assert "--resource-type Microsoft.Storage/storageAccounts" in runbook
     assert '--scope "$STORAGE_ACCOUNT_RESOURCE_ID"' not in runbook
@@ -355,6 +358,14 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
         in runbook
     )
     assert '--arg document_digest "$COORDINATES_DOCUMENT_DIGEST"' in runbook
+    assert (
+        "terraform -chdir=terraform/bootstrap init \\\n"
+        "  -migrate-state \\\n"
+        "  -force-copy \\\n"
+        "  -input=false"
+        in migration
+    )
+    assert "-migrate-state \\\n  -input=false" not in migration
 
 
 def test_runbook_persists_only_protected_run_context() -> None:
