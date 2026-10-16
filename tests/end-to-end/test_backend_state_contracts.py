@@ -336,6 +336,13 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     assert "BOOTSTRAP_RECOVERY_PLAN_STATUS" in runbook
     assert "RECOVERY_ELAPSED_SECONDS" in runbook
     assert 'test "$RECOVERY_ELAPSED_SECONDS" -le 900' in runbook
+    assert 'export APPROVAL_WAIT_SECONDS="$(' in runbook
+    assert '"$BOOTSTRAP_CREATE_APPROVAL"' in runbook
+    assert '"$PRELIMINARY_APPROVAL"' in runbook
+    assert '"$FINAL_APPROVAL"' in runbook
+    assert "ROLE_PROPAGATION_DELAY_SECONDS -" in runbook
+    assert "APPROVAL_WAIT_SECONDS" in runbook
+    assert 'test "$BOOTSTRAP_ELAPSED_SECONDS" -le 1200' in runbook
     assert 'test "$REVERSE_STABLE_STATE_MATCHES" = "true"' in runbook
     assert "MIGRATION_SAVED_PLAN_CONTINUITY" in runbook
     assert "MIGRATION_STALE_REJECTED" not in runbook

@@ -40,6 +40,7 @@ def live_evidence() -> dict[str, object]:
         "completed_at": "2026-10-14T13:25:00Z",
         "bootstrap_elapsed_seconds": 600,
         "role_propagation_delay_seconds": 90,
+        "approval_wait_seconds": 300,
         "replacement_operator": {
             "tenant_id": "11111111-1111-4111-8111-111111111111",
             "principal_id": "22222222-2222-4222-8222-222222222222",
@@ -84,6 +85,16 @@ def live_evidence() -> dict[str, object]:
 
 def test_representative_live_acceptance_evidence() -> None:
     _validator().validate(live_evidence())
+
+
+def test_requires_nonnegative_approval_wait() -> None:
+    evidence = live_evidence()
+    del evidence["approval_wait_seconds"]
+    assert list(_validator().iter_errors(evidence))
+
+    evidence = live_evidence()
+    evidence["approval_wait_seconds"] = -1
+    assert list(_validator().iter_errors(evidence))
 
 
 def test_rejects_stopped_run_and_secret_shaped_fields() -> None:

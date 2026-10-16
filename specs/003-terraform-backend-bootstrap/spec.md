@@ -299,7 +299,9 @@ confirm that backend teardown is blocked while either namespace manages resource
 
 - **SC-001**: An authorized operator with approved inputs can create a new backend and obtain
   validated non-secret coordinates in 20 minutes or less, measured from bootstrap initialization
-  through final coordinate validation; separately recorded cloud role-propagation delay is excluded.
+  through final coordinate validation as active execution time; separately recorded cloud
+  role-propagation and authorized plan-approval wait intervals are excluded. Command failures,
+  investigation, retries, and ordinary execution time are not excluded.
 - **SC-002**: In acceptance testing, 100% of missing-account, missing-container, unauthorized,
   unreachable, incorrectly resolved, colliding-key, and lock-conflict cases stop before a dependent
   plan is created.

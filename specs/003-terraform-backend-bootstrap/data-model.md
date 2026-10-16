@@ -177,8 +177,9 @@ tests validate this document only and never execute migration or control-plane c
 | `source_commit` | Exact Git commit under acceptance |
 | `run_id` | New evidence-run identifier; never the stopped run |
 | `started_at`, `completed_at` | UTC acceptance interval |
-| `bootstrap_elapsed_seconds` | Excludes separately recorded role-propagation delay; maximum 1200 |
+| `bootstrap_elapsed_seconds` | Active execution time after excluding separately recorded role-propagation and authorized plan-approval waits; maximum 1200 |
 | `role_propagation_delay_seconds` | Separately measured nonnegative duration |
+| `approval_wait_seconds` | Sum of nonnegative create, preliminary-readiness, and final-readiness plan approval intervals; failures, investigation, retries, and ordinary execution are not included |
 | `replacement_operator` | Non-secret tenant, principal ID/type, authenticated start, completion, and elapsed seconds; maximum 900 |
 | `namespace_access` | Initialization, read, and lock results for bootstrap, main, and capacity-probe |
 | `reverse_migration` | Mode-`0600` local state plus lineage, resource-count, and stable `{lineage, outputs, resources}` projection verification |

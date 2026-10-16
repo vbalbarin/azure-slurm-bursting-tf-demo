@@ -241,8 +241,9 @@ not a prerequisite for initializing or deploying those workloads.
 Acceptance passes only when:
 
 - source validation passes;
-- measured bootstrap duration is at most 20 minutes after separately excluding recorded
-  role-propagation delay;
+- measured bootstrap active execution is at most 20 minutes after separately excluding recorded
+  role-propagation and authorized plan-approval wait intervals; failures, investigation, retries,
+  and ordinary execution time remain included;
 - managed and existing modes satisfy their ownership boundaries;
 - local→remote→local migration is demonstrated;
 - second plans are no-change;

@@ -60,8 +60,10 @@ DNS zone
 contracts integrated with the existing infrastructure repository
 
 **Performance Goals**: Complete managed bootstrap and validated coordinates in at most 20 minutes
-excluding role-propagation delay; recover a second authorized operator in at most 15 minutes;
-readiness failures return before either dependent plan starts
+of active execution, excluding separately recorded role-propagation and authorized plan-approval
+wait intervals but not failures, investigation, retries, or ordinary execution; recover a second
+authorized operator in at most 15 minutes; readiness failures return before either dependent plan
+starts
 
 **Constraints**: All Azure resources through direct pinned AVM calls; no direct Azure resource
 blocks or local wrapper modules; no shared keys, SAS, anonymous container access, unrestricted

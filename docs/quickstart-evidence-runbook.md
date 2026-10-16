@@ -306,8 +306,9 @@ Stop on any nonzero status. Do not continue with stale validation from another c
 # Part A: Terraform backend bootstrap
 
 Complete Part A before initializing the main or capacity-probe roots against the remote backend.
-Bootstrap acceptance must complete within 20 minutes, excluding separately measured Entra
-role-propagation delay.
+Bootstrap acceptance must complete within 20 minutes of active execution, excluding separately
+measured Entra role-propagation and authorized plan-approval wait intervals. Command failures,
+investigation, retries, and ordinary execution time are never excluded.
 
 Choose the execution order before starting:
 
@@ -1904,12 +1905,27 @@ jq -e '.status == "ready" and .failure_class == "none"' \
   "$BACKEND_EVIDENCE_DIR/backend-readiness.json"
 
 export ROLE_PROPAGATION_DELAY_SECONDS="<separately-measured-seconds>"
+export APPROVAL_WAIT_SECONDS="$(
+  jq -s '
+    map(
+      ((.approved_at | fromdateiso8601) -
+       (.plan_created_at | fromdateiso8601))
+    ) |
+    add
+  ' \
+    "$BOOTSTRAP_CREATE_APPROVAL" \
+    "$PRELIMINARY_APPROVAL" \
+    "$FINAL_APPROVAL"
+)"
 export BOOTSTRAP_COMPLETED_EPOCH="$(date +%s)"
 export BOOTSTRAP_ELAPSED_SECONDS="$((
   BOOTSTRAP_COMPLETED_EPOCH -
   BOOTSTRAP_STARTED_EPOCH -
-  ROLE_PROPAGATION_DELAY_SECONDS
+  ROLE_PROPAGATION_DELAY_SECONDS -
+  APPROVAL_WAIT_SECONDS
 ))"
+test "$APPROVAL_WAIT_SECONDS" -ge 0
+test "$BOOTSTRAP_ELAPSED_SECONDS" -ge 0
 test "$BOOTSTRAP_ELAPSED_SECONDS" -le 1200
 
 tee_output "$BACKEND_EVIDENCE_DIR/bootstrap-timing.json" \
@@ -1920,11 +1936,13 @@ tee_output "$BACKEND_EVIDENCE_DIR/bootstrap-timing.json" \
     --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson bootstrap_elapsed_seconds "$BOOTSTRAP_ELAPSED_SECONDS" \
     --argjson role_propagation_delay_seconds "$ROLE_PROPAGATION_DELAY_SECONDS" \
+    --argjson approval_wait_seconds "$APPROVAL_WAIT_SECONDS" \
     '{
       started_at: $started_at,
       completed_at: $completed_at,
       bootstrap_elapsed_seconds: $bootstrap_elapsed_seconds,
-      role_propagation_delay_seconds: $role_propagation_delay_seconds
+      role_propagation_delay_seconds: $role_propagation_delay_seconds,
+      approval_wait_seconds: $approval_wait_seconds
     }'
 ```
 
@@ -3252,6 +3270,7 @@ if test "$REMOVAL_PATH" = "acceptance"; then
         completed_at: $completed_at,
         bootstrap_elapsed_seconds: $timing[0].bootstrap_elapsed_seconds,
         role_propagation_delay_seconds: $timing[0].role_propagation_delay_seconds,
+        approval_wait_seconds: $timing[0].approval_wait_seconds,
         replacement_operator: $recovery[0].replacement_operator,
         namespace_access: $recovery[0].namespace_access,
         reverse_migration: {
@@ -4263,7 +4282,8 @@ Acceptance passes only when:
 
 - the exact source commit and clean worktree were recorded;
 - every validation command succeeded;
-- backend bootstrap completed within 20 minutes excluding separately recorded role propagation;
+- backend bootstrap completed within 20 minutes of active execution excluding separately recorded
+  role propagation and approval waits;
 - local-to-remote migration, no-change, native lock conflict, and three isolated keys passed;
 - final backend readiness is current and `ready`;
 - replacement-operator recovery completed within 15 minutes without secret distribution;

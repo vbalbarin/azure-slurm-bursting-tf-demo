@@ -12,6 +12,7 @@
     "completed_at",
     "bootstrap_elapsed_seconds",
     "role_propagation_delay_seconds",
+    "approval_wait_seconds",
     "replacement_operator",
     "namespace_access",
     "reverse_migration",
@@ -34,6 +35,7 @@
     "completed_at": { "type": "string", "format": "date-time" },
     "bootstrap_elapsed_seconds": { "type": "integer", "minimum": 0, "maximum": 1200 },
     "role_propagation_delay_seconds": { "type": "integer", "minimum": 0 },
+    "approval_wait_seconds": { "type": "integer", "minimum": 0 },
     "replacement_operator": {
       "type": "object",
       "additionalProperties": false,
