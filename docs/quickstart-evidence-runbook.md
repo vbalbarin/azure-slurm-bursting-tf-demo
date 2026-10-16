@@ -1490,10 +1490,21 @@ export LOCK_LEASE_ID="$(
     --container-name "$STATE_CONTAINER_NAME" \
     --blob-name "$BOOTSTRAP_STATE_KEY" \
     --lease-duration -1 \
-    --query leaseId \
     --output tsv
 )"
-test -n "$LOCK_LEASE_ID"
+
+if ! [[ "$LOCK_LEASE_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+  az storage blob lease break \
+    --auth-mode login \
+    --account-name "$STORAGE_ACCOUNT_NAME" \
+    --container-name "$STATE_CONTAINER_NAME" \
+    --blob-name "$BOOTSTRAP_STATE_KEY" \
+    --lease-break-period 0 \
+    --output none
+  unset LOCK_LEASE_ID
+  printf 'Azure CLI did not return the acquired lease UUID.\n' >&2
+  false
+fi
 export FIRST_OPERATION_ACQUIRED="true"
 ```
 

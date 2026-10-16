@@ -342,6 +342,10 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     assert "-detailed-exitcode" in remote_no_change
     assert "-refresh-only" not in remote_no_change
     assert "normal plan refreshes remote" in migration
+    assert "--query leaseId" not in migration
+    assert '[[ "$LOCK_LEASE_ID" =~ ^[0-9a-fA-F]{8}-' in migration
+    assert "az storage blob lease break" in migration
+    assert "unset LOCK_LEASE_ID" in migration
     assert "jq -S -c '{lineage, outputs, resources}'" in runbook
     assert "backend-live-acceptance.json" in runbook
     assert "abandoned_pre_migration_cleanup" in runbook
