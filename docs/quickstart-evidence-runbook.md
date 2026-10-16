@@ -643,10 +643,23 @@ tee_output "$BACKEND_EVIDENCE_DIR/backend-coordinates.json" \
 tee_output "$BACKEND_EVIDENCE_DIR/backend-coordinates.json.sha256" \
   sha256sum "$BACKEND_EVIDENCE_DIR/backend-coordinates.json"
 
-export COORDINATES_DIGEST="$(
+export COORDINATES_DOCUMENT_DIGEST="$(
   sha256sum "$BACKEND_EVIDENCE_DIR/backend-coordinates.json" |
   awk '{print $1}'
 )"
+export COORDINATES_DIGEST="$(
+  jq -jc . "$BACKEND_EVIDENCE_DIR/backend-coordinates.json" |
+  sha256sum |
+  awk '{print $1}'
+)"
+export TERRAFORM_COORDINATES_DIGEST="$(
+  printf 'local.coordinates_digest\n' |
+  terraform -chdir=terraform/bootstrap console \
+    -var-file="$BOOTSTRAP_TFVARS" |
+  tr -d '"'
+)"
+
+test "$COORDINATES_DIGEST" = "$TERRAFORM_COORDINATES_DIGEST"
 ```
 
 Validate the live output and record a bounded result:
@@ -694,7 +707,7 @@ tee_output \
   jq -n \
     --arg source_commit "$SOURCE_COMMIT" \
     --arg observed_at "$COORDINATES_VALIDATED_AT" \
-    --arg document_digest "$COORDINATES_DIGEST" \
+    --arg document_digest "$COORDINATES_DOCUMENT_DIGEST" \
     --arg schema_digest "$(
       sha256sum "$BACKEND_COORDINATES_SCHEMA" |
       awk '{print $1}'

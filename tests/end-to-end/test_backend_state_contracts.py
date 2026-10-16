@@ -343,6 +343,18 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     assert "tr -d '\\r' <\"$NETWORK_HEADER_FILE\"" in runbook
     assert 'NETWORK_OBSERVED_VALUE="http_status=409_public_access_not_permitted"' in runbook
     assert "--arg network_observed_value" in runbook
+    assert "COORDINATES_DOCUMENT_DIGEST" in runbook
+    assert (
+        'jq -jc . "$BACKEND_EVIDENCE_DIR/backend-coordinates.json" |\n'
+        "  sha256sum |"
+        in runbook
+    )
+    assert "TERRAFORM_COORDINATES_DIGEST" in runbook
+    assert (
+        'test "$COORDINATES_DIGEST" = "$TERRAFORM_COORDINATES_DIGEST"'
+        in runbook
+    )
+    assert '--arg document_digest "$COORDINATES_DOCUMENT_DIGEST"' in runbook
 
 
 def test_runbook_persists_only_protected_run_context() -> None:
