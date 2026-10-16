@@ -340,6 +340,7 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     assert not any(line.strip() == "set -e" for line in runbook.splitlines())
     assert 'NETWORK_HEADER_FILE="$BOOTSTRAP_STATE_DIR/blob-network-headers.txt"' in runbook
     assert "409 Public access is not permitted on this storage account" in runbook
+    assert "tr -d '\\r' <\"$NETWORK_HEADER_FILE\"" in runbook
     assert 'NETWORK_OBSERVED_VALUE="http_status=409_public_access_not_permitted"' in runbook
     assert "--arg network_observed_value" in runbook
 

@@ -868,10 +868,14 @@ case "$NETWORK_HTTP_STATUS" in
     export NETWORK_OBSERVED_VALUE="http_status=$NETWORK_HTTP_STATUS"
     ;;
   409)
-    grep -Eiq \
-      '^HTTP/[0-9.]+ 409 Public access is not permitted on this storage account\.?$' \
-      "$NETWORK_HEADER_FILE"
-    export NETWORK_OBSERVED_VALUE="http_status=409_public_access_not_permitted"
+    if tr -d '\r' <"$NETWORK_HEADER_FILE" |
+      grep -Eiq \
+        '^HTTP/[0-9.]+ 409 Public access is not permitted on this storage account\.?$'; then
+      export NETWORK_OBSERVED_VALUE="http_status=409_public_access_not_permitted"
+    else
+      printf 'HTTP 409 did not contain the required public-access prohibition reason.\n' >&2
+      false
+    fi
     ;;
   *) printf 'Unexpected Blob HTTP status: %s\n' "$NETWORK_HTTP_STATUS" >&2; false ;;
 esac
