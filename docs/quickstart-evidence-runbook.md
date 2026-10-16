@@ -1452,7 +1452,11 @@ test "$MIGRATION_CONTINUITY_STATUS" -eq 0
 export MIGRATION_SAVED_PLAN_CONTINUITY="true"
 ```
 
-Run a remote no-change plan and retain only the protected raw log:
+Run a remote no-change plan and retain only the protected raw log. Do not add
+`-refresh-only` to this detailed-exitcode gate. A normal plan refreshes remote
+objects by default, while Terraform can incorrectly return exit code `2` for an
+explicit refresh-only plan whose saved JSON has zero resource and output
+changes:
 
 ```bash
 export REMOTE_NO_CHANGE_LOG="$BOOTSTRAP_STATE_DIR/remote-no-change.log"
@@ -1460,7 +1464,6 @@ export REMOTE_NO_CHANGE_LOG="$BOOTSTRAP_STATE_DIR/remote-no-change.log"
 set +e
 terraform -chdir=terraform/bootstrap plan \
   -input=false \
-  -refresh-only \
   -var-file="$BOOTSTRAP_TFVARS" \
   -var-file="$PRELIMINARY_TFVARS" \
   -detailed-exitcode \

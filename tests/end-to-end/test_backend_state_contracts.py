@@ -315,6 +315,10 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     migration = runbook.split("## A6. Migrate bootstrap state", 1)[1].split(
         "## A7. Produce final readiness", 1
     )[0]
+    remote_no_change = migration.split(
+        'export REMOTE_NO_CHANGE_LOG="$BOOTSTRAP_STATE_DIR/remote-no-change.log"',
+        1,
+    )[1].split("Acquire an infinite Azure Blob lease", 1)[0]
 
     assert "--resource-type Microsoft.Storage/storageAccounts" in runbook
     assert '--scope "$STORAGE_ACCOUNT_RESOURCE_ID"' not in runbook
@@ -335,6 +339,9 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     assert 'test "$REVERSE_STABLE_STATE_MATCHES" = "true"' in runbook
     assert "MIGRATION_SAVED_PLAN_CONTINUITY" in runbook
     assert "MIGRATION_STALE_REJECTED" not in runbook
+    assert "-detailed-exitcode" in remote_no_change
+    assert "-refresh-only" not in remote_no_change
+    assert "normal plan refreshes remote" in migration
     assert "jq -S -c '{lineage, outputs, resources}'" in runbook
     assert "backend-live-acceptance.json" in runbook
     assert "abandoned_pre_migration_cleanup" in runbook
