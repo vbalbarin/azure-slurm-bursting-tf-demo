@@ -42,9 +42,9 @@ locals {
     try(local.backend_readiness.coordinates.storage_account_name, "") == var.backend_storage_account_name &&
     try(local.backend_readiness.coordinates.container_name, "") == var.backend_container_name &&
     try(local.backend_readiness.execution_context.runner_context_digest, "") == var.current_execution_context_digest &&
-    try(local.backend_readiness.coordinates.state_keys.main, "") == "${var.environment_name}/main.tfstate" &&
-    try(local.backend_readiness.coordinates.state_keys.capacity_probe, "") == "${var.environment_name}/capacity-probe.tfstate" &&
-    try(local.backend_readiness.coordinates.state_keys.bootstrap, "") == "${var.environment_name}/bootstrap.tfstate" &&
+    try(local.backend_readiness.coordinates.state_keys.main, "") == "${var.backend_environment_name}/main.tfstate" &&
+    try(local.backend_readiness.coordinates.state_keys.capacity_probe, "") == "${var.backend_environment_name}/capacity-probe.tfstate" &&
+    try(local.backend_readiness.coordinates.state_keys.bootstrap, "") == "${var.backend_environment_name}/bootstrap.tfstate" &&
     length(distinct(values(try(local.backend_readiness.coordinates.state_keys, {})))) == 3 &&
     try(timecmp(plantimestamp(), local.backend_readiness.assessed_at), -1) >= 0 &&
     try(timecmp(plantimestamp(), timeadd(local.backend_readiness.assessed_at, "1h")), 1) <= 0 &&

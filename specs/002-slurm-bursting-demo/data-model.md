@@ -9,6 +9,7 @@ Terraform, Chef, the template processor, and acceptance tests must share.
 | Field | Rules |
 |---|---|
 | `environment_name` | Unique naming prefix; Azure-safe lowercase value |
+| `backend_environment_name` | Governed backend state-key prefix; may differ from the workload naming prefix |
 | `subscription_id` | Existing authorized subscription |
 | `tenant_id` | Entra tenant containing operator identities |
 | `source_region` | Azure region hosting management and scheduler resources; required and distinct from `burst_region` |

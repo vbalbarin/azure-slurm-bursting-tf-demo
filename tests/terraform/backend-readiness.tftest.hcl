@@ -5,6 +5,7 @@ variables {
   subscription_id            = "00000000-0000-0000-0000-000000000000"
   tenant_id                  = "00000000-0000-0000-0000-000000000000"
   environment_name           = "demo"
+  backend_environment_name   = "demo"
   source_region              = "eastus"
   burst_region               = "southcentralus"
   burst_zone                 = "1"
@@ -114,10 +115,10 @@ run "wrong_commit_rejected" {
   expect_failures = [terraform_data.backend_readiness_gate]
 }
 
-run "wrong_environment_rejected" {
+run "wrong_backend_environment_rejected" {
   command = plan
   variables {
-    environment_name = "prod"
+    backend_environment_name = "prod"
   }
   expect_failures = [terraform_data.backend_readiness_gate]
 }

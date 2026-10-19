@@ -3434,6 +3434,7 @@ persist_run_context
 Edit the file with approved:
 
 - subscription, tenant, and existing Entra security-group object IDs;
+- the governed backend environment prefix, which may differ from the workload naming prefix;
 - distinct source and burst regions;
 - one explicit burst zone and ordered approved alternate placements;
 - private CIDRs;
@@ -3636,6 +3637,23 @@ Use protected state for the saved plan and approval:
 export PLAN_FILE="$DEMO_STATE_DIR/main.tfplan"
 export APPROVAL_FILE="$DEMO_STATE_DIR/main-plan-approval.json"
 export CAPACITY_PROBE_RESULTS_FILE="$PROBE_EVIDENCE_DIR/capacity-probe.json"
+
+export TF_VAR_backend_readiness_file="$BACKEND_EVIDENCE_DIR/backend-readiness.json"
+export TF_VAR_current_execution_context_digest="$(
+  jq -er '.execution_context.runner_context_digest' \
+    "$TF_VAR_backend_readiness_file"
+)"
+export TF_VAR_deployment_source_commit="$SOURCE_COMMIT"
+export TF_VAR_deployment_principal_id="$(
+  jq -er '.identity.principal_id' "$TF_VAR_backend_readiness_file"
+)"
+export TF_VAR_backend_storage_account_name="$(
+  jq -er '.coordinates.storage_account_name' \
+    "$TF_VAR_backend_readiness_file"
+)"
+export TF_VAR_backend_container_name="$(
+  jq -er '.coordinates.container_name' "$TF_VAR_backend_readiness_file"
+)"
 
 persist_run_context
 

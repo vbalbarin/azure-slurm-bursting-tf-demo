@@ -35,6 +35,21 @@ def _validator(name: str) -> Draft202012Validator:
     )
 
 
+def test_main_readiness_uses_backend_namespace_not_workload_name() -> None:
+    variables = (ROOT / "terraform/variables.tf").read_text()
+    readiness = (ROOT / "terraform/backend-readiness.tf").read_text()
+    demo_inputs = (ROOT / "terraform/environments/demo.tfvars.example").read_text()
+    normalized_demo_inputs = " ".join(demo_inputs.split())
+
+    assert 'variable "backend_environment_name"' in variables
+    assert '${var.backend_environment_name}/main.tfstate' in readiness
+    assert '${var.backend_environment_name}/capacity-probe.tfstate' in readiness
+    assert '${var.backend_environment_name}/bootstrap.tfstate' in readiness
+    assert '${var.environment_name}/main.tfstate' not in readiness
+    assert 'environment_name = "slurmdemo"' in normalized_demo_inputs
+    assert 'backend_environment_name = "demo"' in normalized_demo_inputs
+
+
 def coordinates() -> dict[str, object]:
     return {
         "schema_version": "1.0",

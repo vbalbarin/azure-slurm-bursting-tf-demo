@@ -5,6 +5,7 @@ variables {
   subscription_id            = "00000000-0000-0000-0000-000000000000"
   tenant_id                  = "00000000-0000-0000-0000-000000000000"
   environment_name           = "demo"
+  backend_environment_name   = "demo"
   source_region              = "eastus"
   burst_region               = "southcentralus"
   burst_zone                 = "1"
