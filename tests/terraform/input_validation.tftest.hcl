@@ -13,6 +13,8 @@ variables {
   source_vnet_cidr           = "10.10.0.0/16"
   burst_vnet_cidr            = "10.20.0.0/16"
   operator_group_object_ids  = ["00000000-0000-0000-0000-000000000000"]
+  scheduler_admin_ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILOZsLp0yT/oTDgPzOJBUK5vYbmOFwQKcXkyJbYcYlMe test"
+  windows_admin_password          = "Valid-Test-Password-123!"
   cyclecloud_image = {
     publisher = "azurecyclecloud"
     offer     = "azure-cyclecloud"
@@ -168,4 +170,30 @@ run "reject_unpinned_windows_image" {
     }
   }
   expect_failures = [var.windows_image]
+}
+
+run "accept_exact_key_vault_provisioning_cidr" {
+  command = plan
+  variables {
+    key_vault_provisioning_access_enabled = true
+    key_vault_provisioning_ipv4_cidrs     = ["203.0.113.10/32"]
+  }
+}
+
+run "reject_broad_key_vault_provisioning_cidr" {
+  command = plan
+  variables {
+    key_vault_provisioning_access_enabled = true
+    key_vault_provisioning_ipv4_cidrs     = ["203.0.113.0/24"]
+  }
+  expect_failures = [var.key_vault_provisioning_ipv4_cidrs]
+}
+
+run "reject_provisioning_cidr_after_hardening" {
+  command = plan
+  variables {
+    key_vault_provisioning_access_enabled = false
+    key_vault_provisioning_ipv4_cidrs     = ["203.0.113.10/32"]
+  }
+  expect_failures = [var.key_vault_provisioning_ipv4_cidrs]
 }

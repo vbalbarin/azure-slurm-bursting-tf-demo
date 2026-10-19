@@ -12,8 +12,10 @@ the reviewed Terraform plan or environment-specific runbook.
 - Exact scheduler and burst-compute image URNs selected independently, with a shared AlmaLinux
   family and major release
 - Terraform and project validation tools at the pinned versions
+- Azure CLI with Bicep and deployment-stack support
 - Accepted CycleCloud Marketplace terms for pinned version 8.9.3
 - Approved private CIDRs for `vnet-source` and `vnet-burst`
+- Approved runner IPv4 `/32` for the bounded Key Vault provisioning phase
 - Approved sensitive input channel for required bootstrap credentials and certificate material
 
 > [!IMPORTANT]
@@ -83,7 +85,9 @@ Then explicitly acknowledge temporary probe cost and use
 `tests/end-to-end/capacity_probe.sh` to create and review the isolated
 `terraform/capacity-probe/` plan. Apply only that reviewed probe plan, verify one exact burst node
 can be allocated, create and approve the separate destroy plan, and confirm cleanup within 15
-minutes. Treat success as point-in-time evidence only. Stop if allocation or cleanup fails.
+minutes. The probe uses the exact AlmaLinux HPC burst image, SKU, region, and zone and is
+independent of the CycleCloud appliance. Treat success as point-in-time evidence only. Stop if
+allocation or cleanup fails.
 
 If the selected placement fails, review the ordered alternate assessments. To choose an alternate,
 edit the protected inputs and restart static preflight, capacity probe, plan review, and approval;
@@ -99,10 +103,12 @@ Review must confirm:
 
 - Only pinned providers and direct pinned AVM module calls appear.
 - No direct Azure resource or local custom Terraform module exists.
-- No VM, CycleCloud endpoint, or Key Vault public endpoint is planned.
+- No host or CycleCloud public endpoint is planned. Key Vault is limited to the approved runner
+  `/32` during initial secret creation.
 - Exactly two VNETs and the required bidirectional peerings are planned.
 - The VNETs are placed in the approved distinct source and burst regions and use global peering.
-- Exactly three persistent VMs and one Bastion host are planned.
+- Exactly two Terraform-owned persistent VMs, one Terraform-owned CycleCloud NIC, and one Bastion
+  host are planned. The third persistent VM is reviewed through the separate Bicep what-if.
 - The scheduler VM uses only the source-region scheduler image; the CycleCloud node array uses only
   the independently pinned burst-compute image.
 - No unintended replacement or destruction appears.
@@ -112,7 +118,16 @@ Record the saved-plan digest and approval.
 
 ## 3. Apply the exact reviewed plan
 
-Apply only the saved plan from step 2. Do not regenerate it between approval and apply.
+Apply only the saved Terraform plan from step 2. Do not regenerate it between approval and apply.
+Compile the CycleCloud Bicep source into protected state, derive its parameters from Terraform
+outputs, and use `tests/end-to-end/cyclecloud_stack.sh` to validate and capture the exact what-if.
+Approve its template, parameter, and what-if digests before deployment. Require exactly one
+CycleCloud Marketplace VM with the Terraform-owned NIC and image data disk at LUN 0.
+
+After initial secret creation, set Key Vault provisioning access to false and its IP rules to an
+empty list. Generate, review, approve, and apply a separate Terraform hardening plan. Do not accept
+provisioning or begin guest convergence until Key Vault reports `publicNetworkAccess=Disabled`,
+default deny, and zero IP rules.
 
 Expected outcome:
 

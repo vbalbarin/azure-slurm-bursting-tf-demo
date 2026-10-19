@@ -3442,9 +3442,52 @@ Edit the file with approved:
 - independent exact scheduler and burst-compute image URNs from the same AlmaLinux family and
   major release;
 - pinned CycleCloud `8.9.3` and Windows image;
+- the approved runner's exact IPv4 `/32`, with
+  `key_vault_provisioning_access_enabled = true` only for initial secret creation;
 - versioned Key Vault references and other protected inputs.
 
 Do not copy the `.tfvars` file into `/evidence`.
+
+Generate all local credentials only in protected run state. Do not add them to `.tfvars`, ordinary
+logs, or evidence:
+
+```bash
+export CYCLECLOUD_SSH_PRIVATE_KEY_FILE="$DEMO_STATE_DIR/cyclecloud-admin"
+export CYCLECLOUD_SSH_PUBLIC_KEY_FILE="${CYCLECLOUD_SSH_PRIVATE_KEY_FILE}.pub"
+export SCHEDULER_SSH_PRIVATE_KEY_FILE="$DEMO_STATE_DIR/scheduler-admin"
+export SCHEDULER_SSH_PUBLIC_KEY_FILE="${SCHEDULER_SSH_PRIVATE_KEY_FILE}.pub"
+export WINDOWS_ADMIN_PASSWORD_FILE="$DEMO_STATE_DIR/windows-admin-password"
+
+if test ! -f "$CYCLECLOUD_SSH_PRIVATE_KEY_FILE"; then
+  ssh-keygen -t rsa -b 4096 -m PEM -N '' \
+    -f "$CYCLECLOUD_SSH_PRIVATE_KEY_FILE"
+fi
+if test ! -f "$SCHEDULER_SSH_PRIVATE_KEY_FILE"; then
+  ssh-keygen -t rsa -b 4096 -m PEM -N '' \
+    -f "$SCHEDULER_SSH_PRIVATE_KEY_FILE"
+fi
+if test ! -f "$WINDOWS_ADMIN_PASSWORD_FILE"; then
+  printf 'Aa1!%s' "$(openssl rand -base64 36)" \
+    >"$WINDOWS_ADMIN_PASSWORD_FILE"
+fi
+chmod 0600 \
+  "$CYCLECLOUD_SSH_PRIVATE_KEY_FILE" \
+  "$SCHEDULER_SSH_PRIVATE_KEY_FILE" \
+  "$WINDOWS_ADMIN_PASSWORD_FILE"
+chmod 0644 \
+  "$CYCLECLOUD_SSH_PUBLIC_KEY_FILE" \
+  "$SCHEDULER_SSH_PUBLIC_KEY_FILE"
+
+export TF_VAR_scheduler_admin_ssh_public_key="$(
+  tr -d '\r\n' <"$SCHEDULER_SSH_PUBLIC_KEY_FILE"
+)"
+export TF_VAR_windows_admin_password="$(
+  tr -d '\r\n' <"$WINDOWS_ADMIN_PASSWORD_FILE"
+)"
+```
+
+Re-export these two sensitive Terraform variables from the protected files after any shell resume.
+Do not add them to `persist_run_context`.
 
 ## B2. Export and review preflight values
 
@@ -3627,7 +3670,9 @@ test "$PROBE_CLEANUP_STATUS" -eq 0
 ```
 
 Stop if allocation or cleanup fails. Probe success is point-in-time evidence, not a future or
-multi-node capacity guarantee.
+multi-node capacity guarantee. The probe intentionally uses the exact pinned AlmaLinux HPC burst
+image, SKU, region, and zone. It validates burst allocation independently of the CycleCloud
+Marketplace appliance and does not need to reproduce the appliance image or its Bicep boundary.
 
 ## B4. Create and review the main saved plan
 
@@ -3678,9 +3723,10 @@ Review interactively and confirm:
 
 - only pinned providers and direct pinned AVM calls appear;
 - no direct Azure resource or local custom Terraform module appears;
-- no VM, CycleCloud endpoint, or Key Vault public endpoint is planned;
+- the CycleCloud resource in this plan is a standalone Terraform-owned NIC, not a VM;
+- Key Vault permits only the approved runner's exact `/32` for initial secret creation;
 - exactly two VNETs and bidirectional global peerings are planned;
-- exactly three persistent VMs and one Bastion host are planned;
+- exactly two Terraform-owned persistent VMs, one CycleCloud NIC, and one Bastion host are planned;
 - scheduler and burst-compute roles use their independently pinned images;
 - source/burst regions and burst zone match preflight and probe evidence;
 - no unintended replacement or destruction appears; and
@@ -3700,7 +3746,7 @@ Create `$APPROVAL_FILE` only after plan generation:
 Any source, input, backend context, selected placement, plan, or evidence change invalidates
 approval.
 
-## B5. Apply the exact reviewed main plan
+## B5. Apply the exact reviewed Terraform foundation plan
 
 `provision.sh` consumes the existing plan and never regenerates it:
 
@@ -3718,11 +3764,158 @@ test "$MAIN_APPLY_STATUS" -eq 0
 ```
 
 The script verifies all three approved digests, rejects stale preflight evidence, applies only
-`$PLAN_FILE`, enforces the 90-minute target, and writes:
+`$PLAN_FILE`, and enforces the 90-minute target. At this point the Terraform foundation exists, but
+provisioning is not accepted: the CycleCloud VM is absent and Key Vault still has the temporary
+runner `/32`.
+
+Write the protected credentials through the Key Vault data plane during this bounded window. The
+script passes file paths rather than values to Azure CLI and records only secret IDs and names:
+
+```bash
+export ADMIN_SECRET_EVIDENCE_FILE="$DEMO_EVIDENCE_DIR/admin-secret-references.json"
+tests/end-to-end/store_admin_secrets.sh
+```
+
+## B5.1. Review and deploy the CycleCloud VM-only stack
+
+Set the protected artifacts:
+
+```bash
+export CYCLECLOUD_TEMPLATE_FILE="$DEMO_STATE_DIR/cyclecloud.json"
+export CYCLECLOUD_PARAMETERS_FILE="$DEMO_STATE_DIR/cyclecloud.parameters.json"
+export CYCLECLOUD_WHAT_IF_FILE="$DEMO_STATE_DIR/cyclecloud.what-if.json"
+export CYCLECLOUD_APPROVAL_FILE="$DEMO_STATE_DIR/cyclecloud-approval.json"
+export CYCLECLOUD_CLEANUP_PLAN_FILE="$DEMO_STATE_DIR/cyclecloud-cleanup-stack.json"
+export CYCLECLOUD_CLEANUP_APPROVAL_FILE="$DEMO_STATE_DIR/cyclecloud-cleanup-approval.json"
+export CYCLECLOUD_EVIDENCE_DIR="$DEMO_EVIDENCE_DIR/cyclecloud-stack"
+install -d -m 0700 "$CYCLECLOUD_EVIDENCE_DIR"
+persist_run_context
+```
+
+Compile the source-controlled Bicep template into the protected run, derive parameters from
+Terraform outputs, validate them, and capture the exact what-if:
+
+```bash
+tests/end-to-end/cyclecloud_stack.sh prepare
+tests/end-to-end/cyclecloud_stack.sh what-if
+```
+
+Review the compiled template and what-if. Require exactly one
+`Microsoft.Compute/virtualMachines` resource named for CycleCloud. Confirm the matching pinned
+Marketplace plan and image, the Terraform-owned NIC ID, no public IP, system identity, OS disk, and
+the required `FromImage` data disk at LUN 0. Then create the approval:
+
+```bash
+if read -r -p "Authorized CycleCloud stack reference: " CYCLECLOUD_APPROVAL_REFERENCE &&
+  test -n "$CYCLECLOUD_APPROVAL_REFERENCE"; then
+  jq -n \
+    --arg template_digest "$(sha256sum "$CYCLECLOUD_TEMPLATE_FILE" | awk '{print $1}')" \
+    --arg parameters_digest "$(sha256sum "$CYCLECLOUD_PARAMETERS_FILE" | awk '{print $1}')" \
+    --arg what_if_digest "$(sha256sum "$CYCLECLOUD_WHAT_IF_FILE" | awk '{print $1}')" \
+    --arg approval_reference "$CYCLECLOUD_APPROVAL_REFERENCE" \
+    '{
+      template_digest: $template_digest,
+      parameters_digest: $parameters_digest,
+      what_if_digest: $what_if_digest,
+      approval_reference: $approval_reference
+    }' >"$CYCLECLOUD_APPROVAL_FILE"
+  chmod 0600 "$CYCLECLOUD_APPROVAL_FILE"
+fi
+test -f "$CYCLECLOUD_APPROVAL_FILE"
+tests/end-to-end/cyclecloud_stack.sh apply
+```
+
+Never reuse the approval after a template, parameter, source, state, or what-if change. A later
+reconciliation runs `cyclecloud_stack.sh reconcile` and requires a new approval if any change is
+reported.
+
+## B5.2. Harden Key Vault to private-only access
+
+Only after the one-time protected secret writes have succeeded, edit the protected demo inputs:
+
+```hcl
+key_vault_provisioning_access_enabled = false
+key_vault_provisioning_ipv4_cidrs     = []
+```
+
+Create a new saved plan:
+
+```bash
+export HARDENING_PLAN_FILE="$DEMO_STATE_DIR/key-vault-hardening.tfplan"
+export HARDENING_APPROVAL_FILE="$DEMO_STATE_DIR/key-vault-hardening-approval.json"
+
+terraform -chdir=terraform plan \
+  -input=false \
+  -var-file="$TFVARS_FILE" \
+  -out="$HARDENING_PLAN_FILE"
+sha256sum "$HARDENING_PLAN_FILE"
+terraform -chdir=terraform show -no-color "$HARDENING_PLAN_FILE"
+```
+
+Require only the Key Vault public-access and firewall hardening changes. Record a digest-bound
+approval:
+
+```bash
+if read -r -p "Authorized Key Vault hardening reference: " HARDENING_APPROVAL_REFERENCE &&
+  test -n "$HARDENING_APPROVAL_REFERENCE"; then
+  jq -n \
+    --arg plan_digest "$(sha256sum "$HARDENING_PLAN_FILE" | awk '{print $1}')" \
+    --arg approval_reference "$HARDENING_APPROVAL_REFERENCE" \
+    '{plan_digest: $plan_digest, approval_reference: $approval_reference}' \
+    >"$HARDENING_APPROVAL_FILE"
+  chmod 0600 "$HARDENING_APPROVAL_FILE"
+fi
+
+test "$(
+  jq -er '.plan_digest' "$HARDENING_APPROVAL_FILE"
+)" = "$(
+  sha256sum "$HARDENING_PLAN_FILE" | awk '{print $1}'
+)"
+terraform -chdir=terraform apply -input=false "$HARDENING_PLAN_FILE"
+```
+
+Verify the accepted private-only posture before continuing:
+
+```bash
+KEY_VAULT_NAME="$(
+  terraform -chdir=terraform output -json inventory |
+    jq -er '.key_vault_private_name | split(".")[0]'
+)"
+RESOURCE_GROUP_NAME="$(
+  terraform -chdir=terraform output -json cyclecloud_deployment |
+    jq -er '.resource_group_name'
+)"
+az keyvault show \
+  --resource-group "$RESOURCE_GROUP_NAME" \
+  --name "$KEY_VAULT_NAME" \
+  --query '{
+    publicNetworkAccess:properties.publicNetworkAccess,
+    defaultAction:properties.networkAcls.defaultAction,
+    ipRules:properties.networkAcls.ipRules
+  }' --output json |
+  tee "$DEMO_EVIDENCE_DIR/key-vault-hardening.json"
+jq -e '
+  .publicNetworkAccess == "Disabled" and
+  .defaultAction == "Deny" and
+  (.ipRules | length) == 0
+' "$DEMO_EVIDENCE_DIR/key-vault-hardening.json"
+
+EVIDENCE_DIR="$DEMO_EVIDENCE_DIR" \
+  tests/end-to-end/finalize_provisioning.sh
+```
+
+Provisioning remains failed unless the CycleCloud stack deployment and Key Vault hardening both
+pass.
+
+After B5.1 and B5.2, the secret-free evidence set contains:
 
 ```text
 $DEMO_EVIDENCE_DIR/inventory.json
 $DEMO_EVIDENCE_DIR/provisioning.json
+$DEMO_EVIDENCE_DIR/admin-secret-references.json
+$DEMO_EVIDENCE_DIR/cyclecloud-stack/deployment-stack.json
+$DEMO_EVIDENCE_DIR/cyclecloud-stack/virtual-machine.json
+$DEMO_EVIDENCE_DIR/key-vault-hardening.json
 ```
 
 Validate the secret-free inventory and private infrastructure:
@@ -3737,8 +3930,8 @@ run_logged "$DEMO_EVIDENCE_DIR/21-infrastructure-validation.log" \
   tests/end-to-end/verify_infrastructure.sh
 ```
 
-Confirm provisioning completes within 90 minutes, public-inbound probes fail, and CycleCloud and
-Key Vault resolve privately from authorized locations.
+Confirm active provisioning completes within 90 minutes excluding approval waits, public-inbound
+probes fail, and CycleCloud and Key Vault resolve privately from authorized locations.
 
 ## B6. Converge CycleCloud and scheduler twice
 
@@ -4050,7 +4243,8 @@ After B10 passes, execute A9 before continuing.
 ## B11. Remove the main deployment and verify dependent states
 
 Return from A9 to the original operator shell. Re-establish the protected paths if necessary, then
-create a distinct main-destroy plan. Never use `terraform destroy -auto-approve`:
+remove the Bicep-owned CycleCloud VM before creating a distinct Terraform main-destroy plan. Never
+use `terraform destroy -auto-approve`:
 
 For a successful T057 run, execute B11 after B10 and A9. If B3 through B10 fails after Azure
 resources may have been created, the acceptance run is permanently failed, but the operator may
@@ -4072,6 +4266,37 @@ export MAIN_CLEANUP_EVIDENCE="$DEMO_EVIDENCE_DIR/main-cleanup.json"
 
 test -f "$TFVARS_FILE"
 test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
+```
+
+Snapshot the deployment stack, review that it owns only the CycleCloud VM, and record a distinct
+cleanup approval:
+
+```bash
+tests/end-to-end/cyclecloud_stack.sh cleanup-plan
+
+if read -r -p "Authorized CycleCloud stack cleanup reference: " \
+  CYCLECLOUD_CLEANUP_APPROVAL_REFERENCE &&
+  test -n "$CYCLECLOUD_CLEANUP_APPROVAL_REFERENCE"; then
+  jq -n \
+    --arg stack_snapshot_digest "$(
+      sha256sum "$CYCLECLOUD_CLEANUP_PLAN_FILE" | awk '{print $1}'
+    )" \
+    --arg approval_reference "$CYCLECLOUD_CLEANUP_APPROVAL_REFERENCE" \
+    '{
+      stack_snapshot_digest: $stack_snapshot_digest,
+      approval_reference: $approval_reference
+    }' >"$CYCLECLOUD_CLEANUP_APPROVAL_FILE"
+  chmod 0600 "$CYCLECLOUD_CLEANUP_APPROVAL_FILE"
+fi
+
+test -f "$CYCLECLOUD_CLEANUP_APPROVAL_FILE"
+tests/end-to-end/cyclecloud_stack.sh cleanup
+```
+
+Stop if stack cleanup fails or if the CycleCloud VM remains. Only then capture Terraform state and
+plan destruction of the Terraform-owned NIC and surrounding resources:
+
+```bash
 
 terraform -chdir=terraform state pull \
   >"$DEMO_STATE_DIR/main-state-before-destroy.json"

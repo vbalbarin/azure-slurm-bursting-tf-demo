@@ -48,7 +48,7 @@ module "key_vault" {
   name                          = local.names.key_vault
   resource_group_name           = module.resource_group.name
   tenant_id                     = var.tenant_id
-  public_network_access_enabled = false
+  public_network_access_enabled = var.key_vault_provisioning_access_enabled
   purge_protection_enabled      = true
   soft_delete_retention_days    = 90
   enable_telemetry              = false
@@ -57,6 +57,7 @@ module "key_vault" {
   network_acls = {
     bypass         = "None"
     default_action = "Deny"
+    ip_rules       = var.key_vault_provisioning_access_enabled ? var.key_vault_provisioning_ipv4_cidrs : []
   }
 
   role_assignments = {

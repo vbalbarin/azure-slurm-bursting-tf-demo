@@ -259,7 +259,8 @@ recovery commands and zero workflow substitutions.
 - Place the Slurm scheduler and administration plane in a configurable Azure source region and
   burst compute into a separately configurable Azure region with less constrained capacity.
 - Connect the two regional virtual networks through private cross-region peering.
-- Use only pinned AVM modules for Azure resources.
+- Use pinned AVM modules for every Terraform-owned Azure resource and a narrowly scoped Bicep
+  deployment stack only for the released CycleCloud Marketplace VM.
 - Keep all VM and service management paths private through Azure Bastion and private endpoints.
 - Configure the CycleCloud and scheduler hosts through idempotent Chef Local policies.
 - Generate a release-matched headless Slurm cluster definition without manual editing.
@@ -271,12 +272,14 @@ recovery commands and zero workflow substitutions.
 
 The approved design includes:
 
-- Azure CycleCloud `8.9.3`, pinned during planning
+- Azure CycleCloud `8.9.3`, pinned during planning and deployed as a VM-only Bicep stack because
+  its released Marketplace image requires an image data disk at LUN 0
 - External Slurm scheduler on an exact-version standard AlmaLinux image
 - Independently pinned AlmaLinux HPC image for burst compute
 - Windows administration host
 - Azure Bastion
-- Azure Key Vault with public network access disabled
+- Azure Key Vault with a temporary approved runner `/32` for initial secret creation and mandatory
+  private-only hardening before acceptance
 - Private DNS and bidirectional VNET peering
 - Independently selectable source and burst regions with fail-closed regional-capacity preflight
 - Log Analytics with 90-day audit retention
@@ -302,15 +305,16 @@ and Azure CycleCloud.
 
 This repository is a clean-history, independently authored evolution of that concept. It does not
 contain commits or source files copied from Vinil's repository. The architecture is being
-redesigned around Terraform, Azure Verified Modules, Chef Local, private Azure access, explicit
-security controls, and repeatable validation.
+redesigned around Terraform, Azure Verified Modules, one governed CycleCloud VM-only Bicep
+boundary, Chef Local, private Azure access, explicit security controls, and repeatable validation.
 
 The conceptual progression is:
 
 1. Study the original script-driven demonstration and its operational workflow.
 2. Define independent governance and security requirements.
 3. Express the desired behavior as a testable feature specification.
-4. Research and design an AVM-only Azure architecture.
+4. Research and design an AVM-based Azure architecture with one explicit Marketplace appliance
+   exception where the approved Terraform VM module cannot express the released image.
 5. Implement and validate the new solution independently.
 
 The original repository remains the authoritative source for Vinil's implementation and history.
@@ -334,10 +338,17 @@ the constitution and implementation plan.
 2. Create a saved plan with `terraform -chdir=terraform plan -out=<approved-plan-path>`; never
    place the plan in source control.
 3. Record `sha256sum <approved-plan-path>` and have an authorized reviewer confirm AVM-only
-   composition, the distinct source and burst regions, no public management endpoints, no
-   unintended replacement or deletion, and redacted sensitive values.
+   Terraform composition, the distinct source and burst regions, the bounded Key Vault
+   provisioning `/32`, no public host endpoints, no unintended replacement or deletion, and
+   redacted sensitive values.
 4. Record the reviewer approval reference beside the digest in `$EVIDENCE_DIR`.
 5. Apply only with `terraform -chdir=terraform apply <approved-plan-path>`.
+
+The CycleCloud VM has a separate gate: compile the source-controlled Bicep template, derive its
+parameters from Terraform outputs, review and approve the exact what-if digest, and deploy it
+through a resource-group deployment stack. After initial secret creation, a second exact Terraform
+plan must remove the Key Vault runner `/32` and disable public access. Provisioning is incomplete
+until both the CycleCloud stack and Key Vault hardening gates pass.
 
 Any change to Terraform, providers, modules, input values, backend/state context, Chef policy, or
 the template processor invalidates the applicable validation evidence and saved-plan approval.
@@ -378,7 +389,8 @@ This group is separate from the identity that runs Terraform:
 
 RBAC assignments can take several minutes to propagate after deployment.
 
-For the evidence run, the agent executes A1-A8, A11, and B1-B5. The operator then gathers
+For the evidence run, the agent executes A1-A8, A11, B1-B5, the CycleCloud stack gate, and the Key
+Vault hardening gate. The operator then gathers
 host-local B6-B8 evidence through Bastion native-client sessions. After the protected incoming
 artifacts are available, the agent validates them and executes B9-B10, A9, B11, and A10. Native
 SSH/SCP and RDP clients are required for this handoff; browser-only Bastion access is not the
@@ -386,7 +398,8 @@ evidence-transfer channel.
 
 1. Copy `terraform/environments/demo.tfvars.example` to a protected, ignored `.tfvars` file and
    supply the approved subscription, tenant, distinct source/burst regions, CIDRs, Entra group,
-   exact scheduler and burst-compute image versions, VM SKUs, and versioned Key Vault references.
+   exact scheduler and burst-compute image versions, VM SKUs, the approved runner `/32`, and
+   versioned Key Vault references.
 2. Source `tests/end-to-end/export_preflight_env.sh` with the protected `.tfvars` path. The helper
    uses Terraform and `jq` to export and display only the non-secret role sizes, counts, image URNs,
    selected zone, and approved alternate placements. Use

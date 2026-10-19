@@ -24,7 +24,13 @@ headless template, and use a guarded Python helper when no suitable native parse
   CycleCloud application? → A: Use Microsoft Entra ID and Azure RBAC for Azure and Key Vault;
   store generated local VM and CycleCloud credentials in Key Vault only where required.
 - Q: How should network access to the secret store be restricted? → A: Use a private endpoint only
-  and disable public network access.
+  in the accepted environment and disable public network access. During initial credential
+  creation only, permit the approved runner's exact `/32`, then require a separately reviewed
+  hardening plan that disables public access before acceptance.
+- Q: How should the released CycleCloud Marketplace appliance be deployed when its required image
+  data disk cannot be represented by the approved Terraform VM module? → A: Terraform owns the NIC
+  and every surrounding resource; a source-pinned Bicep deployment stack owns only the CycleCloud
+  VM, Marketplace plan, OS disk, required image data disk, and system identity.
 - Q: What certificate trust model should the private CycleCloud website use? → A: Use a private
   certificate stored in Key Vault and install its trust chain on the Windows administration host.
 - Q: How long should security, administrative, and cluster lifecycle audit records be retained
@@ -200,6 +206,12 @@ headless cluster and its nodes.
 - **FR-004**: During planning, the latest generally available CycleCloud release supported in the
   selected source and burst regions and compatible with the selected Slurm project MUST be
   selected, recorded, and pinned. Every deployment of this feature MUST use that exact version.
+- **FR-004a**: The pinned CycleCloud Marketplace VM MUST be deployed from a version-controlled
+  Bicep template through a deployment stack. Terraform MUST own its NIC and all surrounding
+  infrastructure. The stack MUST own only the VM, Marketplace plan, OS disk, required image data
+  disk at LUN 0, and system-assigned identity. Deployment requires an exact digest-approved
+  what-if, drift reconciliation uses a new what-if, and cleanup deletes the stack-owned VM before
+  Terraform-owned dependencies.
 - **FR-005**: The source-region network MUST contain one supported AlmaLinux scheduler host using
   a pinned image compatible with the selected scheduler VM size, and one supported Windows
   administration host.
@@ -213,7 +225,10 @@ headless cluster and its nodes.
   private keys, service credentials, and demonstration-user credentials required by the
   environment. Local credentials MUST be created only where a VM or CycleCloud requires them. The
   secret store MUST be reachable only through a private endpoint, and public network access MUST
-  be disabled.
+  be disabled in the accepted environment. Initial secret creation MAY temporarily enable the
+  public endpoint with a default-deny firewall containing only the approved runner's exact `/32`.
+  A separately generated, reviewed, digest-approved hardening plan MUST remove that rule and
+  disable public network access before infrastructure acceptance or guest convergence.
 - **FR-009**: Administrators MUST use Microsoft Entra ID and least-privilege Azure RBAC for Azure
   resource and secret-store access. Secret access MUST be auditable, and secret values MUST NOT
   appear in source control, deployment outputs, logs, plans, or general VM metadata.

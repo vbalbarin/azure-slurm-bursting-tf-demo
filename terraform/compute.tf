@@ -16,64 +16,22 @@ locals {
   )
 }
 
-module "cyclecloud_vm" {
-  source  = "Azure/avm-res-compute-virtualmachine/azurerm"
-  version = "0.21.0"
+module "cyclecloud_nic" {
+  source  = "Azure/avm-res-network-networkinterface/azurerm"
+  version = "0.1.2"
 
   location            = var.source_region
-  name                = local.names.cyclecloud
+  name                = "${local.names.cyclecloud}-nic"
   resource_group_name = module.resource_group.name
-  os_type             = "Linux"
-  sku_size            = var.cyclecloud_vm_size
-  zone                = "1"
-  custom_data         = local.linux_bootstrap
   enable_telemetry    = false
   tags                = local.common_tags
 
-  source_image_reference = {
-    publisher = var.cyclecloud_image.publisher
-    offer     = var.cyclecloud_image.offer
-    sku       = var.cyclecloud_image.sku
-    version   = var.cyclecloud_image.version
-  }
-
-  plan = {
-    name      = var.cyclecloud_image.plan_name
-    product   = var.cyclecloud_image.product
-    publisher = var.cyclecloud_image.publisher
-  }
-
-  account_credentials = {
-    admin_credentials = {
-      username                           = "cyclecloudadmin"
-      generate_admin_password_or_ssh_key = true
-    }
-    key_vault_configuration = {
-      resource_id = module.key_vault.resource_id
-      secret_configuration = {
-        name = "cyclecloud-admin-ssh-private-key"
-      }
-    }
-    password_authentication_disabled = true
-  }
-
-  managed_identities = {
-    system_assigned = true
-  }
-
-  network_interfaces = {
+  ip_configurations = {
     primary = {
-      name       = "${local.names.cyclecloud}-nic"
-      is_primary = true
-      ip_configurations = {
-        primary = {
-          name                          = "primary"
-          create_public_ip_address      = false
-          private_ip_subnet_resource_id = module.source_vnet.subnets["management"].resource_id
-          private_ip_address_allocation = "Dynamic"
-          is_primary_ipconfiguration    = true
-        }
-      }
+      name                          = "primary"
+      subnet_id                     = module.source_vnet.subnets["management"].resource_id
+      private_ip_address_allocation = "Dynamic"
+      primary                       = true
     }
   }
 }
@@ -97,13 +55,8 @@ module "scheduler_vm" {
   account_credentials = {
     admin_credentials = {
       username                           = "scheduleradmin"
-      generate_admin_password_or_ssh_key = true
-    }
-    key_vault_configuration = {
-      resource_id = module.key_vault.resource_id
-      secret_configuration = {
-        name = "scheduler-admin-ssh-private-key"
-      }
+      ssh_keys                           = [var.scheduler_admin_ssh_public_key]
+      generate_admin_password_or_ssh_key = false
     }
     password_authentication_disabled = true
   }
@@ -143,17 +96,14 @@ module "windows_admin_vm" {
   tags                = local.common_tags
 
   source_image_reference = var.windows_image
+  patch_mode             = "AutomaticByPlatform"
+  patch_assessment_mode  = "AutomaticByPlatform"
 
   account_credentials = {
     admin_credentials = {
       username                           = "windowsadmin"
-      generate_admin_password_or_ssh_key = true
-    }
-    key_vault_configuration = {
-      resource_id = module.key_vault.resource_id
-      secret_configuration = {
-        name = "windows-admin-password"
-      }
+      password                           = var.windows_admin_password
+      generate_admin_password_or_ssh_key = false
     }
   }
 

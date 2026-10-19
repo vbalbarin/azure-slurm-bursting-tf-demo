@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+
+
+ROOT = Path(__file__).parents[2]
+STACK_SCRIPT = ROOT / "tests/end-to-end/cyclecloud_stack.sh"
+SECRET_SCRIPT = ROOT / "tests/end-to-end/store_admin_secrets.sh"
+
+
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content)
+    path.chmod(0o755)
+
+
+def _stack_environment(tmp_path: Path) -> dict[str, str]:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "az",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FAKE_AZ_LOG"
+exit 99
+""",
+    )
+    _write_executable(fake_bin / "terraform", "#!/usr/bin/env bash\nexit 99\n")
+    template = tmp_path / "cyclecloud.json"
+    parameters = tmp_path / "parameters.json"
+    what_if = tmp_path / "what-if.json"
+    template.write_text("{}")
+    parameters.write_text("{}")
+    what_if.write_text('{"changes":[]}')
+    approval = tmp_path / "approval.json"
+    approval.write_text(
+        json.dumps(
+            {
+                "template_digest": "0" * 64,
+                "parameters_digest": hashlib.sha256(
+                    parameters.read_bytes()
+                ).hexdigest(),
+                "what_if_digest": hashlib.sha256(what_if.read_bytes()).hexdigest(),
+                "approval_reference": "review-123",
+            }
+        )
+    )
+    return {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "FAKE_AZ_LOG": str(tmp_path / "az.log"),
+        "CYCLECLOUD_TEMPLATE_FILE": str(template),
+        "CYCLECLOUD_PARAMETERS_FILE": str(parameters),
+        "CYCLECLOUD_WHAT_IF_FILE": str(what_if),
+        "CYCLECLOUD_APPROVAL_FILE": str(approval),
+        "CYCLECLOUD_EVIDENCE_DIR": str(tmp_path / "evidence"),
+        "CYCLECLOUD_CLEANUP_PLAN_FILE": str(tmp_path / "cleanup.json"),
+        "CYCLECLOUD_CLEANUP_APPROVAL_FILE": str(
+            tmp_path / "cleanup-approval.json"
+        ),
+    }
+
+
+def test_stack_apply_rejects_changed_template_before_azure(tmp_path: Path) -> None:
+    environment = _stack_environment(tmp_path)
+    result = subprocess.run(
+        [str(STACK_SCRIPT), "apply"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 11
+    assert "template digest" in result.stderr
+    assert not Path(environment["FAKE_AZ_LOG"]).exists()
+
+
+def test_secret_writer_records_references_without_values(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "terraform",
+        """#!/usr/bin/env bash
+cat <<'JSON'
+{"key_vault_private_name":"demo-vault.privatelink.vaultcore.azure.net"}
+JSON
+""",
+    )
+    _write_executable(
+        fake_bin / "az",
+        """#!/usr/bin/env python3
+import json
+import os
+from pathlib import Path
+import sys
+
+args = sys.argv[1:]
+with Path(os.environ["FAKE_AZ_LOG"]).open("a") as log:
+    log.write(json.dumps(args) + "\\n")
+name = args[args.index("--name") + 1]
+print(json.dumps({"id": f"https://demo-vault.vault.azure.net/secrets/{name}/version", "name": name}))
+""",
+    )
+    protected_files = []
+    for name in ("cyclecloud", "scheduler", "windows"):
+        path = tmp_path / name
+        path.write_text(f"secret-{name}")
+        path.chmod(0o600)
+        protected_files.append(path)
+    evidence = tmp_path / "secret-references.json"
+    environment = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "FAKE_AZ_LOG": str(tmp_path / "az.log"),
+        "CYCLECLOUD_SSH_PRIVATE_KEY_FILE": str(protected_files[0]),
+        "SCHEDULER_SSH_PRIVATE_KEY_FILE": str(protected_files[1]),
+        "WINDOWS_ADMIN_PASSWORD_FILE": str(protected_files[2]),
+        "ADMIN_SECRET_EVIDENCE_FILE": str(evidence),
+    }
+
+    result = subprocess.run(
+        [str(SECRET_SCRIPT)],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "secret-" not in evidence.read_text()
+    calls = [
+        json.loads(line)
+        for line in Path(environment["FAKE_AZ_LOG"]).read_text().splitlines()
+    ]
+    assert all("--file" in call and "--value" not in call for call in calls)

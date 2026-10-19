@@ -13,6 +13,8 @@ variables {
   source_vnet_cidr           = "10.10.0.0/16"
   burst_vnet_cidr            = "10.20.0.0/16"
   operator_group_object_ids  = ["00000000-0000-0000-0000-000000000000"]
+  scheduler_admin_ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILOZsLp0yT/oTDgPzOJBUK5vYbmOFwQKcXkyJbYcYlMe test"
+  windows_admin_password          = "Valid-Test-Password-123!"
   cyclecloud_image = {
     publisher = "azurecyclecloud"
     offer     = "azure-cyclecloud"

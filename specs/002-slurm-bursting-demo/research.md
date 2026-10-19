@@ -10,7 +10,8 @@ versions during implementation:
 | Resource group | `Azure/avm-res-resources-resourcegroup/azurerm` | `0.4.0` |
 | VNETs, subnets, peering | `Azure/avm-res-network-virtualnetwork/azurerm` | `0.22.2` |
 | Network security groups | `Azure/avm-res-network-networksecuritygroup/azurerm` | `0.6.0` |
-| Linux and Windows VMs | `Azure/avm-res-compute-virtualmachine/azurerm` | `0.21.0` |
+| Scheduler and Windows VMs | `Azure/avm-res-compute-virtualmachine/azurerm` | `0.21.0` |
+| CycleCloud NIC | `Azure/avm-res-network-networkinterface/azurerm` | `0.1.2` |
 | Bastion | `Azure/avm-res-network-bastionhost/azurerm` | `0.9.0` |
 | Key Vault and private endpoint | `Azure/avm-res-keyvault-vault/azurerm` | `0.11.0` |
 | Private DNS zones and links | `Azure/avm-res-network-privatednszone/azurerm` | `0.5.0` |
@@ -147,6 +148,34 @@ The processor will:
 because nested sections make ambiguous removal unsafe. A third-party parser was rejected because
 none is supported by CycleCloud. Manual editing was rejected as non-repeatable.
 
+## CycleCloud Marketplace deployment boundary
+
+**Decision**: Keep the released
+`azurecyclecloud:azure-cyclecloud:cyclecloud8-gen2:8.9.320260827` appliance. Terraform owns its
+standalone NIC and all surrounding infrastructure through pinned AVMs. A source-controlled Bicep
+deployment stack owns only the VM, matching Marketplace plan, OS disk, required image data disk at
+LUN 0, and system-assigned identity.
+
+**Rationale**: Azure image metadata for every evaluated CycleCloud 8.9 Gen2 image declares an
+embedded data disk at LUN 0. The pinned compute AVM uses `azurerm_linux_virtual_machine`, whose
+provider schema cannot include that image data disk in the initial VM request. AVM-managed data
+disks are created and attached after VM creation and therefore cannot satisfy Azure's
+`StorageProfile.dataDisks.lun` validation. Bicep can express the released image contract directly.
+A deployment stack, rather than an ordinary ARM deployment record, provides explicit ownership and
+delete-all cleanup for the VM.
+
+The Bicep artifact is compiled and validated from the same source commit. Its exact what-if JSON is
+canonicalized, hashed, reviewed, and approved before deployment. Reconciliation requires another
+what-if. Cleanup deletes the deployment stack and its managed VM before Terraform destroys the NIC
+or resource group.
+
+**Alternatives considered**: Installing CycleCloud packages on a generic AlmaLinux VM is a useful
+pure-Terraform demonstration and is represented by `vbalbarin/tf-cyclecloud-demo`, but it was
+rejected here because it replaces the released Marketplace appliance and expands product
+installation ownership. A direct AzAPI VM resource was rejected because it would bypass both the
+approved AVM policy and the product group's Terraform/Bicep boundary. An ordinary incremental ARM
+template deployment was rejected because deleting its deployment record does not delete the VM.
+
 **Sources**:
 
 - <https://learn.microsoft.com/azure/cyclecloud/cluster-references/cluster-template-reference>
@@ -173,19 +202,28 @@ mode.
 
 ## Secrets and identity
 
-**Decision**: Use Entra ID and least-privilege RBAC for Azure and Key Vault. Disable Key Vault
-public access and link its private endpoint DNS zone to both VNETs. Supply deployment-time
-credentials through sensitive, non-output inputs or authorized Key Vault data-plane operations;
-never write values into source, ordinary logs, inventory, or nonsensitive Terraform outputs.
+**Decision**: Use Entra ID and least-privilege RBAC for Azure and Key Vault. Generate the
+CycleCloud and scheduler SSH keys and Windows password only in protected run state. Terraform
+receives only the scheduler public key and Windows password as sensitive environment inputs and
+does not own Key Vault secret resources. During one-time secret writes, enable Key Vault public
+access with default deny and only the approved runner's exact `/32`. A fail-closed data-plane
+script passes protected file paths rather than values to Azure CLI and records only secret IDs and
+names. Immediately generate and approve a separate Terraform hardening plan that disables public
+access and removes all public IP rules. The accepted environment requires that hardening apply and
+private endpoint DNS linked to both VNETs. Never write values into source, ordinary logs,
+inventory, evidence, or nonsensitive Terraform outputs.
 Install the private CycleCloud certificate from Key Vault and place its trust chain on the Windows
 host through managed guest configuration.
 
 **Rationale**: This matches the clarified identity, networking, and certificate requirements while
 allowing local credentials only where the products require them.
 
-**Alternatives considered**: Public Key Vault access, public CycleCloud TLS, and universal local
-administrator credentials were rejected for excess exposure. Entra-only guest access was not
-selected because CycleCloud and the demonstration flow still require local product identities.
+**Alternatives considered**: Permanent public Key Vault access, public CycleCloud TLS, and universal
+local administrator credentials were rejected for excess exposure. A private deployment runner was
+not selected because it adds infrastructure and operational complexity to a short-lived
+demonstration; it remains the preferred replacement if the bounded provisioning exception cannot
+be closed immediately. Entra-only guest access was not selected because CycleCloud and the
+demonstration flow still require local product identities.
 
 ## Validation strategy
 

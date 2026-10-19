@@ -18,6 +18,16 @@ burst_vnet_cidr  = "10.20.0.0/16"
 # Key Vault Secrets Officer on the demo vault; replace the placeholder before deployment.
 operator_group_object_ids = ["00000000-0000-0000-0000-000000000000"]
 
+# Enable only for the initial secret-creation apply. Replace the documentation
+# address with the approved runner's exact /32, then set false/[] and apply a
+# separately reviewed hardening plan before acceptance.
+key_vault_provisioning_access_enabled = true
+key_vault_provisioning_ipv4_cidrs     = ["203.0.113.10/32"]
+
+# Supply scheduler_admin_ssh_public_key and windows_admin_password only through
+# sensitive TF_VAR_* environment variables loaded from protected run-state
+# files. Never add either value to this file.
+
 cyclecloud_image = {
   publisher = "azurecyclecloud"
   offer     = "azure-cyclecloud"

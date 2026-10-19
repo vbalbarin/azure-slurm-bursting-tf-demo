@@ -13,8 +13,10 @@ compute VNET connected by bidirectional global peering. The source region hosts 
 VM size, a Windows administration host, Bastion, private Key Vault access, private DNS, and 90-day
 audit retention. The separately selected burst region hosts transient compute on an independently
 pinned AlmaLinux HPC image compatible with its selected compute size. Terraform calls pinned Azure
-Verified Modules directly for every Azure resource. Chef Local converges the CycleCloud and
-scheduler guests. A narrowly scoped Python processor discovers the installed Slurm project,
+Verified Modules directly for every surrounding Azure resource. A source-controlled Bicep
+deployment stack owns only the released CycleCloud Marketplace VM because its required image data
+disk cannot be represented by the approved Terraform VM module. Chef Local converges the
+CycleCloud and scheduler guests. A narrowly scoped Python processor discovers the installed Slurm project,
 transforms its cluster template into a headless definition with guarded atomic writes, and fails
 closed when the pinned product, regional, or role-specific image combination is incompatible. The
 acceptance path submits one job in the source region and proves that one transient compute node
@@ -29,9 +31,10 @@ substitution.
 implementation; Python 3 from the pinned CycleCloud image
 
 **Primary Dependencies**: AzureRM and AzAPI providers; direct pinned calls to Azure Verified
-Modules; CycleCloud 8.9.3; independently pinned compatible scheduler and burst-compute AlmaLinux
-images; the Slurm project installed with the pinned CycleCloud image; Chef Local; CycleCloud CLI
-and `azslurm`; pytest and Bandit for the fallback processor
+Modules; Azure CLI and Bicep CLI for the VM-only deployment stack; CycleCloud 8.9.3; independently
+pinned compatible scheduler and burst-compute AlmaLinux images; the Slurm project installed with
+the pinned CycleCloud image; Chef Local; CycleCloud CLI and `azslurm`; pytest and Bandit for the
+fallback processor
 
 **Storage**: Key Vault for credentials and certificates; scheduler-hosted NFS for `/sched` and
 `/shared`; Log Analytics with 90-day retention; local configuration files managed by Chef
@@ -52,8 +55,11 @@ configuration-file processor
 **Performance Goals**: Complete provisioning in at most 90 minutes; private UI inspection in at
 most 5 minutes; one-node burst job output in at most 15 minutes under normal capacity
 
-**Constraints**: AVM-only Azure resources, including temporary capacity-probe resources; no direct Azure resource blocks or custom Terraform
-modules; no public VM, CycleCloud, or Key Vault ingress; explicit distinct source and burst regions
+**Constraints**: AVM-only Terraform resources, including temporary capacity-probe resources; one
+narrow CycleCloud VM-only Bicep deployment-stack exception; no direct Azure Terraform resource
+blocks or custom Terraform modules; no public VM or CycleCloud ingress; Key Vault may expose only
+the approved runner `/32` during initial secret creation and must return to private-only before
+acceptance; explicit distinct source and burst regions
 and an explicit burst zone with no automatic substitution; operator-approved alternate candidates
 are assessed in their supplied order but are not discovered or deployed automatically; latest
 release supported by both regions selected during planning and pinned; one compute node for the
@@ -75,16 +81,18 @@ burst-region node during acceptance
 | Principle | Design evidence | Status |
 |---|---|---|
 | Compliance-preserving legacy operation | New isolated demonstration scope; no mutation or deletion of retained legacy resources; plan review blocks replacement and destruction. | PASS |
-| Terraform infrastructure and managed node configuration | Terraform owns Azure resources only. Chef Local owns guest state. Python is limited to one node-consumed template, documents its exception, validates before atomic replacement, and performs no Azure operations. | PASS |
-| Azure Verified Modules only | Every Azure resource is created through a pinned published AVM called directly from the root configuration. No direct resource blocks and no custom Terraform modules are planned. | PASS |
-| Security without exception | Private ingress, Bastion, Key Vault private endpoint, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
+| Declarative infrastructure and managed node configuration | Terraform owns all surrounding Azure resources. The approved Bicep stack owns only the CycleCloud Marketplace VM. Chef Local owns guest state. Python is limited to one node-consumed template and performs no Azure operations. | PASS |
+| Azure Verified Modules and CycleCloud appliance exception | Every Terraform resource is created through a pinned published AVM called directly from the root. The only non-AVM resource is the constitution-authorized VM-only Bicep stack. | PASS |
+| Security without exception | Private ingress, Bastion, final private-only Key Vault, an exact temporary provisioning `/32`, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
 | Reliable, idempotent, validated change | Terraform, Chef, and Python each have syntax, security, idempotency, failure, and review gates. The exact plan is applied only after validation. | PASS |
 | Scope constraints | Two-region placement and advisory assessment of operator-approved candidates demonstrate placement flexibility without HA, DR, automatic failover, or multi-node scaling. | PASS |
 
 ### Pre-design gate
 
-Research confirmed published AVMs cover the required resource types. CycleCloud 8.9.3 is the
-pinned current GA release. Public documentation does not certify every 8.9.3, Slurm project, and
+Research confirmed published AVMs cover every surrounding resource type. The CycleCloud 8.9.3
+Marketplace image declares an embedded data disk at LUN 0 that the approved Terraform VM module
+cannot express in its initial VM request, so the constitution-authorized Bicep stack owns that VM
+alone. CycleCloud 8.9.3 is the pinned current GA release. Public documentation does not certify every 8.9.3, Slurm project, and
 AlmaLinux image combination, so deployment includes a fail-closed compatibility preflight that
 discovers the installed project/template and independently validates the scheduler image against
 the source region and scheduler VM size and the burst-compute image against the burst region and
@@ -98,10 +106,12 @@ incomplete. These are operational gates, not unresolved requirements.
 
 ### Post-design gate
 
-The data model, contracts, and quickstart retain the separation between Azure control-plane
-resources, Chef-managed guest configuration, and the permitted Python file processor. No Phase 1
-artifact introduces direct resources, custom Terraform modules, public management ingress,
-unvalidated deployment, HA, DR, or additional scale. All gates remain PASS.
+The data model, contracts, and quickstart retain the separation between Terraform-owned
+infrastructure, the CycleCloud VM-only Bicep stack, Chef-managed guest configuration, and the
+permitted Python file processor. The Key Vault provisioning exception is bounded to one approved
+runner `/32` and a mandatory hardening plan. No artifact introduces direct Terraform resources,
+custom Terraform modules, public management ingress in the accepted environment, unvalidated
+deployment, HA, DR, or additional scale. All gates remain PASS.
 
 ## Project Structure
 
@@ -134,6 +144,10 @@ terraform/
 ├── monitoring.tf
 ├── outputs.tf
 └── environments/
+
+infra/
+└── cyclecloud/
+    └── main.bicep─ environments/
     └── demo.tfvars.example
 
 chef/

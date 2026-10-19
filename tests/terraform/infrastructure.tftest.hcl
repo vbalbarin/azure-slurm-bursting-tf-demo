@@ -13,6 +13,8 @@ variables {
   source_vnet_cidr           = "10.10.0.0/16"
   burst_vnet_cidr            = "10.20.0.0/16"
   operator_group_object_ids  = ["00000000-0000-0000-0000-000000000000"]
+  scheduler_admin_ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILOZsLp0yT/oTDgPzOJBUK5vYbmOFwQKcXkyJbYcYlMe test"
+  windows_admin_password          = "Valid-Test-Password-123!"
   cyclecloud_image = {
     publisher = "azurecyclecloud"
     offer     = "azure-cyclecloud"
@@ -108,6 +110,16 @@ run "cross_region_topology" {
   assert {
     condition     = local.names.log_analytics == "demo-logs"
     error_message = "Exactly one named Log Analytics workspace must be composed."
+  }
+
+  assert {
+    condition     = module.cyclecloud_nic.location == "eastus"
+    error_message = "Terraform must own the standalone CycleCloud NIC."
+  }
+
+  assert {
+    condition     = output.cyclecloud_deployment.image.version == "8.9.320260827"
+    error_message = "The Bicep handoff must retain the pinned CycleCloud Marketplace image."
   }
 
   assert {

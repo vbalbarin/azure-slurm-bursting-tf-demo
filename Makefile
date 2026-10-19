@@ -1,9 +1,15 @@
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 CHECKOV := $(if $(wildcard .venv/bin/checkov),.venv/bin/checkov,checkov)
 
-.PHONY: validate terraform-fmt terraform-init terraform-validate terraform-test bootstrap-init bootstrap-test backend-contract-test backend-evidence-test policy-test end-to-end-unit python-test python-type python-security chef-style chef-unit chef-integration
+.PHONY: validate bicep-validate terraform-fmt terraform-init terraform-validate terraform-test bootstrap-init bootstrap-test backend-contract-test backend-evidence-test policy-test end-to-end-unit python-test python-type python-security chef-style chef-unit chef-integration
 
-validate: terraform-fmt terraform-validate terraform-test bootstrap-test backend-contract-test backend-evidence-test policy-test end-to-end-unit python-type python-security python-test
+validate: bicep-validate terraform-fmt terraform-validate terraform-test bootstrap-test backend-contract-test backend-evidence-test policy-test end-to-end-unit python-type python-security python-test
+
+bicep-validate:
+	az bicep build --file infra/cyclecloud/main.bicep --stdout >/dev/null
+	bash -n tests/end-to-end/cyclecloud_stack.sh
+	bash -n tests/end-to-end/finalize_provisioning.sh
+	bash -n tests/end-to-end/store_admin_secrets.sh
 
 terraform-fmt:
 	terraform -chdir=terraform fmt -check -recursive
@@ -42,7 +48,7 @@ policy-test:
 	$(PYTHON) -m pytest tests/policy
 
 end-to-end-unit:
-	$(PYTHON) -m pytest tests/end-to-end/test_preflight.py tests/end-to-end/test_verify_inventory.py tests/end-to-end/test_capacity_probe.py tests/end-to-end/test_provision.py tests/end-to-end/test_export_preflight_env.py tests/end-to-end/test_marketplace_terms.py tests/end-to-end/test_render_preflight_summary.py
+	$(PYTHON) -m pytest tests/end-to-end/test_preflight.py tests/end-to-end/test_verify_inventory.py tests/end-to-end/test_capacity_probe.py tests/end-to-end/test_provision.py tests/end-to-end/test_cyclecloud_stack.py tests/end-to-end/test_export_preflight_env.py tests/end-to-end/test_marketplace_terms.py tests/end-to-end/test_render_preflight_summary.py
 
 python-test:
 	PYTHONPATH=tools/headless_template/src $(PYTHON) -m pytest tools/headless_template/tests

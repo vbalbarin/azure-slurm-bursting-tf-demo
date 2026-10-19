@@ -165,6 +165,8 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
 | `capacity_assessments` | Selected and alternate quota, eligibility, zonal restriction, and probe results |
 | `capacity_probe_cleanup` | Probe deletion result and verification timestamp |
 | `plan_reference` | Reviewed saved-plan digest and approval |
+| `cyclecloud_stack_reference` | Compiled-template, protected-parameter, exact what-if digests, approval, deployment result, and stack cleanup |
+| `key_vault_hardening_reference` | Separate Terraform hardening-plan digest, approval, apply result, and private-only observation |
 | `access_events` | Secret and administrative access events without values |
 | `configuration_events` | Convergence and transformation outcomes |
 | `cluster_events` | Import, start, node lifecycle, and job evidence |
@@ -172,10 +174,13 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
 
 ## Cross-entity invariants
 
-1. No Administrative Host, CycleCloud endpoint, or Secret Store has public inbound access.
-2. Every Azure resource belongs to the feature resource group and originates from a pinned AVM.
+1. No Administrative Host or CycleCloud endpoint has public inbound access. The Secret Store may
+   allow only the approved runner `/32` during provisioning and has no public access once accepted.
+2. Every Azure resource belongs to the feature resource group. Every Terraform-owned resource
+   originates from a pinned AVM; only the CycleCloud VM originates from the approved Bicep stack.
 3. Cluster, scheduler, template, project, and user identities are consistent across all entities.
-4. A deployment cannot enter `provisioned` without a validated reviewed plan.
+4. A deployment cannot enter `provisioned` without an applied reviewed Terraform foundation plan,
+   an applied reviewed CycleCloud stack what-if, and an applied reviewed Key Vault hardening plan.
 5. Guest state cannot enter `converged` without native validation and second-run idempotency.
 6. A headless definition cannot become `valid` if the source combination fails compatibility or
    if the last valid destination would be lost on failure.

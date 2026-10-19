@@ -99,7 +99,8 @@ jq -n \
   --arg capacity_probe_digest "$capacity_probe_digest" \
   --arg approval_reference "$approval_reference" \
   --argjson elapsed_minutes "$elapsed_minutes" \
-  '{plan_digest: $plan_digest, preflight_digest: $preflight_digest,
+  '{status: "terraform_foundation_only", acceptance_complete: false,
+    plan_digest: $plan_digest, preflight_digest: $preflight_digest,
     capacity_probe_digest:$capacity_probe_digest,
     approval_reference: $approval_reference, elapsed_minutes: $elapsed_minutes}' \
   >"$EVIDENCE_DIR/provisioning.json"

@@ -285,3 +285,15 @@ Task T048: Private-administration acceptance procedure
 - [X] T068 Extend Terraform outputs, `tests/schemas/inventory.schema.json`, `tests/end-to-end/verify_inventory.py`, and provisioning gates with selected region/zone quota measurements, restriction classifications, candidate assessments, probe timestamps and outcome, point-in-time disclaimer, and verified cleanup per FR-042 and SC-013–SC-016 (partial)
 - [X] T069 Add deterministic preflight, Terraform, capacity-probe lifecycle, schema, and provisioning tests for sufficient and insufficient total/family quota, subscription/location/zone restrictions, eligible and inconclusive alternates, allocation success/failure/timeout, stale evidence, and cleanup failure per SC-013–SC-016 (partial)
 - [X] T070 Update `README.md`, the repository quickstart, and evidence guidance with complete quota interpretation, explicit zonal placement, probe cost and temporal limitations, exact reviewed probe plans, cleanup remediation, alternate-candidate selection, and capacity-reservation guidance per the plan operator workflow (partial)
+
+---
+
+## Phase 10: CycleCloud Marketplace Deployment Boundary
+
+- [X] T071 Amend the constitution, specification, research, plan, infrastructure contract, and operator workflow for the narrowly scoped CycleCloud VM-only Bicep deployment-stack exception and bounded Key Vault provisioning phase
+- [X] T072 Replace the incompatible CycleCloud VM AVM call with a pinned standalone NIC AVM and a source-controlled Bicep template that declares the pinned Marketplace plan and required image data disk at LUN 0
+- [X] T073 Add exact deployment-stack what-if, digest-bound approval, apply, reconciliation, evidence, and delete-all cleanup tooling with tests
+- [X] T074 Add Key Vault provisioning `/32` inputs and a separately approved hardening-plan workflow that restores private-only access before acceptance
+- [X] T075 Configure the pinned hotpatch Windows image with `AutomaticByPlatform` patch and assessment modes and add regression assertions
+- [X] T076 Retain the exact-placement AlmaLinux HPC capacity probe and document that it validates burst SKU allocatability independently of the CycleCloud appliance
+- [ ] T077 Run focused and full validation, record the architecture change, and restart source-bound acceptance only from the resulting commit

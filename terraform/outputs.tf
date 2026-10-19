@@ -16,7 +16,7 @@ output "inventory" {
     private_hosts = {
       cyclecloud = {
         name            = local.names.cyclecloud
-        private_address = module.cyclecloud_vm.network_interfaces["primary"].private_ip_address
+        private_address = module.cyclecloud_nic.resource.private_ip_address
       }
       scheduler = {
         name            = local.names.scheduler
@@ -52,12 +52,16 @@ output "inventory" {
   }
 }
 
-output "credential_secret_references" {
-  description = "Key Vault references for generated VM credentials."
+output "cyclecloud_deployment" {
+  description = "Secret-free inputs for the separately approved CycleCloud VM-only Bicep deployment stack."
   value = {
-    cyclecloud = module.cyclecloud_vm.admin_ssh_keys
-    scheduler  = module.scheduler_vm.admin_ssh_keys
-    windows    = module.windows_admin_vm.admin_password
+    location            = var.source_region
+    resource_group_name = module.resource_group.name
+    vm_name             = local.names.cyclecloud
+    vm_size             = var.cyclecloud_vm_size
+    zone                = "1"
+    nic_resource_id     = module.cyclecloud_nic.resource_id
+    image               = var.cyclecloud_image
+    tags                = local.common_tags
   }
-  sensitive = true
 }

@@ -48,6 +48,37 @@ def test_no_public_ip_or_public_key_vault() -> None:
     assert not re.search(r'public_network_access_enabled\s*=\s*true', source)
 
 
+def test_cyclecloud_bicep_exception_is_vm_only() -> None:
+    bicep_files = list((ROOT / "infra").rglob("*.bicep"))
+    assert bicep_files == [ROOT / "infra" / "cyclecloud" / "main.bicep"]
+    source = bicep_files[0].read_text()
+    resources = re.findall(r"(?m)^resource\s+\w+\s+'([^']+)'", source)
+    assert resources == ["Microsoft.Compute/virtualMachines@2024-11-01"]
+    assert "lun: 0" in source
+    assert "createOption: 'FromImage'" in source
+    assert "id: nicResourceId" in source
+    assert "azurecyclecloud" not in source
+
+
+def test_cyclecloud_stack_has_digest_gates_and_delete_all_cleanup() -> None:
+    script = ROOT / "tests" / "end-to-end" / "cyclecloud_stack.sh"
+    source = script.read_text()
+    assert script.stat().st_mode & 0o111
+    for field in ("template_digest", "parameters_digest", "what_if_digest"):
+        assert field in source
+    assert source.count("--action-on-unmanage deleteAll") == 2
+    assert "--resources-without-delete-support fail" in source
+
+
+def test_admin_secret_writer_uses_files_and_redacts_values() -> None:
+    script = ROOT / "tests" / "end-to-end" / "store_admin_secrets.sh"
+    source = script.read_text()
+    assert script.stat().st_mode & 0o111
+    assert "--file" in source
+    assert "--value" not in source
+    assert "--query '{id:id,name:name}'" in source
+
+
 def test_secret_outputs_are_sensitive() -> None:
     source = (ROOT / "terraform" / "outputs.tf").read_text() if (ROOT / "terraform" / "outputs.tf").exists() else ""
     for block in re.findall(r'output\s+"([^"]*(?:secret|credential|password|key)[^"]*)"\s*\{(.*?)\n\}', source, re.DOTALL | re.IGNORECASE):

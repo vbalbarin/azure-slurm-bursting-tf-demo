@@ -166,6 +166,58 @@ variable "operator_group_object_ids" {
   }
 }
 
+variable "key_vault_provisioning_access_enabled" {
+  description = "Temporarily enable the Key Vault public endpoint for initial secret creation from one approved runner /32. Must be false for acceptance."
+  type        = bool
+  default     = false
+}
+
+variable "key_vault_provisioning_ipv4_cidrs" {
+  description = "Exact approved runner IPv4 /32 used only while key_vault_provisioning_access_enabled is true."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = (
+      var.key_vault_provisioning_access_enabled
+      ? length(var.key_vault_provisioning_ipv4_cidrs) == 1 &&
+      can(cidrhost(var.key_vault_provisioning_ipv4_cidrs[0], 0)) &&
+      endswith(var.key_vault_provisioning_ipv4_cidrs[0], "/32") &&
+      var.key_vault_provisioning_ipv4_cidrs[0] != "0.0.0.0/32"
+      : length(var.key_vault_provisioning_ipv4_cidrs) == 0
+    )
+    error_message = "Provisioning access requires exactly one nonzero IPv4 /32; accepted private-only mode requires no public CIDRs."
+  }
+}
+
+variable "scheduler_admin_ssh_public_key" {
+  description = "Scheduler administrator SSH public key generated in protected state."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = can(regex("^ssh-(rsa|ed25519) [A-Za-z0-9+/=]+(?: .*)?$", trimspace(var.scheduler_admin_ssh_public_key)))
+    error_message = "scheduler_admin_ssh_public_key must be a valid RSA or Ed25519 OpenSSH public key."
+  }
+}
+
+variable "windows_admin_password" {
+  description = "Windows administrator password generated in protected state."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition = (
+      length(var.windows_admin_password) >= 14 &&
+      can(regex("[A-Z]", var.windows_admin_password)) &&
+      can(regex("[a-z]", var.windows_admin_password)) &&
+      can(regex("[0-9]", var.windows_admin_password)) &&
+      can(regex("[^A-Za-z0-9]", var.windows_admin_password))
+    )
+    error_message = "windows_admin_password must be at least 14 characters and contain uppercase, lowercase, numeric, and special characters."
+  }
+}
+
 variable "cyclecloud_image" {
   description = "Pinned CycleCloud Marketplace image metadata."
   type = object({
