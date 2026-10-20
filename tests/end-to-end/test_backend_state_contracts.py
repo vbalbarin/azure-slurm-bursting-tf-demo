@@ -50,6 +50,23 @@ def test_main_readiness_uses_backend_namespace_not_workload_name() -> None:
     assert 'backend_environment_name = "demo"' in normalized_demo_inputs
 
 
+def test_capacity_probe_readiness_uses_backend_namespace_not_workload_name() -> None:
+    variables = (ROOT / "terraform/capacity-probe/variables.tf").read_text()
+    readiness = (ROOT / "terraform/capacity-probe/backend-readiness.tf").read_text()
+    probe_inputs = (
+        ROOT / "terraform/capacity-probe/probe.tfvars.example"
+    ).read_text()
+    normalized_probe_inputs = " ".join(probe_inputs.split())
+
+    assert 'variable "backend_environment_name"' in variables
+    assert '${var.backend_environment_name}/main.tfstate' in readiness
+    assert '${var.backend_environment_name}/capacity-probe.tfstate' in readiness
+    assert '${var.backend_environment_name}/bootstrap.tfstate' in readiness
+    assert '${var.environment_name}/main.tfstate' not in readiness
+    assert 'environment_name = "slurmdemo"' in normalized_probe_inputs
+    assert 'backend_environment_name = "demo"' in normalized_probe_inputs
+
+
 def coordinates() -> dict[str, object]:
     return {
         "schema_version": "1.0",

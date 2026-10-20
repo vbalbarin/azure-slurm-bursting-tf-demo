@@ -3575,11 +3575,12 @@ chmod 0600 "$PROBE_TFVARS_FILE"
 persist_run_context
 ```
 
-Edit `$PROBE_TFVARS_FILE` with the exact selected subscription, tenant, environment, burst
-region, zone, SKU, image, current backend-readiness file, source commit, active principal,
-execution-context digest, an expiration no more than 24 hours ahead, accountable owner, and
-`cost_acknowledged = true`. These values must match the static preflight and protected demo
-inputs.
+Edit `$PROBE_TFVARS_FILE` with the exact selected subscription, tenant, workload environment,
+governed backend environment, burst region, zone, SKU, image, current backend-readiness file,
+source commit, active principal, execution-context digest, an expiration no more than 24 hours
+ahead, accountable owner, and `cost_acknowledged = true`. The workload `environment_name` and
+backend `backend_environment_name` must independently match the protected demo inputs; do not
+substitute one for the other.
 
 Explicitly acknowledge temporary Azure cost in each approval record. Then:
 

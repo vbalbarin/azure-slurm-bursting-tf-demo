@@ -2,12 +2,13 @@ mock_provider "azurerm" {}
 mock_provider "azapi" {}
 
 variables {
-  subscription_id  = "00000000-0000-0000-0000-000000000000"
-  tenant_id        = "00000000-0000-0000-0000-000000000000"
-  environment_name = "demo"
-  burst_region     = "southcentralus"
-  burst_zone       = "1"
-  burst_vm_size    = "Standard_HB120rs_v3"
+  subscription_id          = "00000000-0000-0000-0000-000000000000"
+  tenant_id                = "00000000-0000-0000-0000-000000000000"
+  environment_name         = "slurmdemo"
+  backend_environment_name = "demo"
+  burst_region             = "southcentralus"
+  burst_zone               = "1"
+  burst_vm_size            = "Standard_HB120rs_v3"
   burst_compute_image = {
     publisher = "almalinux"
     offer     = "almalinux-hpc"
@@ -92,11 +93,11 @@ run "wrong_commit_rejected" {
   expect_failures = [terraform_data.backend_readiness_gate]
 }
 
-run "wrong_environment_rejected" {
+run "wrong_backend_environment_rejected" {
   command = plan
 
   variables {
-    environment_name = "prod"
+    backend_environment_name = "prod"
   }
 
   expect_failures = [terraform_data.backend_readiness_gate]

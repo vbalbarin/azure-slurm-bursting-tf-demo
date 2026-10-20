@@ -71,6 +71,16 @@ variable "environment_name" {
   }
 }
 
+variable "backend_environment_name" {
+  description = "Environment prefix used by the governed backend state keys."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{2,19}$", var.backend_environment_name))
+    error_message = "backend_environment_name must be 3-20 lowercase alphanumeric or hyphen characters and start with a letter."
+  }
+}
+
 variable "burst_region" {
   type        = string
   description = "Exact operator-selected burst region."

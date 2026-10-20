@@ -1,9 +1,10 @@
 subscription_id = "00000000-0000-0000-0000-000000000000"
 tenant_id       = "00000000-0000-0000-0000-000000000000"
-environment_name = "slurmdemo"
-burst_region      = "southcentralus"
-burst_zone        = "1"
-burst_vm_size     = "Standard_HB120rs_v3"
+environment_name         = "slurmdemo"
+backend_environment_name = "demo"
+burst_region              = "southcentralus"
+burst_zone                = "1"
+burst_vm_size             = "Standard_HB120rs_v3"
 
 burst_compute_image = {
   publisher = "almalinux"
