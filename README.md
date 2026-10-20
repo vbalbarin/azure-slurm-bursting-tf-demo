@@ -279,7 +279,9 @@ The approved design includes:
 - Windows administration host
 - Azure Bastion
 - Azure Key Vault with a temporary approved runner `/32` for initial secret creation and mandatory
-  private-only hardening before acceptance
+  Key Vault-only `SecurityControl=Ignore` under explicit plan approval when required by active
+  policy, followed by mandatory removal of both the `/32` and exclusion tag during private-only
+  hardening before acceptance
 - Private DNS and bidirectional VNET peering
 - Independently selectable source and burst regions with fail-closed regional-capacity preflight
 - Log Analytics with 90-day audit retention
@@ -399,7 +401,8 @@ evidence-transfer channel.
 1. Copy `terraform/environments/demo.tfvars.example` to a protected, ignored `.tfvars` file and
    supply the approved subscription, tenant, distinct source/burst regions, CIDRs, Entra group,
    exact scheduler and burst-compute image versions, VM SKUs, the approved runner `/32`, and
-   versioned Key Vault references.
+   versioned Key Vault references. The foundation-plan approval must explicitly authorize the
+   temporary `SecurityControl=Ignore` tag on only the Key Vault.
 2. Source `tests/end-to-end/export_preflight_env.sh` with the protected `.tfvars` path. The helper
    uses Terraform and `jq` to export and display only the non-secret role sizes, counts, image URNs,
    selected zone, and approved alternate placements. Use

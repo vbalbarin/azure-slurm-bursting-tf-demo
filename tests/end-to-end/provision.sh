@@ -34,6 +34,11 @@ approved_digest="$(jq -er '.plan_digest' "$APPROVAL_FILE")"
 approved_preflight_digest="$(jq -er '.preflight_digest' "$APPROVAL_FILE")"
 approved_capacity_probe_digest="$(jq -er '.capacity_probe_digest' "$APPROVAL_FILE")"
 approval_reference="$(jq -er '.approval_reference' "$APPROVAL_FILE")"
+if ! jq -e '.key_vault_policy_exclusion_approved == true' \
+  "$APPROVAL_FILE" >/dev/null; then
+  echo "Approval must explicitly authorize the temporary Key Vault policy exclusion" >&2
+  exit 11
+fi
 [[ "$approved_digest" == "$plan_digest" ]] || {
   echo "Approved digest does not match the exact saved plan" >&2
   exit 11
@@ -102,5 +107,7 @@ jq -n \
   '{status: "terraform_foundation_only", acceptance_complete: false,
     plan_digest: $plan_digest, preflight_digest: $preflight_digest,
     capacity_probe_digest:$capacity_probe_digest,
-    approval_reference: $approval_reference, elapsed_minutes: $elapsed_minutes}' \
+    approval_reference: $approval_reference,
+    key_vault_policy_exclusion_approved: true,
+    elapsed_minutes: $elapsed_minutes}' \
   >"$EVIDENCE_DIR/provisioning.json"

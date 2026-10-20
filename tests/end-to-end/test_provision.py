@@ -111,6 +111,7 @@ def _environment(tmp_path: Path) -> dict[str, str]:
                     probe.read_bytes()
                 ).hexdigest(),
                 "approval_reference": "review-123",
+                "key_vault_policy_exclusion_approved": True,
             }
         )
     )
@@ -164,6 +165,28 @@ def test_rejects_unapproved_plan_digest(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 11
+    invocations = Path(environment["FAKE_TERRAFORM_LOG"]).read_text()
+    assert "apply" not in invocations
+
+
+def test_rejects_unapproved_key_vault_policy_exclusion(tmp_path: Path) -> None:
+    environment = _environment(tmp_path)
+    approval = Path(environment["APPROVAL_FILE"])
+    content = json.loads(approval.read_text())
+    content["key_vault_policy_exclusion_approved"] = False
+    approval.write_text(json.dumps(content))
+
+    result = subprocess.run(
+        [str(SCRIPT)],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 11
+    assert "temporary Key Vault policy exclusion" in result.stderr
     invocations = Path(environment["FAKE_TERRAFORM_LOG"]).read_text()
     assert "apply" not in invocations
 

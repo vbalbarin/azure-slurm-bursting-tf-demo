@@ -58,8 +58,10 @@ most 5 minutes; one-node burst job output in at most 15 minutes under normal cap
 **Constraints**: AVM-only Terraform resources, including temporary capacity-probe resources; one
 narrow CycleCloud VM-only Bicep deployment-stack exception; no direct Azure Terraform resource
 blocks or custom Terraform modules; no public VM or CycleCloud ingress; Key Vault may expose only
-the approved runner `/32` during initial secret creation and must return to private-only before
-acceptance; explicit distinct source and burst regions
+the approved runner `/32` during initial secret creation and, when required by active policy, may
+carry `SecurityControl=Ignore` on only the Key Vault under explicit plan approval; the `/32` and
+tag must be removed together when returning to private-only before acceptance; explicit distinct
+source and burst regions
 and an explicit burst zone with no automatic substitution; operator-approved alternate candidates
 are assessed in their supplied order but are not discovered or deployed automatically; latest
 release supported by both regions selected during planning and pinned; one compute node for the
@@ -83,7 +85,7 @@ burst-region node during acceptance
 | Compliance-preserving legacy operation | New isolated demonstration scope; no mutation or deletion of retained legacy resources; plan review blocks replacement and destruction. | PASS |
 | Declarative infrastructure and managed node configuration | Terraform owns all surrounding Azure resources. The approved Bicep stack owns only the CycleCloud Marketplace VM. Chef Local owns guest state. Python is limited to one node-consumed template and performs no Azure operations. | PASS |
 | Azure Verified Modules and CycleCloud appliance exception | Every Terraform resource is created through a pinned published AVM called directly from the root. The only non-AVM resource is the constitution-authorized VM-only Bicep stack. | PASS |
-| Security without exception | Private ingress, Bastion, final private-only Key Vault, an exact temporary provisioning `/32`, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
+| Security without exception | Private ingress, Bastion, final private-only Key Vault, an exact temporary provisioning `/32`, the constitution-authorized Key Vault-only policy exclusion lifecycle, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
 | Reliable, idempotent, validated change | Terraform, Chef, and Python each have syntax, security, idempotency, failure, and review gates. The exact plan is applied only after validation. | PASS |
 | Scope constraints | Two-region placement and advisory assessment of operator-approved candidates demonstrate placement flexibility without HA, DR, automatic failover, or multi-node scaling. | PASS |
 
@@ -109,7 +111,8 @@ incomplete. These are operational gates, not unresolved requirements.
 The data model, contracts, and quickstart retain the separation between Terraform-owned
 infrastructure, the CycleCloud VM-only Bicep stack, Chef-managed guest configuration, and the
 permitted Python file processor. The Key Vault provisioning exception is bounded to one approved
-runner `/32` and a mandatory hardening plan. No artifact introduces direct Terraform resources,
+runner `/32`, one resource-scoped exclusion tag under explicit approval, and a mandatory hardening
+plan that removes both. No artifact introduces direct Terraform resources,
 custom Terraform modules, public management ingress in the accepted environment, unvalidated
 deployment, HA, DR, or additional scale. All gates remain PASS.
 

@@ -57,6 +57,15 @@ committed to source control, embedded in Terraform configuration, or exposed thr
 Security controls MUST NOT be weakened to preserve compatibility, reduce effort, or accelerate a
 deployment; exceptions require a constitution amendment before implementation.
 
+One narrow exception permits the Key Vault resource, and no resource group or other resource, to
+carry `SecurityControl=Ignore` only while its public endpoint is default-deny and restricted to one
+approved runner IPv4 `/32` for initial secret writes. The exact foundation plan MUST receive
+accountable, digest-bound approval that explicitly authorizes this policy exclusion. A separate
+exact hardening plan MUST atomically disable public access, clear every IP rule, and remove the
+exclusion tag before guest convergence or acceptance. Live evidence MUST prove the tag is present
+only during the approved provisioning window and absent from the accepted environment. Failure to
+apply or verify any part of this lifecycle MUST stop deployment.
+
 ### V. Reliable, Idempotent, and Validated Change
 Infrastructure and node configuration MUST be deterministic, idempotent, version-pinned, and safe
 for the retained workload. Resource replacement and deletion risks MUST be reviewed in every
@@ -126,4 +135,4 @@ MUST rule. Compliance MUST be re-evaluated whenever Terraform, provider, AVM,
 configuration-management tool, or permitted script-runtime versions change and before every
 deployment.
 
-**Version**: 3.0.0 | **Ratified**: 2026-10-07 | **Last Amended**: 2026-10-19
+**Version**: 3.1.0 | **Ratified**: 2026-10-07 | **Last Amended**: 2026-10-20

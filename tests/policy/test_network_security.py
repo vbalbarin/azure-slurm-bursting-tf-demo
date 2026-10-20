@@ -39,10 +39,17 @@ def test_least_privilege_identity_and_audit_retention() -> None:
 
 
 def test_key_vault_provisioning_access_is_exact_and_bounded() -> None:
-    source = terraform_file("variables.tf")
-    assert 'endswith(var.key_vault_provisioning_ipv4_cidrs[0], "/32")' in source
-    assert 'var.key_vault_provisioning_ipv4_cidrs[0] != "0.0.0.0/32"' in source
-    assert "length(var.key_vault_provisioning_ipv4_cidrs) == 0" in source
+    variables = terraform_file("variables.tf")
+    locals_source = terraform_file("locals.tf")
+    security = terraform_file("security.tf")
+    assert 'endswith(var.key_vault_provisioning_ipv4_cidrs[0], "/32")' in variables
+    assert 'var.key_vault_provisioning_ipv4_cidrs[0] != "0.0.0.0/32"' in variables
+    assert "length(var.key_vault_provisioning_ipv4_cidrs) == 0" in variables
+    assert 'SecurityControl = "Ignore"' in locals_source
+    assert "tags                          = local.key_vault_tags" in security
+    common_tags = re.search(r"common_tags\s*=\s*\{(.*?)\n\s*\}", locals_source, re.DOTALL)
+    assert common_tags
+    assert "SecurityControl" not in common_tags.group(1)
 
 
 def test_windows_hotpatch_uses_platform_orchestration() -> None:

@@ -104,7 +104,8 @@ Review must confirm:
 - Only pinned providers and direct pinned AVM module calls appear.
 - No direct Azure resource or local custom Terraform module exists.
 - No host or CycleCloud public endpoint is planned. Key Vault is limited to the approved runner
-  `/32` during initial secret creation.
+  `/32` during initial secret creation, and `SecurityControl=Ignore` appears only on the Key Vault
+  under explicit approval.
 - Exactly two VNETs and the required bidirectional peerings are planned.
 - The VNETs are placed in the approved distinct source and burst regions and use global peering.
 - Exactly two Terraform-owned persistent VMs, one Terraform-owned CycleCloud NIC, and one Bastion
@@ -125,9 +126,10 @@ Approve its template, parameter, and what-if digests before deployment. Require 
 CycleCloud Marketplace VM with the Terraform-owned NIC and image data disk at LUN 0.
 
 After initial secret creation, set Key Vault provisioning access to false and its IP rules to an
-empty list. Generate, review, approve, and apply a separate Terraform hardening plan. Do not accept
-provisioning or begin guest convergence until Key Vault reports `publicNetworkAccess=Disabled`,
-default deny, and zero IP rules.
+empty list. Generate, review, approve, and apply a separate Terraform hardening plan that also
+removes `SecurityControl=Ignore`. Do not accept provisioning or begin guest convergence until Key
+Vault reports `publicNetworkAccess=Disabled`, default deny, zero IP rules, and no policy-exclusion
+tag.
 
 Expected outcome:
 

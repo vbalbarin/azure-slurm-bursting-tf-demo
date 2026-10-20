@@ -52,7 +52,7 @@ module "key_vault" {
   purge_protection_enabled      = true
   soft_delete_retention_days    = 90
   enable_telemetry              = false
-  tags                          = local.common_tags
+  tags                          = local.key_vault_tags
 
   network_acls = {
     bypass         = "None"

@@ -297,3 +297,6 @@ Task T048: Private-administration acceptance procedure
 - [X] T075 Configure the pinned hotpatch Windows image with `AutomaticByPlatform` patch and assessment modes and add regression assertions
 - [X] T076 Retain the exact-placement AlmaLinux HPC capacity probe and document that it validates burst SKU allocatability independently of the CycleCloud appliance
 - [ ] T077 Run focused and full validation, record the architecture change, and restart source-bound acceptance only from the resulting commit
+- [X] T078 Amend governance, specification, contracts, research, plan, data model, and operator guidance for the explicitly approved Key Vault-only `SecurityControl=Ignore` provisioning lifecycle
+- [X] T079 Add the conditional Key Vault-only exclusion tag, enforce explicit foundation-plan authorization, and remove it automatically with the existing private-only hardening inputs
+- [X] T080 Add Terraform, policy, provisioning, and live-evidence assertions proving the exclusion never reaches common/resource-group tags and cannot survive hardening

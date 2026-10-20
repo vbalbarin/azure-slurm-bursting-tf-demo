@@ -206,10 +206,13 @@ mode.
 CycleCloud and scheduler SSH keys and Windows password only in protected run state. Terraform
 receives only the scheduler public key and Windows password as sensitive environment inputs and
 does not own Key Vault secret resources. During one-time secret writes, enable Key Vault public
-access with default deny and only the approved runner's exact `/32`. A fail-closed data-plane
-script passes protected file paths rather than values to Azure CLI and records only secret IDs and
-names. Immediately generate and approve a separate Terraform hardening plan that disables public
-access and removes all public IP rules. The accepted environment requires that hardening apply and
+access with default deny and only the approved runner's exact `/32`. The active management-group
+policy documents `SecurityControl=Ignore` as its exclusion; apply that tag only to the Key Vault in
+the initial request, never to the resource group, and require the exact foundation-plan approval to
+authorize its use. A fail-closed data-plane script passes protected file paths rather than values
+to Azure CLI and records only secret IDs and names. Immediately generate and approve a separate
+Terraform hardening plan that disables public access, removes all public IP rules, and removes the
+exclusion tag in the same apply. The accepted environment requires that hardening apply and
 private endpoint DNS linked to both VNETs. Never write values into source, ordinary logs,
 inventory, evidence, or nonsensitive Terraform outputs.
 Install the private CycleCloud certificate from Key Vault and place its trust chain on the Windows
@@ -218,12 +221,12 @@ host through managed guest configuration.
 **Rationale**: This matches the clarified identity, networking, and certificate requirements while
 allowing local credentials only where the products require them.
 
-**Alternatives considered**: Permanent public Key Vault access, public CycleCloud TLS, and universal
-local administrator credentials were rejected for excess exposure. A private deployment runner was
-not selected because it adds infrastructure and operational complexity to a short-lived
-demonstration; it remains the preferred replacement if the bounded provisioning exception cannot
-be closed immediately. Entra-only guest access was not selected because CycleCloud and the
-demonstration flow still require local product identities.
+**Alternatives considered**: Permanent public Key Vault access, a resource-group-wide policy
+exclusion, public CycleCloud TLS, and universal local administrator credentials were rejected for
+excess exposure. A private deployment runner was not selected because it adds infrastructure and
+operational complexity to a short-lived demonstration; it remains the preferred replacement if
+the bounded provisioning exception cannot be closed immediately. Entra-only guest access was not
+selected because CycleCloud and the demonstration flow still require local product identities.
 
 ## Validation strategy
 

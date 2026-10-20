@@ -93,6 +93,11 @@ run "cross_region_topology" {
   command = plan
 
   assert {
+    condition     = !contains(keys(local.key_vault_tags), "SecurityControl")
+    error_message = "Accepted private-only mode must not retain the temporary Key Vault policy exclusion."
+  }
+
+  assert {
     condition     = module.source_vnet.name == "vnet-source"
     error_message = "The source VNET must use the contract name."
   }
@@ -130,5 +135,24 @@ run "cross_region_topology" {
   assert {
     condition     = output.inventory.versions.burst_compute_image == "almalinux:almalinux-hpc:9-hpc-gen2:9.8.202608110"
     error_message = "Inventory must record the independently pinned burst-compute image."
+  }
+}
+
+run "key_vault_provisioning_policy_exclusion_is_resource_scoped" {
+  command = plan
+
+  variables {
+    key_vault_provisioning_access_enabled = true
+    key_vault_provisioning_ipv4_cidrs     = ["203.0.113.10/32"]
+  }
+
+  assert {
+    condition     = local.key_vault_tags.SecurityControl == "Ignore"
+    error_message = "Provisioning mode must apply the exact policy exclusion to the Key Vault."
+  }
+
+  assert {
+    condition     = !contains(keys(local.common_tags), "SecurityControl")
+    error_message = "The policy exclusion must not be applied through common or resource-group tags."
   }
 }

@@ -3444,6 +3444,8 @@ Edit the file with approved:
 - pinned CycleCloud `8.9.3` and Windows image;
 - the approved runner's exact IPv4 `/32`, with
   `key_vault_provisioning_access_enabled = true` only for initial secret creation;
+- an accountable review reference that explicitly authorizes `SecurityControl=Ignore` on only the
+  Key Vault during that bounded provisioning window;
 - versioned Key Vault references and other protected inputs.
 
 Do not copy the `.tfvars` file into `/evidence`.
@@ -3740,7 +3742,8 @@ Create `$APPROVAL_FILE` only after plan generation:
   "plan_digest": "<main plan SHA-256>",
   "preflight_digest": "<preflight.json SHA-256>",
   "capacity_probe_digest": "<capacity-probe.json SHA-256>",
-  "approval_reference": "<approved change or review reference>"
+  "approval_reference": "<approved change or review reference>",
+  "key_vault_policy_exclusion_approved": true
 }
 ```
 
@@ -3767,7 +3770,42 @@ test "$MAIN_APPLY_STATUS" -eq 0
 The script verifies all three approved digests, rejects stale preflight evidence, applies only
 `$PLAN_FILE`, and enforces the 90-minute target. At this point the Terraform foundation exists, but
 provisioning is not accepted: the CycleCloud VM is absent and Key Vault still has the temporary
-runner `/32`.
+runner `/32` and Key Vault-only policy-exclusion tag.
+
+Before writing secrets, prove the live exception is exactly bounded:
+
+```bash
+KEY_VAULT_NAME="$(
+  terraform -chdir=terraform output -json inventory |
+    jq -er '.key_vault_private_name | split(".")[0]'
+)"
+RESOURCE_GROUP_NAME="$(
+  terraform -chdir=terraform output -json cyclecloud_deployment |
+    jq -er '.resource_group_name'
+)"
+az keyvault show \
+  --resource-group "$RESOURCE_GROUP_NAME" \
+  --name "$KEY_VAULT_NAME" \
+  --query '{
+    publicNetworkAccess:properties.publicNetworkAccess,
+    defaultAction:properties.networkAcls.defaultAction,
+    ipRules:properties.networkAcls.ipRules,
+    securityControl:tags.SecurityControl
+  }' --output json |
+  tee "$DEMO_EVIDENCE_DIR/key-vault-provisioning-window.json"
+jq -e '
+  .publicNetworkAccess == "Enabled" and
+  .defaultAction == "Deny" and
+  (.ipRules | length) == 1 and
+  .securityControl == "Ignore"
+' "$DEMO_EVIDENCE_DIR/key-vault-provisioning-window.json"
+test "$(
+  az group show \
+    --name "$RESOURCE_GROUP_NAME" \
+    --query 'tags.SecurityControl' \
+    --output tsv
+)" != "Ignore"
+```
 
 Write the protected credentials through the Key Vault data plane during this bounded window. The
 script passes file paths rather than values to Azure CLI and records only secret IDs and names:
@@ -3853,8 +3891,27 @@ sha256sum "$HARDENING_PLAN_FILE"
 terraform -chdir=terraform show -no-color "$HARDENING_PLAN_FILE"
 ```
 
-Require only the Key Vault public-access and firewall hardening changes. Record a digest-bound
-approval:
+Require only in-place Key Vault changes and prove the plan removes the policy exclusion. No
+resource-group or other resource may change:
+
+```bash
+terraform -chdir=terraform show -json "$HARDENING_PLAN_FILE" |
+  jq -e '
+    [.resource_changes[] |
+      select(.change.actions != ["no-op"])] as $changes |
+    ($changes | length) > 0 and
+    all($changes[];
+      (.address | startswith("module.key_vault.")) and
+      .change.actions == ["update"]
+    ) and
+    any($changes[];
+      .change.before.tags.SecurityControl == "Ignore" and
+      (.change.after.tags | has("SecurityControl") | not)
+    )
+  '
+```
+
+Record a digest-bound approval:
 
 ```bash
 if read -r -p "Authorized Key Vault hardening reference: " HARDENING_APPROVAL_REFERENCE &&
@@ -3892,13 +3949,15 @@ az keyvault show \
   --query '{
     publicNetworkAccess:properties.publicNetworkAccess,
     defaultAction:properties.networkAcls.defaultAction,
-    ipRules:properties.networkAcls.ipRules
+    ipRules:properties.networkAcls.ipRules,
+    securityControl:tags.SecurityControl
   }' --output json |
   tee "$DEMO_EVIDENCE_DIR/key-vault-hardening.json"
 jq -e '
   .publicNetworkAccess == "Disabled" and
   .defaultAction == "Deny" and
-  (.ipRules | length) == 0
+  (.ipRules | length) == 0 and
+  .securityControl == null
 ' "$DEMO_EVIDENCE_DIR/key-vault-hardening.json"
 
 EVIDENCE_DIR="$DEMO_EVIDENCE_DIR" \

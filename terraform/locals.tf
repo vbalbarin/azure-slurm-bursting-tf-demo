@@ -60,4 +60,11 @@ locals {
     managed_by  = "terraform"
     source      = "azure-verified-modules"
   }
+
+  key_vault_tags = merge(
+    local.common_tags,
+    var.key_vault_provisioning_access_enabled ? {
+      SecurityControl = "Ignore"
+    } : {}
+  )
 }

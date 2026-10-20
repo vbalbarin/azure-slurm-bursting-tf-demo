@@ -166,7 +166,7 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
 | `capacity_probe_cleanup` | Probe deletion result and verification timestamp |
 | `plan_reference` | Reviewed saved-plan digest and approval |
 | `cyclecloud_stack_reference` | Compiled-template, protected-parameter, exact what-if digests, approval, deployment result, and stack cleanup |
-| `key_vault_hardening_reference` | Separate Terraform hardening-plan digest, approval, apply result, and private-only observation |
+| `key_vault_hardening_reference` | Foundation approval for the Key Vault-only policy exclusion plus separate hardening-plan digest, approval, apply result, and observation proving private-only access with no exclusion tag |
 | `access_events` | Secret and administrative access events without values |
 | `configuration_events` | Convergence and transformation outcomes |
 | `cluster_events` | Import, start, node lifecycle, and job evidence |
@@ -175,7 +175,9 @@ Secret values never appear in this model, inventory, logs, or nonsensitive outpu
 ## Cross-entity invariants
 
 1. No Administrative Host or CycleCloud endpoint has public inbound access. The Secret Store may
-   allow only the approved runner `/32` during provisioning and has no public access once accepted.
+   allow only the approved runner `/32` during provisioning, may carry `SecurityControl=Ignore`
+   only on that resource under explicit approval, and has neither public access nor the tag once
+   accepted.
 2. Every Azure resource belongs to the feature resource group. Every Terraform-owned resource
    originates from a pinned AVM; only the CycleCloud VM originates from the approved Bicep stack.
 3. Cluster, scheduler, template, project, and user identities are consistent across all entities.

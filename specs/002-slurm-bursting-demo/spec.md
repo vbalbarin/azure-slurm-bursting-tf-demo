@@ -38,6 +38,14 @@ headless template, and use a guarded Python helper when no suitable native parse
 - Q: Which source topology should the demonstration implement? → A: Implement Azure-region-to-
   Azure-region bursting only; an existing on-premises source is a future extension.
 
+### Session 2026-10-20
+
+- Q: How should the bounded Key Vault provisioning window coexist with the active management-group
+  policy that otherwise forces public access off? → A: Apply `SecurityControl=Ignore` only to the
+  Key Vault in the initial, explicitly approved foundation plan. Keep default deny and the exact
+  runner `/32`, then remove the tag in the same separately approved hardening plan that disables
+  public access and clears every IP rule. Never apply the exclusion to the resource group.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Provision a Secure Demonstration Environment (Priority: P1)
@@ -227,8 +235,12 @@ headless cluster and its nodes.
   secret store MUST be reachable only through a private endpoint, and public network access MUST
   be disabled in the accepted environment. Initial secret creation MAY temporarily enable the
   public endpoint with a default-deny firewall containing only the approved runner's exact `/32`.
-  A separately generated, reviewed, digest-approved hardening plan MUST remove that rule and
-  disable public network access before infrastructure acceptance or guest convergence.
+  When the active management-group policy requires its documented exclusion for this bounded
+  access, only the secret-store resource MAY carry `SecurityControl=Ignore`, and the exact
+  foundation-plan approval MUST explicitly authorize that exclusion. A separately generated,
+  reviewed, digest-approved hardening plan MUST remove that rule, disable public network access,
+  and remove the exclusion tag in the same apply before infrastructure acceptance or guest
+  convergence. The resource group and every other resource MUST remain untagged.
 - **FR-009**: Administrators MUST use Microsoft Entra ID and least-privilege Azure RBAC for Azure
   resource and secret-store access. Secret access MUST be auditable, and secret values MUST NOT
   appear in source control, deployment outputs, logs, plans, or general VM metadata.

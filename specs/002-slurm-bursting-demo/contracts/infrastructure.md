@@ -13,6 +13,7 @@
 | Source and burst CIDRs | Private and non-overlapping |
 | Operator group object IDs | Existing Entra groups; no individual broad grants |
 | Provisioning runner CIDR | Exact approved IPv4 `/32`; used only during initial Key Vault secret creation |
+| Key Vault policy-exclusion approval | Accountable digest-bound approval explicitly authorizing `SecurityControl=Ignore` on only the Key Vault during the provisioning window |
 | CycleCloud version/image | Pinned to the planning decision and accepted Marketplace terms |
 | CycleCloud Bicep artifact | Source-controlled VM-only template from the approved source commit |
 | CycleCloud SSH public key | Protected operator-approved public key; its private counterpart never enters source or evidence |
@@ -32,7 +33,8 @@
 3. Hosts, CycleCloud, and Key Vault have no public inbound endpoint.
 4. Bastion is the administrative ingress path.
 5. Key Vault public access is disabled in the accepted environment; its private DNS resolves from
-   both consuming networks. The provisioning `/32` rule cannot survive the hardening gate.
+   both consuming networks. Neither the provisioning `/32` rule nor `SecurityControl=Ignore` can
+   survive the hardening gate, and the exclusion is never applied to the resource group.
 6. NSG rules are explicit, least privilege, and default deny for unsolicited cross-subnet traffic.
 7. Diagnostic destinations retain required records for 90 days.
 8. Outputs contain inventory identifiers, private addresses, source and burst regions, but no
@@ -68,8 +70,11 @@ Deployment is blocked unless:
 - The exact reviewed saved plan is applied.
 - The one-time secret writer accepts only mode-0600 protected files, passes file paths rather than
   values to Azure CLI, and records only versioned secret IDs and names.
-- A separate exact Terraform hardening plan removes the provisioning `/32` and disables Key Vault
-  public access before acceptance.
+- The exact foundation plan shows `SecurityControl=Ignore` only on the Key Vault, default-deny
+  networking, and exactly one approved `/32`, and its approval explicitly authorizes the temporary
+  exclusion.
+- A separate exact Terraform hardening plan removes the provisioning `/32`, disables Key Vault
+  public access, and removes `SecurityControl=Ignore` in the same apply before acceptance.
 - The exact reviewed CycleCloud deployment-stack what-if is deployed only after its Terraform-owned
   NIC exists.
 
@@ -78,8 +83,9 @@ Deployment is blocked unless:
 Identical or unsupported regions, unavailable or role-incompatible image/SKU, insufficient total
 or family quota, zonal restrictions, failed or inconclusive selected-placement capacity,
 unconfirmed probe cleanup, cross-role OS incompatibility, unavailable global peering, overlapping
-CIDR, denied Marketplace terms, absent AVM, or failed validation returns a nonzero result before
-main-environment apply, a CycleCloud what-if outside the VM-only boundary, an unapproved Bicep
-digest, a surviving Key Vault provisioning rule, or deployment-stack cleanup failure returns a
-nonzero result. The process must not substitute a different version, image, region, zone, topology,
-or public endpoint automatically.
+CIDR, denied Marketplace terms, absent AVM, missing explicit approval for the temporary Key Vault
+policy exclusion, a resource-group-wide exclusion, or failed validation returns a nonzero result
+before main-environment apply. A CycleCloud what-if outside the VM-only boundary, an unapproved
+Bicep digest, a surviving Key Vault provisioning rule or exclusion tag, or deployment-stack
+cleanup failure returns a nonzero result. The process must not substitute a different version,
+image, region, zone, topology, or public endpoint automatically.
