@@ -9,6 +9,7 @@ bicep-validate:
 	az bicep build --file infra/cyclecloud/main.bicep --stdout >/dev/null
 	bash -n tests/end-to-end/cyclecloud_stack.sh
 	bash -n tests/end-to-end/finalize_provisioning.sh
+	bash -n tests/end-to-end/key_vault_reconciliation.sh
 	bash -n tests/end-to-end/store_admin_secrets.sh
 
 terraform-fmt:
@@ -48,7 +49,7 @@ policy-test:
 	$(PYTHON) -m pytest tests/policy
 
 end-to-end-unit:
-	$(PYTHON) -m pytest tests/end-to-end/test_preflight.py tests/end-to-end/test_verify_inventory.py tests/end-to-end/test_capacity_probe.py tests/end-to-end/test_provision.py tests/end-to-end/test_cyclecloud_stack.py tests/end-to-end/test_export_preflight_env.py tests/end-to-end/test_marketplace_terms.py tests/end-to-end/test_render_preflight_summary.py
+	$(PYTHON) -m pytest tests/end-to-end/test_preflight.py tests/end-to-end/test_verify_inventory.py tests/end-to-end/test_capacity_probe.py tests/end-to-end/test_provision.py tests/end-to-end/test_cyclecloud_stack.py tests/end-to-end/test_key_vault_reconciliation.py tests/end-to-end/test_export_preflight_env.py tests/end-to-end/test_marketplace_terms.py tests/end-to-end/test_render_preflight_summary.py
 
 python-test:
 	PYTHONPATH=tools/headless_template/src $(PYTHON) -m pytest tools/headless_template/tests

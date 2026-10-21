@@ -180,6 +180,21 @@ persist_run_context() {
       printf 'export CAPACITY_PROBE_RESULTS_FILE=%q\n' \
         "$CAPACITY_PROBE_RESULTS_FILE"
     fi
+    if test -n "${FOUNDATION_PLAN_FILE:-}"; then
+      printf 'export FOUNDATION_PLAN_FILE=%q\n' "$FOUNDATION_PLAN_FILE"
+    fi
+    if test -n "${KEY_VAULT_RECONCILIATION_PLAN_FILE:-}"; then
+      printf 'export KEY_VAULT_RECONCILIATION_PLAN_FILE=%q\n' \
+        "$KEY_VAULT_RECONCILIATION_PLAN_FILE"
+    fi
+    if test -n "${KEY_VAULT_RECONCILIATION_APPROVAL_FILE:-}"; then
+      printf 'export KEY_VAULT_RECONCILIATION_APPROVAL_FILE=%q\n' \
+        "$KEY_VAULT_RECONCILIATION_APPROVAL_FILE"
+    fi
+    if test -n "${KEY_VAULT_PROVISIONING_EVIDENCE_FILE:-}"; then
+      printf 'export KEY_VAULT_PROVISIONING_EVIDENCE_FILE=%q\n' \
+        "$KEY_VAULT_PROVISIONING_EVIDENCE_FILE"
+    fi
     declare -f persist_run_context
   } >"$temporary_file"
 
@@ -3772,40 +3787,67 @@ The script verifies all three approved digests, rejects stale preflight evidence
 provisioning is not accepted: the CycleCloud VM is absent and Key Vault still has the temporary
 runner `/32` and Key Vault-only policy-exclusion tag.
 
-Before writing secrets, prove the live exception is exactly bounded:
+Before writing secrets, use the reviewed foundation plan to prove the live exception is exactly
+bounded. A recovered soft-deleted vault can retain its previous private-only network posture even
+when the foundation apply requested the provisioning `/32`; never treat foundation-apply success
+as proof of live Key Vault reachability:
 
 ```bash
-KEY_VAULT_NAME="$(
-  terraform -chdir=terraform output -json inventory |
-    jq -er '.key_vault_private_name | split(".")[0]'
-)"
-RESOURCE_GROUP_NAME="$(
-  terraform -chdir=terraform output -json cyclecloud_deployment |
-    jq -er '.resource_group_name'
-)"
-az keyvault show \
-  --resource-group "$RESOURCE_GROUP_NAME" \
-  --name "$KEY_VAULT_NAME" \
-  --query '{
-    publicNetworkAccess:properties.publicNetworkAccess,
-    defaultAction:properties.networkAcls.defaultAction,
-    ipRules:properties.networkAcls.ipRules,
-    securityControl:tags.SecurityControl
-  }' --output json |
-  tee "$DEMO_EVIDENCE_DIR/key-vault-provisioning-window.json"
-jq -e '
-  .publicNetworkAccess == "Enabled" and
-  .defaultAction == "Deny" and
-  (.ipRules | length) == 1 and
-  .securityControl == "Ignore"
-' "$DEMO_EVIDENCE_DIR/key-vault-provisioning-window.json"
-test "$(
-  az group show \
-    --name "$RESOURCE_GROUP_NAME" \
-    --query 'tags.SecurityControl' \
-    --output tsv
-)" != "Ignore"
+export FOUNDATION_PLAN_FILE="$PLAN_FILE"
+export KEY_VAULT_RECONCILIATION_PLAN_FILE="$DEMO_STATE_DIR/key-vault-reconciliation.tfplan"
+export KEY_VAULT_RECONCILIATION_APPROVAL_FILE="$DEMO_STATE_DIR/key-vault-reconciliation-approval.json"
+export KEY_VAULT_PROVISIONING_EVIDENCE_FILE="$DEMO_EVIDENCE_DIR/key-vault-provisioning-window.json"
+persist_run_context
+
+if tests/end-to-end/key_vault_reconciliation.sh check; then
+  KEY_VAULT_POSTURE_STATUS=0
+else
+  KEY_VAULT_POSTURE_STATUS="$?"
+fi
 ```
+
+Status `0` proves the live posture matches the exact foundation plan and secret writing may
+continue. Status `20` means soft-delete recovery retained another network posture. Any other status
+is an error. For status `20`, generate a new plan; do not retry secret writes or alter the vault
+through Azure CLI:
+
+```bash
+test "$KEY_VAULT_POSTURE_STATUS" -eq 20
+tests/end-to-end/key_vault_reconciliation.sh plan
+sha256sum "$KEY_VAULT_RECONCILIATION_PLAN_FILE"
+terraform -chdir=terraform show -no-color "$KEY_VAULT_RECONCILIATION_PLAN_FILE"
+```
+
+The command rejects the plan unless its sole infrastructure action is an in-place update of the
+AVM-managed Key Vault to the exact approved public-access, default-deny, `/32`, and Key Vault-only
+policy-exclusion posture. After an authorized reviewer approves the displayed digest, create the
+protected approval:
+
+```bash
+if read -r -p "Authorized Key Vault recovery-reconciliation reference: " \
+  KEY_VAULT_RECONCILIATION_APPROVAL_REFERENCE &&
+  test -n "$KEY_VAULT_RECONCILIATION_APPROVAL_REFERENCE"; then
+  jq -n \
+    --arg plan_digest "$(
+      sha256sum "$KEY_VAULT_RECONCILIATION_PLAN_FILE" | awk '{print $1}'
+    )" \
+    --arg approval_reference "$KEY_VAULT_RECONCILIATION_APPROVAL_REFERENCE" \
+    '{
+      plan_digest: $plan_digest,
+      approval_reference: $approval_reference,
+      key_vault_policy_exclusion_approved: true
+    }' >"$KEY_VAULT_RECONCILIATION_APPROVAL_FILE"
+  chmod 0600 "$KEY_VAULT_RECONCILIATION_APPROVAL_FILE"
+fi
+
+test -f "$KEY_VAULT_RECONCILIATION_APPROVAL_FILE"
+tests/end-to-end/key_vault_reconciliation.sh apply
+```
+
+The apply command revalidates the plan shape and digest, applies only that saved plan, and repeats
+the live posture proof. Secret writing remains blocked unless the final evidence status is
+`matched`, the exact `/32` is present, `SecurityControl=Ignore` exists only on the vault, and the
+resource group remains untagged.
 
 Write the protected credentials through the Key Vault data plane during this bounded window. The
 script passes file paths rather than values to Azure CLI and records only secret IDs and names:
