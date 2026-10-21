@@ -22,8 +22,27 @@ def test_private_hosts_use_standard_public_bastion() -> None:
     assert re.search(r"private_only_enabled\s*=\s*false", source)
     assert re.search(r"session_recording_enabled\s*=\s*false", source)
     assert re.search(r"tunneling_enabled\s*=\s*true", source)
-    assert re.search(r"create_public_ip\s*=\s*true", source)
+    assert re.search(r"create_public_ip\s*=\s*false", source)
+    assert re.search(
+        r"public_ip_address_id\s*=\s*module\.bastion_public_ip\.resource_id",
+        source,
+    )
     assert re.search(r"create_public_ip_address\s*=\s*false", source)
+
+
+def test_bastion_public_ip_has_independent_avm_ownership() -> None:
+    source = terraform_file("security.tf")
+    public_ip = re.search(
+        r'(?ms)^module "bastion_public_ip" \{(.*?)^\}',
+        source,
+    )
+    assert public_ip
+    block = public_ip.group(1)
+    assert 'source  = "Azure/avm-res-network-publicipaddress/azurerm"' in block
+    assert 'version = "0.2.1"' in block
+    assert 'allocation_method   = "Static"' in block
+    assert 'sku                 = "Standard"' in block
+    assert 'FirstPartyUsage = "/Unprivileged"' in block
 
 
 def test_vm_subnets_use_regional_nat_gateways() -> None:

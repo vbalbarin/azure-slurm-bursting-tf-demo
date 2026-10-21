@@ -87,6 +87,25 @@ module "key_vault" {
   }
 }
 
+module "bastion_public_ip" {
+  source  = "Azure/avm-res-network-publicipaddress/azurerm"
+  version = "0.2.1"
+
+  allocation_method   = "Static"
+  enable_telemetry    = false
+  location            = var.source_region
+  name                = "${local.names.bastion}-pip"
+  resource_group_name = module.resource_group.name
+  sku                 = "Standard"
+  sku_tier            = "Regional"
+  tags                = local.common_tags
+  zones               = [1, 2, 3]
+
+  ip_tags = {
+    FirstPartyUsage = "/Unprivileged"
+  }
+}
+
 module "bastion" {
   source  = "Azure/avm-res-network-bastionhost/azurerm"
   version = "0.9.0"
@@ -102,9 +121,9 @@ module "bastion" {
   tags                      = local.common_tags
 
   ip_configuration = {
-    name                   = "public"
-    subnet_id              = module.source_vnet.subnets["bastion"].resource_id
-    create_public_ip       = true
-    public_ip_address_name = "${local.names.bastion}-pip"
+    name                 = "public"
+    subnet_id            = module.source_vnet.subnets["bastion"].resource_id
+    create_public_ip     = false
+    public_ip_address_id = module.bastion_public_ip.resource_id
   }
 }

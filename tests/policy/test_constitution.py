@@ -44,8 +44,9 @@ def test_bootstrap_has_no_unrestricted_public_fallback() -> None:
 
 def test_no_vm_public_ip_or_unrestricted_public_key_vault() -> None:
     source = terraform_sources()
-    assert "public_ip_address_id" not in source
-    assert "create_public_ip_address      = false" in source
+    compute = (ROOT / "terraform" / "compute.tf").read_text()
+    assert "public_ip_address_id" not in compute
+    assert compute.count("create_public_ip_address      = false") == 2
     assert not re.search(r'public_network_access_enabled\s*=\s*true', source)
 
 

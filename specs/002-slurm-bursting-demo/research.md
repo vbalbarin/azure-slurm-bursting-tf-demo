@@ -13,6 +13,7 @@ versions during implementation:
 | Scheduler and Windows VMs | `Azure/avm-res-compute-virtualmachine/azurerm` | `0.21.0` |
 | CycleCloud NIC | `Azure/avm-res-network-networkinterface/azurerm` | `0.1.2` |
 | Bastion | `Azure/avm-res-network-bastionhost/azurerm` | `0.9.0` |
+| Bastion public IP | `Azure/avm-res-network-publicipaddress/azurerm` | `0.2.1` |
 | Key Vault and private endpoint | `Azure/avm-res-keyvault-vault/azurerm` | `0.11.0` |
 | Private DNS zones and links | `Azure/avm-res-network-privatednszone/azurerm` | `0.5.0` |
 | Log Analytics | `Azure/avm-res-operationalinsights-workspace/azurerm` | `0.5.1` |
@@ -92,8 +93,10 @@ bounded demonstration and a production capacity broker.
 
 ## Portal administration and regional outbound access
 
-**Decision**: Use Azure Bastion Standard with its module-managed public IP as the sole interactive
-public ingress endpoint. Keep every VM NIC private. Associate a source-region Standard NAT Gateway
+**Decision**: Use Azure Bastion Standard as the sole interactive public ingress endpoint. Own its
+Standard public IP through a separate root AVM call, pass the resource ID to Bastion, and model
+Azure's reserved `FirstPartyUsage = "/Unprivileged"` IP tag explicitly. Keep every VM NIC private.
+Associate a source-region Standard NAT Gateway
 with the access and management subnets, and a separate burst-region Standard NAT Gateway with the
 compute subnet.
 
@@ -101,7 +104,10 @@ compute subnet.
 VPN or ExpressRoute connectivity for a non-Azure operator client. That does not satisfy the common
 customer and field workflow of opening an RDP session from the Azure portal. Bastion Standard
 supports portal/browser RDP and native-client tunneling without assigning a public IP to the
-target VM. NAT Gateway restores explicit outbound connectivity for VM subnets whose default
+target VM. Independent public-IP ownership exposes the provider's `ip_tags` input and prevents
+Azure's service-added tag from causing a perpetual replacement plan. It also keeps the public IP
+independently reviewable while Terraform dependency ordering still deletes Bastion before its IP.
+NAT Gateway restores explicit outbound connectivity for VM subnets whose default
 outbound access is disabled. NAT Gateway is a regional subnet resource and cannot serve the
 compute subnet across global VNET peering, so this self-contained two-region demonstration needs
 one gateway in each region.

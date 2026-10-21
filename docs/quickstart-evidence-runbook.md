@@ -3783,9 +3783,14 @@ test "$MAIN_APPLY_STATUS" -eq 0
 ```
 
 The script verifies all three approved digests, rejects stale preflight evidence, applies only
-`$PLAN_FILE`, and enforces the 90-minute target. At this point the Terraform foundation exists, but
-provisioning is not accepted: the CycleCloud VM is absent and Key Vault still has the temporary
-runner `/32` and Key Vault-only policy-exclusion tag.
+`$PLAN_FILE`, and enforces the 90-minute target. It then generates an immediate verification plan
+with detailed exit codes. Only status `0` is accepted; status `2` or a planning error blocks all
+secret writes and CycleCloud deployment. The raw log remains beside the protected plan under
+`/state`; evidence receives only `foundation-no-change.json`, including the result and raw-log
+digest. This catches service normalization such as public-IP tag drift before the run expands.
+At this point the Terraform foundation exists, but provisioning is not accepted: the CycleCloud VM
+is absent and Key Vault still has the temporary runner `/32` and Key Vault-only policy-exclusion
+tag.
 
 Before writing secrets, use the reviewed foundation plan to prove the live exception is exactly
 bounded. A recovered soft-deleted vault can retain its previous private-only network posture even

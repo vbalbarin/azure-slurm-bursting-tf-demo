@@ -32,6 +32,11 @@ cannot provide outbound access to a peered VNET. The source gateway serves the a
 management subnets, and the burst gateway serves the compute subnet. This duplication keeps the
 demonstration self-contained; a production landing zone would normally consume governed
 hub/connectivity egress unless workload or regional requirements justified separate gateways.
+The Bastion public IP is a separate root-owned AVM object passed into the Bastion module. Its
+configuration includes Azure's reserved service IP tag, avoiding replacement drift while
+preserving explicit dependency-ordered destruction. Immediately after foundation apply, an
+unchanged-plan gate blocks all secret writes and appliance deployment if Azure normalization or
+any other refresh produces a change.
 
 ## Technical Context
 
@@ -94,7 +99,7 @@ burst-region node during acceptance
 | Declarative infrastructure and managed node configuration | Terraform owns all surrounding Azure resources. The approved Bicep stack owns only the CycleCloud Marketplace VM. Chef Local owns guest state. Python is limited to one node-consumed template and performs no Azure operations. | PASS |
 | Azure Verified Modules and CycleCloud appliance exception | Every Terraform resource is created through a pinned published AVM called directly from the root. The only non-AVM resource is the constitution-authorized VM-only Bicep stack. | PASS |
 | Security without exception | Bastion Standard is the sole interactive public ingress and reaches only the private Windows jump host over RDP; VMs have no public IPs; Bastion has no direct SSH path to Linux hosts; Key Vault is private after provisioning; two regional NAT Gateways provide explicit VM outbound access; Entra ID/RBAC, least privilege, certificate trust, and auditable operations are explicit. | PASS |
-| Reliable, idempotent, validated change | Terraform, Chef, and Python each have syntax, security, idempotency, failure, and review gates. The exact plan is applied only after validation. | PASS |
+| Reliable, idempotent, validated change | Terraform, Chef, and Python each have syntax, security, idempotency, failure, and review gates. The exact plan is applied only after validation, then an immediate unchanged-plan gate blocks downstream work on drift. | PASS |
 | Scope constraints | Two-region placement and advisory assessment of operator-approved candidates demonstrate placement flexibility without HA, DR, automatic failover, or multi-node scaling. | PASS |
 
 ### Pre-design gate

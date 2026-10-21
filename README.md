@@ -278,7 +278,8 @@ The approved design includes:
 - External Slurm scheduler on an exact-version standard AlmaLinux image
 - Independently pinned AlmaLinux HPC image for burst compute
 - Windows administration host
-- Azure Bastion Standard with a public service endpoint for portal/browser RDP
+- Azure Bastion Standard with a separately owned Standard public IP for portal/browser RDP; the
+  public IP explicitly models Azure's reserved service IP tag to prevent replacement drift
 - One Standard NAT Gateway per region for explicit VM outbound access
 - Azure Key Vault with a temporary approved runner `/32` for initial secret creation and mandatory
   Key Vault-only `SecurityControl=Ignore` under explicit plan approval when required by active
@@ -427,8 +428,9 @@ Bastion does not tunnel directly to them.
    On-demand Capacity Reservation when guaranteed placement is required.
 4. Run `make validate`, create the main saved plan, and approve its plan digest together with the
    exact preflight and cleaned-probe evidence digests. Run `tests/end-to-end/provision.sh`; it
-   consumes the existing reviewed plan and never regenerates it. Any changed input, selected
-   region/zone, plan, or evidence file invalidates approval.
+   consumes the existing reviewed plan and never regenerates that approved artifact. It then
+   requires an immediate no-change plan before any secrets or appliance resources are created.
+   Any changed input, selected region/zone, plan, evidence file, or post-apply drift blocks the run.
 5. Use Azure portal Bastion RDP to reach the Windows administration jump host. Failure to
    establish that browser session blocks acceptance. Then use SSH from Windows to run
    `chef/bin/converge-cyclecloud.sh` and `chef/bin/converge-scheduler.sh` twice. Bastion does not

@@ -307,6 +307,14 @@ Task T048: Private-administration acceptance procedure
 
 ## Phase 11: Portal Bastion and Explicit Regional Egress
 
-- [X] T083 Replace Premium private-only Bastion with Standard Bastion and a module-managed public service endpoint while keeping every VM NIC private and preserving the Windows-only RDP path
+- [X] T083 Replace Premium private-only Bastion with Standard Bastion and a public service endpoint while keeping every VM NIC private and preserving the Windows-only RDP path
 - [X] T084 Add pinned NAT Gateway AVMs in the source and burst regions and associate them only with the access, management, and compute VM subnets
 - [X] T085 Update policy tests, live verification, specification, plan, research, data model, infrastructure contract, quickstart, README, and evidence runbook for portal access, exact NAT associations, and production hub/connectivity guidance
+
+---
+
+## Phase 12: Stable Bastion Public-IP Ownership
+
+- [X] T086 Add a pinned root-owned Public IP AVM, pass its ID into Bastion, and explicitly model Azure's reserved `FirstPartyUsage` IP tag
+- [X] T087 Add an immediate post-foundation no-change gate that retains raw logs in protected state and blocks secret writes or appliance deployment on drift
+- [X] T088 Add policy and provisioning tests and update the specification, plan, research, data model, contract, quickstart, README, and evidence runbook

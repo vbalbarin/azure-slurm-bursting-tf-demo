@@ -109,7 +109,8 @@ Review must confirm:
 - Exactly two VNETs and the required bidirectional peerings are planned.
 - The VNETs are placed in the approved distinct source and burst regions and use global peering.
 - Exactly two Terraform-owned persistent VMs, one Terraform-owned CycleCloud NIC, and one Bastion
-  host are planned. The third persistent VM is reviewed through the separate Bicep what-if.
+  host with a separately owned Standard public IP are planned. The public IP declares the reserved
+  Azure service IP tag. The third persistent VM is reviewed through the separate Bicep what-if.
 - The scheduler VM uses only the source-region scheduler image; the CycleCloud node array uses only
   the independently pinned burst-compute image.
 - No unintended replacement or destruction appears.
@@ -120,6 +121,9 @@ Record the saved-plan digest and approval.
 ## 3. Apply the exact reviewed plan
 
 Apply only the saved Terraform plan from step 2. Do not regenerate it between approval and apply.
+Immediately afterward, require a fresh detailed-exitcode plan to return `0`. Keep its raw log in
+protected state and emit only bounded status and digest evidence. Any change or planning error
+blocks secret writes and the CycleCloud deployment.
 Compile the CycleCloud Bicep source into protected state, derive its parameters from Terraform
 outputs, and use `tests/end-to-end/cyclecloud_stack.sh` to validate and capture the exact what-if.
 Approve its template, parameter, and what-if digests before deployment. Require exactly one

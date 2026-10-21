@@ -29,6 +29,8 @@ with Path(os.environ["FAKE_TERRAFORM_LOG"]).open("a") as log:
 command = next(arg for arg in args if not arg.startswith("-chdir="))
 if command in {{"fmt", "validate", "apply"}}:
     pass
+elif command == "plan":
+    sys.exit(int(os.environ.get("FAKE_FOUNDATION_PLAN_STATUS", "0")))
 elif command == "show":
     print("{{}}")
 elif command == "output":
@@ -128,7 +130,7 @@ def _environment(tmp_path: Path) -> dict[str, str]:
     }
 
 
-def test_applies_existing_reviewed_plan_without_regeneration(tmp_path: Path) -> None:
+def test_applies_reviewed_plan_then_requires_no_change(tmp_path: Path) -> None:
     environment = _environment(tmp_path)
     result = subprocess.run(
         [str(SCRIPT)],
@@ -144,8 +146,32 @@ def test_applies_existing_reviewed_plan_without_regeneration(tmp_path: Path) -> 
         json.loads(line)
         for line in Path(environment["FAKE_TERRAFORM_LOG"]).read_text().splitlines()
     ]
-    assert not any("plan" in invocation for invocation in invocations)
     assert any("apply" in invocation for invocation in invocations)
+    assert any("plan" in invocation for invocation in invocations)
+    assert (Path(environment["EVIDENCE_DIR"]) / "foundation-no-change.json").exists()
+
+
+def test_rejects_post_apply_foundation_drift(tmp_path: Path) -> None:
+    environment = _environment(tmp_path)
+    environment["FAKE_FOUNDATION_PLAN_STATUS"] = "2"
+
+    result = subprocess.run(
+        [str(SCRIPT)],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 13
+    assert "Post-foundation plan detected drift" in result.stderr
+    evidence = json.loads(
+        (Path(environment["EVIDENCE_DIR"]) / "foundation-no-change.json").read_text()
+    )
+    assert evidence["status"] == "failed"
+    assert evidence["exit_code"] == 2
+    assert not (Path(environment["EVIDENCE_DIR"]) / "inventory.json").exists()
 
 
 def test_rejects_unapproved_plan_digest(tmp_path: Path) -> None:

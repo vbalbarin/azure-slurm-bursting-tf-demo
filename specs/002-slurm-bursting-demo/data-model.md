@@ -74,6 +74,15 @@ operator action.
 | `approved_flows` | Least-privilege source, destination, protocol, and port tuples |
 | `egress_gateway` | One regional Standard NAT Gateway with one managed Standard public IP; associated only with VM-hosting subnets in this site |
 
+## Bastion Public IP
+
+| Field | Rules |
+|---|---|
+| `owner` | Direct root call to the pinned public-IP AVM; never nested inside the Bastion module |
+| `allocation` | Static, Standard, regional, and zonally redundant |
+| `ip_tags` | Exactly `FirstPartyUsage = "/Unprivileged"` to match Azure service normalization |
+| `consumer` | The single source-region Bastion host; Terraform destroys that dependency first |
+
 ## Administrative Host
 
 | Field | Rules |

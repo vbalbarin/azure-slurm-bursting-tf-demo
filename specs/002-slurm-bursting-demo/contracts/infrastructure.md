@@ -31,7 +31,8 @@
 2. `vnet-source` and `vnet-burst` have non-overlapping ranges in distinct recorded regions and
    bidirectional global peering.
 3. Hosts, CycleCloud, and Key Vault have no accepted public inbound endpoint. Bastion Standard is
-   the sole interactive public ingress endpoint, and no VM NIC has a public IP.
+   the sole interactive public ingress endpoint, and no VM NIC has a public IP. Bastion consumes
+   a separately owned Standard public IP whose reserved Azure service IP tag is declared exactly.
 4. Bastion permits portal/browser RDP only to the Windows administration VM. That VM is the jump
    host for SSH to the scheduler and CycleCloud hosts and HTTPS to the private CycleCloud
    application; Bastion has no direct SSH path to those Linux hosts.
@@ -60,6 +61,9 @@ Deployment is blocked unless:
 - The canonical CycleCloud deployment-stack what-if digest matches its approval and contains no
   resource outside the VM-only ownership boundary.
 - Review finds no unintended replacement or deletion.
+- Immediately after the foundation apply, an unchanged Terraform plan must return detailed exit
+  code `0` before secret writes or the CycleCloud deployment stack may begin. The raw plan log
+  remains in protected state; evidence contains only its result and digest.
 - Assertions prove that public IPs are limited to Bastion and the two outbound NAT Gateways, VM
   NICs have no public IPs, and Key Vault is private after provisioning.
 - Live validation proves the access and management subnets reference the source NAT Gateway and

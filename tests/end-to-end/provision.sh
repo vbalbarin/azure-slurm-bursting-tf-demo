@@ -67,6 +67,39 @@ elapsed_minutes="$(( ($(date +%s) - start_epoch + 59) / 60 ))"
   exit 12
 }
 
+foundation_no_change_log="${FOUNDATION_NO_CHANGE_LOG_FILE:-$(dirname "$PLAN_FILE")/foundation-no-change.log}"
+set +e
+terraform -chdir=terraform plan \
+  -input=false \
+  -var-file="$TFVARS_FILE" \
+  -detailed-exitcode \
+  -no-color >"$foundation_no_change_log" 2>&1
+foundation_no_change_status="$?"
+set -e
+chmod 0600 "$foundation_no_change_log"
+
+jq -n \
+  --arg observed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg protected_log_sha256 "$(
+    sha256sum "$foundation_no_change_log" |
+      awk '{print $1}'
+  )" \
+  --argjson exit_code "$foundation_no_change_status" \
+  '{
+    schema_version: "1.0",
+    stage: "post_foundation_no_change",
+    observed_at: $observed_at,
+    exit_code: $exit_code,
+    status: (if $exit_code == 0 then "passed" else "failed" end),
+    no_changes: ($exit_code == 0),
+    protected_log_sha256: $protected_log_sha256
+  }' >"$EVIDENCE_DIR/foundation-no-change.json"
+
+if [[ "$foundation_no_change_status" -ne 0 ]]; then
+  echo "Post-foundation plan detected drift or failed; secret writes and appliance deployment are blocked" >&2
+  exit 13
+fi
+
 terraform -chdir=terraform output -json inventory |
   jq --arg digest "$plan_digest" --arg approval "$approval_reference" \
     --arg preflight_digest "$preflight_digest" \
