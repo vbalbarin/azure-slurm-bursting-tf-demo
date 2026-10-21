@@ -421,22 +421,24 @@ def test_detailed_runbook_uses_supported_removal_commands() -> None:
     assert "-migrate-state \\\n  -input=false" not in migration
 
 
-def test_runbook_uses_protected_bastion_evidence_transfer() -> None:
+def test_runbook_uses_protected_windows_jump_host_evidence_transfer() -> None:
     runbook = (ROOT / "docs/quickstart-evidence-runbook.md").read_text()
     transfer = runbook.split(
-        "## B8.1 Transfer node evidence through Bastion", 1
+        "## B8.1 Transfer node evidence through the Windows jump host", 1
     )[1].split("## B9.", 1)[0]
 
     assert 'INCOMING_ROOT="$DEMO_STATE_DIR/incoming"' in transfer
-    assert "az network bastion tunnel" in transfer
-    assert "--target-resource-id \"$TARGET_VM_ID\"" in transfer
-    assert "scp \\" in transfer
+    assert "az network bastion tunnel" not in transfer
+    assert "direct SSH or SCP tunnel" in transfer
+    assert "$PrivateAddress" in transfer
+    assert "scp -i $PrivateKey" in transfer
     assert "grep -Eq '(^/|(^|/)\\.\\.(/|$))'" in transfer
     assert "sha256sum -c MANIFEST.sha256" in transfer
     assert 'test "$INCOMING_SECRET_SCAN_STATUS" -eq 1' in transfer
     assert "Do not use the Terraform `tfstate` container" in transfer
     assert "private-administration.json" in transfer
-    assert "native RDP client" in transfer
+    assert "approved native RDP client" in transfer
+    assert "protected-drive redirection" in transfer
     assert "install -m 0600" in transfer
     assert "copy them directly into `/evidence`" in runbook
 

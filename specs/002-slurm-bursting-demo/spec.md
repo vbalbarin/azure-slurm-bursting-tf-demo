@@ -227,8 +227,10 @@ headless cluster and its nodes.
   networking, and the CycleCloud application MUST NOT be directly reachable from the public
   internet. The application MUST present a certificate valid for its private name, with the
   certificate stored in the secret store and its trust chain installed on the Windows host.
-- **FR-007**: A managed protected-access service MUST provide administrative SSH and remote desktop
-  access to the hosts without assigning public IP addresses to those hosts.
+- **FR-007**: A managed protected-access service MUST provide RDP access only to the Windows
+  administration VM without assigning public IP addresses to any host. The Windows VM MUST be the
+  jump host for SSH to the scheduler and CycleCloud hosts and for HTTPS access to the private
+  CycleCloud application. Direct Bastion SSH to the scheduler or CycleCloud hosts MUST be denied.
 - **FR-008**: A centralized secret store MUST contain all generated administrative passwords,
   private keys, service credentials, and demonstration-user credentials required by the
   environment. Local credentials MUST be created only where a VM or CycleCloud requires them. The

@@ -10,8 +10,10 @@
 Build a cross-region Azure demonstration with a source-region management VNET and a burst-region
 compute VNET connected by bidirectional global peering. The source region hosts private CycleCloud
 8.9.3, an external Slurm scheduler on a pinned AlmaLinux image compatible with its general-purpose
-VM size, a Windows administration host, Bastion, private Key Vault access, private DNS, and 90-day
-audit retention. The separately selected burst region hosts transient compute on an independently
+VM size, a Windows administration jump host, Bastion, private Key Vault access, private DNS, and
+90-day audit retention. Bastion reaches only the Windows host over RDP; the Windows access subnet
+reaches the Linux management subnet over SSH and the private CycleCloud application over HTTPS.
+The separately selected burst region hosts transient compute on an independently
 pinned AlmaLinux HPC image compatible with its selected compute size. Terraform calls pinned Azure
 Verified Modules directly for every surrounding Azure resource. A source-controlled Bicep
 deployment stack owns only the released CycleCloud Marketplace VM because its required image data
@@ -85,7 +87,7 @@ burst-region node during acceptance
 | Compliance-preserving legacy operation | New isolated demonstration scope; no mutation or deletion of retained legacy resources; plan review blocks replacement and destruction. | PASS |
 | Declarative infrastructure and managed node configuration | Terraform owns all surrounding Azure resources. The approved Bicep stack owns only the CycleCloud Marketplace VM. Chef Local owns guest state. Python is limited to one node-consumed template and performs no Azure operations. | PASS |
 | Azure Verified Modules and CycleCloud appliance exception | Every Terraform resource is created through a pinned published AVM called directly from the root. The only non-AVM resource is the constitution-authorized VM-only Bicep stack. | PASS |
-| Security without exception | Private ingress, Bastion, final private-only Key Vault, an exact temporary provisioning `/32`, the constitution-authorized Key Vault-only policy exclusion lifecycle, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
+| Security without exception | Private ingress, Bastion RDP only to the Windows jump host, no direct Bastion SSH to Linux hosts, final private-only Key Vault, an exact temporary provisioning `/32`, the constitution-authorized Key Vault-only policy exclusion lifecycle, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
 | Reliable, idempotent, validated change | Terraform, Chef, and Python each have syntax, security, idempotency, failure, and review gates. The exact plan is applied only after validation. | PASS |
 | Scope constraints | Two-region placement and advisory assessment of operator-approved candidates demonstrate placement flexibility without HA, DR, automatic failover, or multi-node scaling. | PASS |
 

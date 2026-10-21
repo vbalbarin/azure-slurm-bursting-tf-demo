@@ -31,6 +31,48 @@ def test_explicit_cross_region_rules_and_default_deny() -> None:
     assert "DenyAllInbound" in source
 
 
+def test_windows_vm_is_the_only_bastion_jump_host() -> None:
+    source = terraform_file("network.tf")
+    rule_pattern = r"(?ms)^    {name} = \{{\n(.*?)^    \}}"
+
+    def rule(name: str) -> str:
+        match = re.search(rule_pattern.format(name=name), source)
+        assert match, f"missing {name} rule"
+        return match.group(1)
+
+    bastion_rdp = rule("bastion_rdp")
+    assert "source_address_prefix      = local.source_subnets.bastion" in bastion_rdp
+    assert "destination_address_prefix = local.source_subnets.access" in bastion_rdp
+    assert 'destination_port_range     = "3389"' in bastion_rdp
+    assert "bastion_ssh" not in source
+
+    jump_host_ssh = rule("jump_host_ssh")
+    assert "source_address_prefix      = local.source_subnets.access" in jump_host_ssh
+    assert "destination_address_prefix = local.source_subnets.management" in jump_host_ssh
+    assert 'destination_port_range     = "22"' in jump_host_ssh
+
+    jump_host_https = rule("jump_host_cyclecloud_https")
+    assert "source_address_prefix      = local.source_subnets.access" in jump_host_https
+    assert "destination_address_prefix = local.source_subnets.management" in jump_host_https
+    assert 'destination_port_range     = "443"' in jump_host_https
+
+    scheduler_api = rule("scheduler_cyclecloud_api")
+    assert "source_address_prefix      = local.source_subnets.management" in scheduler_api
+    assert "destination_address_prefix = local.source_subnets.management" in scheduler_api
+    assert 'destination_port_range     = "9443"' in scheduler_api
+
+    bastion_sourced_rules = [
+        match.group(1)
+        for match in re.finditer(
+            r"(?ms)^    [a-z0-9_]+ = \{\n(.*?)^    \}",
+            source,
+        )
+        if "source_address_prefix      = local.source_subnets.bastion"
+        in match.group(1)
+    ]
+    assert bastion_sourced_rules == [bastion_rdp]
+
+
 def test_least_privilege_identity_and_audit_retention() -> None:
     source = terraform_file("security.tf") + terraform_file("monitoring.tf")
     assert re.search(r'principal_type\s*=\s*"Group"', source)

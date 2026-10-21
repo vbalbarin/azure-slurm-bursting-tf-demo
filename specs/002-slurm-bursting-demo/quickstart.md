@@ -161,8 +161,10 @@ Expected outcome:
 
 ## 5. Verify private administration
 
-Use Bastion to connect to the Windows administration host. Open the private CycleCloud name in a
-browser and authenticate with the authorized application identity.
+Use Bastion RDP to connect to the Windows administration host. Bastion does not connect directly
+to the Linux hosts. From the Windows jump host, use SSH for scheduler or CycleCloud host
+administration and open the private CycleCloud name in a browser using HTTPS. Authenticate with
+the authorized application identity.
 
 Expected outcome:
 
@@ -173,8 +175,8 @@ Expected outcome:
 
 ## 6. Submit the acceptance job
 
-Connect through Bastion to the scheduler as the demonstration user. Submit the implementation's
-one-node hello-world job to the configured partition.
+Connect to the scheduler from the Windows jump host as the demonstration user. Submit the
+implementation's one-node hello-world job to the configured partition.
 
 Expected outcome within 15 minutes under normal regional capacity:
 

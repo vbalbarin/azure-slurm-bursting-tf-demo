@@ -31,7 +31,9 @@
 2. `vnet-source` and `vnet-burst` have non-overlapping ranges in distinct recorded regions and
    bidirectional global peering.
 3. Hosts, CycleCloud, and Key Vault have no public inbound endpoint.
-4. Bastion is the administrative ingress path.
+4. Bastion permits RDP only to the Windows administration VM. That VM is the jump host for SSH to
+   the scheduler and CycleCloud hosts and HTTPS to the private CycleCloud application; Bastion has
+   no direct SSH path to those Linux hosts.
 5. Key Vault public access is disabled in the accepted environment; its private DNS resolves from
    both consuming networks. Neither the provisioning `/32` rule nor `SecurityControl=Ignore` can
    survive the hardening gate, and the exclusion is never applied to the resource group.

@@ -9,38 +9,49 @@ module "source_nsg" {
   tags             = local.common_tags
 
   security_rules = {
-    bastion_ssh = {
-      access                     = "Allow"
-      direction                  = "Inbound"
-      name                       = "AllowBastionSsh"
-      priority                   = 100
-      protocol                   = "Tcp"
-      source_address_prefix      = local.source_subnets.bastion
-      source_port_range          = "*"
-      destination_address_prefix = local.source_subnets.management
-      destination_port_range     = "22"
-    }
     bastion_rdp = {
       access                     = "Allow"
       direction                  = "Inbound"
       name                       = "AllowBastionRdp"
-      priority                   = 110
+      priority                   = 100
       protocol                   = "Tcp"
       source_address_prefix      = local.source_subnets.bastion
       source_port_range          = "*"
-      destination_address_prefix = local.source_subnets.management
+      destination_address_prefix = local.source_subnets.access
       destination_port_range     = "3389"
     }
-    cyclecloud_https = {
+    jump_host_ssh = {
       access                     = "Allow"
       direction                  = "Inbound"
-      name                       = "AllowCycleCloudHttps"
+      name                       = "AllowJumpHostSsh"
+      priority                   = 110
+      protocol                   = "Tcp"
+      source_address_prefix      = local.source_subnets.access
+      source_port_range          = "*"
+      destination_address_prefix = local.source_subnets.management
+      destination_port_range     = "22"
+    }
+    jump_host_cyclecloud_https = {
+      access                     = "Allow"
+      direction                  = "Inbound"
+      name                       = "AllowJumpHostCycleCloudHttps"
       priority                   = 120
+      protocol                   = "Tcp"
+      source_address_prefix      = local.source_subnets.access
+      source_port_range          = "*"
+      destination_address_prefix = local.source_subnets.management
+      destination_port_range     = "443"
+    }
+    scheduler_cyclecloud_api = {
+      access                     = "Allow"
+      direction                  = "Inbound"
+      name                       = "AllowSchedulerCycleCloudApi"
+      priority                   = 125
       protocol                   = "Tcp"
       source_address_prefix      = local.source_subnets.management
       source_port_range          = "*"
       destination_address_prefix = local.source_subnets.management
-      destination_port_ranges    = ["443", "9443"]
+      destination_port_range     = "9443"
     }
     burst_nfs = {
       access                     = "Allow"

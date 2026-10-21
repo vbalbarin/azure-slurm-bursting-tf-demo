@@ -4037,7 +4037,8 @@ probes fail, and CycleCloud and Key Vault resolve privately from authorized loca
 
 ## B6. Converge CycleCloud and scheduler twice
 
-Through Bastion, run:
+Use Bastion RDP to reach the Windows administration jump host. From that host, use SSH over the
+private network to run:
 
 - `chef/bin/converge-cyclecloud.sh` twice on the CycleCloud VM; and
 - `chef/bin/converge-scheduler.sh` twice on the scheduler.
@@ -4061,7 +4062,8 @@ Do not use `set -x`; the convergence path consumes protected references and cred
 
 ## B7. Verify private Windows administration
 
-Connect to the Windows administration VM only through Azure Bastion. Run:
+Connect to the Windows administration VM only through Azure Bastion RDP. Do not create a direct
+Bastion SSH tunnel to the scheduler or CycleCloud VM. Run:
 
 ```powershell
 .\tests\end-to-end\verify_private_administration.ps1 `
@@ -4084,7 +4086,8 @@ Transfer the resulting secret-free JSON with the B8.1 Windows Bastion handoff. S
 
 ## B8. Run the one-node burst job
 
-On the scheduler, from the checked-out repository, use a protected temporary evidence directory:
+From the Windows jump host, SSH to the scheduler. On the scheduler, from the checked-out
+repository, use a protected temporary evidence directory:
 
 ```bash
 export DEMO_USERNAME="<demo-user>"
@@ -4117,14 +4120,15 @@ Transfer the resulting evidence with the B8.1 scheduler tunnel into
 `$DEMO_STATE_DIR/incoming/scheduler/` before promotion into
 `$DEMO_EVIDENCE_DIR/burst-job/`.
 
-## B8.1 Transfer node evidence through Bastion
+## B8.1 Transfer node evidence through the Windows jump host
 
-The Premium private-only Bastion has native-client tunneling enabled. The tunnel is pinned to an
-exact Azure VM resource ID and carries SSH, SCP, or RDP traffic without adding public VM ingress.
-The pinned Bastion module makes tunneling incompatible with Bastion session recording, so session
-recording is disabled; the archive manifest, protected transfer logs, host-key record, and promoted
-files are the transfer audit evidence. Do not use the Terraform `tfstate` container as an
-evidence-transfer channel.
+The Premium private-only Bastion permits RDP only to the Windows administration VM. Bastion MUST
+NOT provide a direct SSH or SCP tunnel to either Linux host. Use an approved native RDP client with
+protected-drive redirection, then use SSH and SCP from the Windows jump host to the private Linux
+addresses. The pinned Bastion module makes tunneling incompatible with Bastion session recording,
+so session recording is disabled; the archive manifest, protected transfer logs, host-key record,
+and promoted files are the transfer audit evidence. Do not use the Terraform `tfstate` container
+as an evidence-transfer channel.
 
 On each Linux VM, create a protected archive and manifest from the expected evidence directory.
 Exclude the archive and manifest themselves:
@@ -4150,8 +4154,7 @@ tar --null --files-from="$REMOTE_FILE_LIST" -czf "$REMOTE_ARCHIVE"
 chmod 0600 "$REMOTE_ARCHIVE"
 ```
 
-On the development container, create the protected incoming layout and derive names only from the
-validated inventory:
+On the development container, create the protected incoming layout:
 
 ```bash
 export INCOMING_ROOT="$DEMO_STATE_DIR/incoming"
@@ -4159,73 +4162,37 @@ install -d -m 0700 \
   "$INCOMING_ROOT/cyclecloud" \
   "$INCOMING_ROOT/scheduler" \
   "$INCOMING_ROOT/windows-admin"
-
-export BASTION_NAME="$(
-  jq -er '.application_access.bastion_name' "$INVENTORY_FILE"
-)"
-export BASTION_ID="$(
-  az network bastion list \
-    --query "[?name == '$BASTION_NAME'].id | [0]" \
-    --output tsv
-)"
-export BASTION_RESOURCE_GROUP="$(
-  awk -F/ '{print $5}' <<<"$BASTION_ID"
-)"
-
-test -n "$BASTION_ID"
-test -n "$BASTION_RESOURCE_GROUP"
 ```
 
-For `cyclecloud` and `scheduler`, choose a different unused local port and run the tunnel in a
-dedicated terminal:
+Open a native-client Bastion RDP session pinned to the validated Windows VM resource ID and redirect
+only the protected incoming drive. On Windows, derive the scheduler and CycleCloud private
+addresses from the validated inventory, record each SSH host key in protected Windows state, and
+use the approved role-specific private key to pull each archive:
 
-```bash
-export HOST_ROLE="<cyclecloud-or-scheduler>"
-export TARGET_VM_NAME="$(
-  jq -er --arg role "$HOST_ROLE" \
-    '.private_hosts[$role].name' \
-    "$INVENTORY_FILE"
-)"
-export TARGET_VM_ID="$(
-  az vm list \
-    --query "[?name == '$TARGET_VM_NAME'].id | [0]" \
-    --output tsv
-)"
-export LOCAL_TUNNEL_PORT="<unused-loopback-port>"
+```powershell
+$HostRole = "<cyclecloud-or-scheduler>"
+$PrivateAddress = "<validated-private-address>"
+$SshUsername = "<approved-linux-admin-user>"
+$PrivateKey = "<protected-private-key-path>"
+$KnownHosts = "<protected-windows-state-path>\known-hosts"
+$RemoteArchive = "<remote-archive-path>"
+$WindowsStaging = "<protected-windows-state-path>\$HostRole-evidence.tar.gz"
 
-test -n "$TARGET_VM_ID"
-
-az network bastion tunnel \
-  --name "$BASTION_NAME" \
-  --resource-group "$BASTION_RESOURCE_GROUP" \
-  --target-resource-id "$TARGET_VM_ID" \
-  --resource-port 22 \
-  --port "$LOCAL_TUNNEL_PORT"
+ssh-keyscan $PrivateAddress | Out-File -Append -Encoding ascii $KnownHosts
+scp -i $PrivateKey `
+  -o "UserKnownHostsFile=$KnownHosts" `
+  "${SshUsername}@${PrivateAddress}:$RemoteArchive" `
+  $WindowsStaging
 ```
 
-Leave that foreground command running. In another development-container terminal, record the host
-key inside protected state and copy the archive. The Bastion target resource ID binds the tunnel to
-the reviewed VM:
+Copy each archive from protected Windows staging to the matching role directory on the redirected
+protected drive. Copy `private-administration.json` and its SHA-256 file into the redirected
+`windows-admin` directory in the same RDP session. Do not enable a public endpoint, direct Bastion
+SSH, WinRM, clipboard transfer, or an additional guest listener solely for evidence transfer.
 
-```bash
-export SSH_USERNAME="<approved-linux-admin-user>"
-export KNOWN_HOSTS_FILE="$DEMO_STATE_DIR/bastion-known-hosts"
-export REMOTE_ARCHIVE="<remote-archive-path>"
-
-ssh-keyscan -p "$LOCAL_TUNNEL_PORT" 127.0.0.1 \
-  >>"$KNOWN_HOSTS_FILE"
-chmod 0600 "$KNOWN_HOSTS_FILE"
-
-scp \
-  -P "$LOCAL_TUNNEL_PORT" \
-  -o "UserKnownHostsFile=$KNOWN_HOSTS_FILE" \
-  "$SSH_USERNAME@127.0.0.1:$REMOTE_ARCHIVE" \
-  "$INCOMING_ROOT/$HOST_ROLE/evidence.tar.gz"
-```
-
-Stop the foreground tunnel after SCP completes. Reject unsafe archive paths, extract into the
-role-specific protected directory, verify every manifest digest, and require the secret-pattern
-scan to find no matches:
+Back in the development container, reject unsafe archive paths, extract into each role-specific
+protected directory, verify every manifest digest, and require the secret-pattern scan to find no
+matches:
 
 ```bash
 export INCOMING_ROLE_DIR="$INCOMING_ROOT/$HOST_ROLE"
@@ -4256,12 +4223,7 @@ test "$INCOMING_SECRET_SCAN_STATUS" -eq 1
 test ! -s "$DEMO_STATE_DIR/$HOST_ROLE-incoming-secret-scan.log"
 ```
 
-For Windows, create a port-3389 tunnel pinned to the validated `windows_admin` VM resource ID and
-use an approved native RDP client with protected-drive redirection. Copy only
-`private-administration.json` and its SHA-256 file into
-`$INCOMING_ROOT/windows-admin/`. Do not enable a public endpoint, SSH, WinRM, clipboard transfer,
-or an additional guest listener solely for evidence transfer. Verify its digest and scan it with
-the same protected staging gates above.
+Verify the Windows JSON digest and scan it with the same protected staging gates above.
 
 After all staging checks pass, promote only the expected secret-free files:
 

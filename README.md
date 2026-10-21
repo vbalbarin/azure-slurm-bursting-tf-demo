@@ -393,10 +393,11 @@ RBAC assignments can take several minutes to propagate after deployment.
 
 For the evidence run, the agent executes A1-A8, A11, B1-B5, the CycleCloud stack gate, and the Key
 Vault hardening gate. The operator then gathers
-host-local B6-B8 evidence through Bastion native-client sessions. After the protected incoming
-artifacts are available, the agent validates them and executes B9-B10, A9, B11, and A10. Native
-SSH/SCP and RDP clients are required for this handoff; browser-only Bastion access is not the
-evidence-transfer channel.
+host-local B6-B8 evidence through the Windows jump host reached by a Bastion native-client RDP
+session. After the protected incoming artifacts are available, the agent validates them and
+executes B9-B10, A9, B11, and A10. SSH/SCP runs from the Windows jump host to the Linux hosts;
+Bastion does not tunnel directly to them. Browser-only Bastion access is not the evidence-transfer
+channel.
 
 1. Copy `terraform/environments/demo.tfvars.example` to a protected, ignored `.tfvars` file and
    supply the approved subscription, tenant, distinct source/burst regions, CIDRs, Entra group,
@@ -426,8 +427,9 @@ evidence-transfer channel.
    exact preflight and cleaned-probe evidence digests. Run `tests/end-to-end/provision.sh`; it
    consumes the existing reviewed plan and never regenerates it. Any changed input, selected
    region/zone, plan, or evidence file invalidates approval.
-5. Use Bastion to run `chef/bin/converge-cyclecloud.sh` and
-   `chef/bin/converge-scheduler.sh` twice. The second run must report zero resources updated.
+5. Use Bastion RDP to reach the Windows administration jump host, then use SSH from that host to
+   run `chef/bin/converge-cyclecloud.sh` and `chef/bin/converge-scheduler.sh` twice. Bastion does
+   not provide direct SSH to the Linux hosts. The second run must report zero resources updated.
 6. From the Windows administration VM reached through Bastion, run
    `tests/end-to-end/verify_private_administration.ps1`. The private CycleCloud URL must resolve,
    present the trusted Key Vault certificate, and show the imported cluster without public access.
@@ -451,9 +453,11 @@ probe, main-plan review, and approval.
 
 ### Private CycleCloud administration
 
-Connect to the Windows administration VM only through Azure Bastion. Browse to the
-`cyclecloud_private_url` from the generated inventory and authenticate with the authorized
-CycleCloud application identity whose credential is retrieved through approved Key Vault access.
+Connect to the Windows administration VM only through Azure Bastion RDP. Use that VM as the jump
+host for SSH to the scheduler and CycleCloud hosts. From the Windows VM, browse to the
+`cyclecloud_private_url` from the generated inventory over HTTPS and authenticate with the
+authorized CycleCloud application identity whose credential is retrieved through approved Key
+Vault access.
 Confirm the certificate names the private endpoint and chains to the trusted private issuer before
 opening the configured cluster. Use the cluster page to inspect its configuration and transient
 node state. A public client must not resolve or connect to this endpoint.

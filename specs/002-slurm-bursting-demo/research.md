@@ -74,7 +74,9 @@ VNET peering and link the required private DNS zones to both networks.
 scheduler and administration plane in one Azure region while consuming compute from another
 operator-approved region with less constrained capacity. Global VNET peering keeps traffic on the
 Microsoft backbone, and one Bastion deployment can administer VMs across supported peered VNETs.
-Explicit inputs keep the deployment reproducible and auditable.
+The Windows administration VM is the sole jump host: Bastion reaches only that VM over RDP, and
+the Windows VM reaches the scheduler and CycleCloud hosts over SSH and the private CycleCloud
+application over HTTPS. Explicit inputs keep the deployment reproducible and auditable.
 
 **Alternatives considered**: A simulated on-premises source was deferred as a future extension.
 Single-region placement was rejected because it does not demonstrate regional capacity mobility.
