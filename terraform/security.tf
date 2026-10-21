@@ -94,16 +94,17 @@ module "bastion" {
   location                  = var.source_region
   name                      = local.names.bastion
   parent_id                 = module.resource_group.resource_id
-  sku                       = "Premium"
-  private_only_enabled      = true
+  sku                       = "Standard"
+  private_only_enabled      = false
   session_recording_enabled = false
   tunneling_enabled         = true
   enable_telemetry          = false
   tags                      = local.common_tags
 
   ip_configuration = {
-    name             = "private"
-    subnet_id        = module.source_vnet.subnets["bastion"].resource_id
-    create_public_ip = false
+    name                   = "public"
+    subnet_id              = module.source_vnet.subnets["bastion"].resource_id
+    create_public_ip       = true
+    public_ip_address_name = "${local.names.bastion}-pip"
   }
 }

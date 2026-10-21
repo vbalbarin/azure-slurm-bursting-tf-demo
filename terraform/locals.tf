@@ -23,6 +23,8 @@ locals {
     scheduler     = "${var.environment_name}-scheduler"
     windows       = "${var.environment_name}-admin"
     bastion       = "${var.environment_name}-bastion"
+    source_nat    = "${var.environment_name}-source-nat"
+    burst_nat     = "${var.environment_name}-burst-nat"
     key_vault     = substr(replace("${var.environment_name}-slurm-kv", "-", ""), 0, 24)
     log_analytics = "${var.environment_name}-logs"
   }

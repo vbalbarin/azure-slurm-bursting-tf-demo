@@ -125,6 +125,58 @@ module "burst_nsg" {
   }
 }
 
+module "source_nat_gateway" {
+  source  = "Azure/avm-res-network-natgateway/azurerm"
+  version = "0.3.2"
+
+  location         = var.source_region
+  name             = local.names.source_nat
+  parent_id        = module.resource_group.resource_id
+  sku_name         = "Standard"
+  enable_telemetry = false
+  tags             = local.common_tags
+
+  public_ips = {
+    primary = {
+      name = "${local.names.source_nat}-pip"
+    }
+  }
+
+  public_ip_configuration = {
+    primary = {
+      inherit_tags = true
+      sku          = "Standard"
+      zones        = []
+    }
+  }
+}
+
+module "burst_nat_gateway" {
+  source  = "Azure/avm-res-network-natgateway/azurerm"
+  version = "0.3.2"
+
+  location         = var.burst_region
+  name             = local.names.burst_nat
+  parent_id        = module.resource_group.resource_id
+  sku_name         = "Standard"
+  enable_telemetry = false
+  tags             = local.common_tags
+
+  public_ips = {
+    primary = {
+      name = "${local.names.burst_nat}-pip"
+    }
+  }
+
+  public_ip_configuration = {
+    primary = {
+      inherit_tags = true
+      sku          = "Standard"
+      zones        = []
+    }
+  }
+}
+
 module "burst_vnet" {
   source  = "Azure/avm-res-network-virtualnetwork/azurerm"
   version = "0.22.2"
@@ -141,6 +193,9 @@ module "burst_vnet" {
       name                            = "snet-compute"
       address_prefix                  = local.burst_subnets.compute
       default_outbound_access_enabled = false
+      nat_gateway = {
+        id = module.burst_nat_gateway.resource_id
+      }
       network_security_group = {
         id = module.burst_nsg.resource_id
       }
@@ -164,6 +219,9 @@ module "source_vnet" {
       name                            = "snet-management"
       address_prefix                  = local.source_subnets.management
       default_outbound_access_enabled = false
+      nat_gateway = {
+        id = module.source_nat_gateway.resource_id
+      }
       network_security_group = {
         id = module.source_nsg.resource_id
       }
@@ -172,6 +230,9 @@ module "source_vnet" {
       name                            = "snet-access"
       address_prefix                  = local.source_subnets.access
       default_outbound_access_enabled = false
+      nat_gateway = {
+        id = module.source_nat_gateway.resource_id
+      }
       network_security_group = {
         id = module.source_nsg.resource_id
       }

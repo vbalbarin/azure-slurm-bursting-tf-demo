@@ -302,3 +302,11 @@ Task T048: Private-administration acceptance procedure
 - [X] T080 Add Terraform, policy, provisioning, and live-evidence assertions proving the exclusion never reaches common/resource-group tags and cannot survive hardening
 - [X] T081 Correct the source-network NSG contract so Bastion reaches only the Windows jump host over RDP and the Windows access subnet reaches the management subnet over SSH and CycleCloud HTTPS
 - [X] T082 Correct the CycleCloud what-if boundary guard so Azure `Ignore` records remain in reviewed evidence but only actionable records are evaluated against the VM-only exception
+
+---
+
+## Phase 11: Portal Bastion and Explicit Regional Egress
+
+- [X] T083 Replace Premium private-only Bastion with Standard Bastion and a module-managed public service endpoint while keeping every VM NIC private and preserving the Windows-only RDP path
+- [X] T084 Add pinned NAT Gateway AVMs in the source and burst regions and associate them only with the access, management, and compute VM subnets
+- [X] T085 Update policy tests, live verification, specification, plan, research, data model, infrastructure contract, quickstart, README, and evidence runbook for portal access, exact NAT associations, and production hub/connectivity guidance

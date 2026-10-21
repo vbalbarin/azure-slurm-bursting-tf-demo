@@ -10,8 +10,9 @@
 Build a cross-region Azure demonstration with a source-region management VNET and a burst-region
 compute VNET connected by bidirectional global peering. The source region hosts private CycleCloud
 8.9.3, an external Slurm scheduler on a pinned AlmaLinux image compatible with its general-purpose
-VM size, a Windows administration jump host, Bastion, private Key Vault access, private DNS, and
-90-day audit retention. Bastion reaches only the Windows host over RDP; the Windows access subnet
+VM size, a Windows administration jump host, Standard Bastion with a public service endpoint,
+private Key Vault access, private DNS, and 90-day audit retention. Bastion reaches only the
+Windows host over RDP; the Windows access subnet
 reaches the Linux management subnet over SSH and the private CycleCloud application over HTTPS.
 The separately selected burst region hosts transient compute on an independently
 pinned AlmaLinux HPC image compatible with its selected compute size. Terraform calls pinned Azure
@@ -26,6 +27,11 @@ executed it in the burst region. Before main-environment approval, the operator 
 VM-family quota, exact zonal eligibility, and a controlled one-node allocation probe, and can
 compare an ordered set of approved alternate region/zone candidates without automatic
 substitution.
+Each region has a Standard NAT Gateway because Azure NAT Gateway associations are regional and
+cannot provide outbound access to a peered VNET. The source gateway serves the access and
+management subnets, and the burst gateway serves the compute subnet. This duplication keeps the
+demonstration self-contained; a production landing zone would normally consume governed
+hub/connectivity egress unless workload or regional requirements justified separate gateways.
 
 ## Technical Context
 
@@ -73,7 +79,7 @@ VM size, and compatible operating-system family/major release; configuration mus
 non-interactive and idempotent; secrets must not appear in outputs or logs
 
 **Scale/Scope**: One resource group spanning two regions, two VNETs, bidirectional global peering,
-dedicated management and burst-workload subnets, one source-region CycleCloud VM, one
+two regional NAT Gateways, dedicated management and burst-workload subnets, one source-region CycleCloud VM, one
 source-region scheduler VM, one source-region Windows VM, one source-region Bastion host, one Key
 Vault, one Log Analytics workspace, one headless cluster, one demonstration user, and at most one
 burst-region node during acceptance
@@ -87,7 +93,7 @@ burst-region node during acceptance
 | Compliance-preserving legacy operation | New isolated demonstration scope; no mutation or deletion of retained legacy resources; plan review blocks replacement and destruction. | PASS |
 | Declarative infrastructure and managed node configuration | Terraform owns all surrounding Azure resources. The approved Bicep stack owns only the CycleCloud Marketplace VM. Chef Local owns guest state. Python is limited to one node-consumed template and performs no Azure operations. | PASS |
 | Azure Verified Modules and CycleCloud appliance exception | Every Terraform resource is created through a pinned published AVM called directly from the root. The only non-AVM resource is the constitution-authorized VM-only Bicep stack. | PASS |
-| Security without exception | Private ingress, Bastion RDP only to the Windows jump host, no direct Bastion SSH to Linux hosts, final private-only Key Vault, an exact temporary provisioning `/32`, the constitution-authorized Key Vault-only policy exclusion lifecycle, Entra ID/RBAC, least privilege, certificate trust, restricted egress, and auditable operations are explicit. | PASS |
+| Security without exception | Bastion Standard is the sole interactive public ingress and reaches only the private Windows jump host over RDP; VMs have no public IPs; Bastion has no direct SSH path to Linux hosts; Key Vault is private after provisioning; two regional NAT Gateways provide explicit VM outbound access; Entra ID/RBAC, least privilege, certificate trust, and auditable operations are explicit. | PASS |
 | Reliable, idempotent, validated change | Terraform, Chef, and Python each have syntax, security, idempotency, failure, and review gates. The exact plan is applied only after validation. | PASS |
 | Scope constraints | Two-region placement and advisory assessment of operator-approved candidates demonstrate placement flexibility without HA, DR, automatic failover, or multi-node scaling. | PASS |
 

@@ -8,7 +8,7 @@ def terraform_file(name: str) -> str:
     return (ROOT / "terraform" / name).read_text()
 
 
-def test_private_only_management_surfaces() -> None:
+def test_private_hosts_use_standard_public_bastion() -> None:
     source = terraform_file("network.tf") + terraform_file("security.tf") + terraform_file("compute.tf")
     assert re.search(
         r"public_network_access_enabled\s*=\s*var\.key_vault_provisioning_access_enabled",
@@ -18,10 +18,47 @@ def test_private_only_management_surfaces() -> None:
         "var.key_vault_provisioning_access_enabled "
         "? var.key_vault_provisioning_ipv4_cidrs : []"
     ) in source
-    assert re.search(r"private_only_enabled\s*=\s*true", source)
+    assert re.search(r'sku\s*=\s*"Standard"', source)
+    assert re.search(r"private_only_enabled\s*=\s*false", source)
     assert re.search(r"session_recording_enabled\s*=\s*false", source)
     assert re.search(r"tunneling_enabled\s*=\s*true", source)
+    assert re.search(r"create_public_ip\s*=\s*true", source)
     assert re.search(r"create_public_ip_address\s*=\s*false", source)
+
+
+def test_vm_subnets_use_regional_nat_gateways() -> None:
+    source = terraform_file("network.tf")
+    assert source.count('source  = "Azure/avm-res-network-natgateway/azurerm"') == 2
+    assert source.count('version = "0.3.2"') >= 2
+
+    source_gateway = re.search(
+        r'(?ms)^module "source_nat_gateway" \{(.*?)^\}',
+        source,
+    )
+    burst_gateway = re.search(
+        r'(?ms)^module "burst_nat_gateway" \{(.*?)^\}',
+        source,
+    )
+    assert source_gateway
+    assert burst_gateway
+    for gateway in (source_gateway.group(1), burst_gateway.group(1)):
+        assert re.search(r'sku_name\s*=\s*"Standard"', gateway)
+        assert "public_ips = {" in gateway
+
+    management = re.search(r"(?ms)^    management = \{(.*?)^    \}", source)
+    access = re.search(r"(?ms)^    access = \{(.*?)^    \}", source)
+    compute = re.search(r"(?ms)^    compute = \{(.*?)^    \}", source)
+    private_endpoint = re.search(
+        r"(?ms)^    private_endpoint = \{(.*?)^    \}",
+        source,
+    )
+    bastion = re.search(r"(?ms)^    bastion = \{(.*?)^    \}", source)
+    assert all((management, access, compute, private_endpoint, bastion))
+    assert "id = module.source_nat_gateway.resource_id" in management.group(1)
+    assert "id = module.source_nat_gateway.resource_id" in access.group(1)
+    assert "id = module.burst_nat_gateway.resource_id" in compute.group(1)
+    assert "nat_gateway" not in private_endpoint.group(1)
+    assert "nat_gateway" not in bastion.group(1)
 
 
 def test_explicit_cross_region_rules_and_default_deny() -> None:

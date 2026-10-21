@@ -261,7 +261,8 @@ recovery commands and zero workflow substitutions.
 - Connect the two regional virtual networks through private cross-region peering.
 - Use pinned AVM modules for every Terraform-owned Azure resource and a narrowly scoped Bicep
   deployment stack only for the released CycleCloud Marketplace VM.
-- Keep all VM and service management paths private through Azure Bastion and private endpoints.
+- Keep all VM endpoints private; use Bastion Standard as the only interactive public ingress and
+  private endpoints for services.
 - Configure the CycleCloud and scheduler hosts through idempotent Chef Local policies.
 - Generate a release-matched headless Slurm cluster definition without manual editing.
 - Demonstrate one Slurm job bursting to a transient remote compute node.
@@ -277,7 +278,8 @@ The approved design includes:
 - External Slurm scheduler on an exact-version standard AlmaLinux image
 - Independently pinned AlmaLinux HPC image for burst compute
 - Windows administration host
-- Azure Bastion
+- Azure Bastion Standard with a public service endpoint for portal/browser RDP
+- One Standard NAT Gateway per region for explicit VM outbound access
 - Azure Key Vault with a temporary approved runner `/32` for initial secret creation and mandatory
   Key Vault-only `SecurityControl=Ignore` under explicit plan approval when required by active
   policy, followed by mandatory removal of both the `/32` and exclusion tag during private-only
@@ -393,11 +395,11 @@ RBAC assignments can take several minutes to propagate after deployment.
 
 For the evidence run, the agent executes A1-A8, A11, B1-B5, the CycleCloud stack gate, and the Key
 Vault hardening gate. The operator then gathers
-host-local B6-B8 evidence through the Windows jump host reached by a Bastion native-client RDP
-session. After the protected incoming artifacts are available, the agent validates them and
+host-local B6-B8 evidence through the Windows jump host reached first through portal/browser
+Bastion RDP. A native-client RDP session may be used for the protected-drive evidence handoff.
+After the protected incoming artifacts are available, the agent validates them and
 executes B9-B10, A9, B11, and A10. SSH/SCP runs from the Windows jump host to the Linux hosts;
-Bastion does not tunnel directly to them. Browser-only Bastion access is not the evidence-transfer
-channel.
+Bastion does not tunnel directly to them.
 
 1. Copy `terraform/environments/demo.tfvars.example` to a protected, ignored `.tfvars` file and
    supply the approved subscription, tenant, distinct source/burst regions, CIDRs, Entra group,
@@ -427,21 +429,22 @@ channel.
    exact preflight and cleaned-probe evidence digests. Run `tests/end-to-end/provision.sh`; it
    consumes the existing reviewed plan and never regenerates it. Any changed input, selected
    region/zone, plan, or evidence file invalidates approval.
-5. Use Bastion RDP to reach the Windows administration jump host, then use SSH from that host to
-   run `chef/bin/converge-cyclecloud.sh` and `chef/bin/converge-scheduler.sh` twice. Bastion does
-   not provide direct SSH to the Linux hosts. The second run must report zero resources updated.
+5. Use Azure portal Bastion RDP to reach the Windows administration jump host. Failure to
+   establish that browser session blocks acceptance. Then use SSH from Windows to run
+   `chef/bin/converge-cyclecloud.sh` and `chef/bin/converge-scheduler.sh` twice. Bastion does not
+   provide direct SSH to the Linux hosts. The second run must report zero resources updated.
 6. From the Windows administration VM reached through Bastion, run
    `tests/end-to-end/verify_private_administration.ps1`. The private CycleCloud URL must resolve,
    present the trusted Key Vault certificate, and show the imported cluster without public access.
 7. On the scheduler, run `tests/end-to-end/run_burst_demo.sh`. The output must identify one node
    in the configured burst region within 15 minutes and that node must disappear after idle
    timeout while the source-region scheduler remains healthy.
-8. Use the Premium private-only Bastion native-client tunnel to stage Linux evidence archives
-   under `/state/slurm-demo/<run-id>/incoming/`. Verify safe archive paths, SHA-256 manifests, and
-   secret-pattern scans before promoting only expected files into `/evidence`. Transfer the
-   Windows JSON through the Bastion RDP protected-drive handoff; never use the `tfstate` container.
-   The pinned Bastion module does not support tunneling and session recording together, so this
-   transfer mode disables session recording and relies on protected transfer artifacts for audit.
+8. Use a Standard Bastion native-client RDP session only for the protected-drive handoff that
+   stages Linux evidence archives under `/state/slurm-demo/<run-id>/incoming/`. Verify safe archive
+   paths, SHA-256 manifests, and secret-pattern scans before promoting only expected files into
+   `/evidence`. Transfer the Windows JSON through the same protected-drive handoff; never use the
+   `tfstate` container. Session recording remains disabled, so protected transfer artifacts provide
+   the transfer audit trail.
 9. Run `tests/end-to-end/collect_audit_evidence.sh`, validate inventory, and create a second
    unchanged Terraform plan. Any drift, secret leak, failed private probe, or non-idempotent result
    blocks completion.
@@ -461,6 +464,12 @@ Vault access.
 Confirm the certificate names the private endpoint and chains to the trusted private issuer before
 opening the configured cluster. Use the cluster page to inspect its configuration and transient
 node state. A public client must not resolve or connect to this endpoint.
+
+The demonstration creates one source-region NAT Gateway for the Windows, scheduler, and CycleCloud
+subnets and one burst-region NAT Gateway for compute nodes because Azure NAT Gateway cannot serve
+a subnet across global VNET peering. Production environments should normally consume established
+hub/connectivity egress rather than duplicate regional egress infrastructure unless platform or
+workload requirements demand it.
 
 If access fails, verify the private DNS links to both VNETs, global peering, NSG port 443, the
 installed issuer chain, certificate expiration/name, and authorized application identity. Do not

@@ -161,10 +161,11 @@ Expected outcome:
 
 ## 5. Verify private administration
 
-Use Bastion RDP to connect to the Windows administration host. Bastion does not connect directly
-to the Linux hosts. From the Windows jump host, use SSH for scheduler or CycleCloud host
-administration and open the private CycleCloud name in a browser using HTTPS. Authenticate with
-the authorized application identity.
+From the Azure portal, use Bastion Standard browser RDP to connect to the Windows administration
+host. Treat inability to establish this portal session as an acceptance blocker. Bastion does not
+connect directly to the Linux hosts. From the Windows jump host, use SSH for scheduler or
+CycleCloud host administration and open the private CycleCloud name in a browser using HTTPS.
+Authenticate with the authorized application identity.
 
 Expected outcome:
 
@@ -172,6 +173,13 @@ Expected outcome:
 - The certificate matches the private name and chains to the installed trusted issuer.
 - The imported headless cluster is visible.
 - Direct access from an untrusted public client fails.
+- The Windows, scheduler, CycleCloud, and burst-compute VM NICs have no public IPs.
+- The source access and management subnets use the source-region NAT Gateway, and the burst
+  compute subnet uses the separate burst-region NAT Gateway.
+
+This repository duplicates NAT Gateway egress only to keep the two-region demonstration
+self-contained. In production, use established hub/connectivity egress where available and deploy
+separate regional egress infrastructure only when required by the workload or platform design.
 
 ## 6. Submit the acceptance job
 

@@ -90,6 +90,37 @@ bounded demonstration and a production capacity broker.
 - <https://learn.microsoft.com/azure/bastion/vnet-peering>
 - <https://learn.microsoft.com/azure/cyclecloud/>
 
+## Portal administration and regional outbound access
+
+**Decision**: Use Azure Bastion Standard with its module-managed public IP as the sole interactive
+public ingress endpoint. Keep every VM NIC private. Associate a source-region Standard NAT Gateway
+with the access and management subnets, and a separate burst-region Standard NAT Gateway with the
+compute subnet.
+
+**Rationale**: Private-only Bastion resolves its service endpoint to a private address and requires
+VPN or ExpressRoute connectivity for a non-Azure operator client. That does not satisfy the common
+customer and field workflow of opening an RDP session from the Azure portal. Bastion Standard
+supports portal/browser RDP and native-client tunneling without assigning a public IP to the
+target VM. NAT Gateway restores explicit outbound connectivity for VM subnets whose default
+outbound access is disabled. NAT Gateway is a regional subnet resource and cannot serve the
+compute subnet across global VNET peering, so this self-contained two-region demonstration needs
+one gateway in each region.
+
+**Alternatives considered**: Premium private-only Bastion was rejected because it costs more and
+requires private client connectivity that this demonstration does not provide. Implicit default
+outbound access was rejected because it is disabled and is not a durable egress design. Routing
+both regions through a new firewall or virtual appliance was rejected as unnecessary cost and
+scope for the demonstration. Production deployments should normally consume existing governed
+hub/connectivity egress and should duplicate regional egress infrastructure only when latency,
+resilience, policy, or workload requirements justify it.
+
+**Sources**:
+
+- <https://learn.microsoft.com/azure/bastion/bastion-overview>
+- <https://learn.microsoft.com/azure/bastion/native-client>
+- <https://learn.microsoft.com/azure/nat-gateway/nat-overview>
+- <https://learn.microsoft.com/azure/nat-gateway/tutorial-nat-gateway-cross-region>
+
 ## Quota, zonal eligibility, and allocation capacity
 
 **Decision**: Treat SKU eligibility, quota, and physical allocation capacity as separate gates.

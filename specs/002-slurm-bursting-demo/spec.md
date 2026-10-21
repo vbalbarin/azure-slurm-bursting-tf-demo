@@ -227,10 +227,11 @@ headless cluster and its nodes.
   networking, and the CycleCloud application MUST NOT be directly reachable from the public
   internet. The application MUST present a certificate valid for its private name, with the
   certificate stored in the secret store and its trust chain installed on the Windows host.
-- **FR-007**: A managed protected-access service MUST provide RDP access only to the Windows
-  administration VM without assigning public IP addresses to any host. The Windows VM MUST be the
-  jump host for SSH to the scheduler and CycleCloud hosts and for HTTPS access to the private
-  CycleCloud application. Direct Bastion SSH to the scheduler or CycleCloud hosts MUST be denied.
+- **FR-007**: Azure Bastion Standard MUST provide portal/browser RDP access only to the Windows
+  administration VM through a Bastion-owned public endpoint, without assigning public IP
+  addresses to any VM. The Windows VM MUST be the jump host for SSH to the scheduler and
+  CycleCloud hosts and for HTTPS access to the private CycleCloud application. Direct Bastion SSH
+  to the scheduler or CycleCloud hosts MUST be denied.
 - **FR-008**: A centralized secret store MUST contain all generated administrative passwords,
   private keys, service credentials, and demonstration-user credentials required by the
   environment. Local credentials MUST be created only where a VM or CycleCloud requires them. The
@@ -278,7 +279,11 @@ headless cluster and its nodes.
 - **FR-021**: The scheduler MUST integrate with the CycleCloud private endpoint using credentials
   retrieved through authorized secret access, and authentication failures MUST be explicit.
 - **FR-022**: The environment MUST permit only the outbound connectivity required to obtain
-  approved release assets, operating-system packages, and cluster dependencies.
+  approved release assets, operating-system packages, and cluster dependencies. Because an Azure
+  NAT Gateway cannot serve a peered VNET in another region, the self-contained demonstration MUST
+  provide one regional NAT Gateway for the source access and management subnets and a second
+  regional NAT Gateway for the burst compute subnet. Private-endpoint and Bastion subnets MUST NOT
+  be associated with either workload NAT Gateway.
 - **FR-023**: The completed environment MUST support submission of a one-node test job whose output
   is written to shared storage and identifies the remote node that executed it.
 - **FR-024**: The demonstration MUST begin with a single remote compute node per test job and MUST

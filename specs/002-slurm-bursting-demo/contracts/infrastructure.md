@@ -30,10 +30,11 @@
    call. The CycleCloud VM is the sole resource owned by the approved Bicep deployment stack.
 2. `vnet-source` and `vnet-burst` have non-overlapping ranges in distinct recorded regions and
    bidirectional global peering.
-3. Hosts, CycleCloud, and Key Vault have no public inbound endpoint.
-4. Bastion permits RDP only to the Windows administration VM. That VM is the jump host for SSH to
-   the scheduler and CycleCloud hosts and HTTPS to the private CycleCloud application; Bastion has
-   no direct SSH path to those Linux hosts.
+3. Hosts, CycleCloud, and Key Vault have no accepted public inbound endpoint. Bastion Standard is
+   the sole interactive public ingress endpoint, and no VM NIC has a public IP.
+4. Bastion permits portal/browser RDP only to the Windows administration VM. That VM is the jump
+   host for SSH to the scheduler and CycleCloud hosts and HTTPS to the private CycleCloud
+   application; Bastion has no direct SSH path to those Linux hosts.
 5. Key Vault public access is disabled in the accepted environment; its private DNS resolves from
    both consuming networks. Neither the provisioning `/32` rule nor `SecurityControl=Ignore` can
    survive the hardening gate, and the exclusion is never applied to the resource group.
@@ -41,6 +42,10 @@
 7. Diagnostic destinations retain required records for 90 days.
 8. Outputs contain inventory identifiers, private addresses, source and burst regions, but no
    secret values.
+9. A source-region Standard NAT Gateway serves only the access and management VM subnets. A
+   distinct burst-region Standard NAT Gateway serves only the compute VM subnet. Each gateway has
+   one managed Standard public IP; private-endpoint and Bastion subnets have no workload NAT
+   Gateway association.
 
 ## Validation contract
 
@@ -55,7 +60,10 @@ Deployment is blocked unless:
 - The canonical CycleCloud deployment-stack what-if digest matches its approval and contains no
   resource outside the VM-only ownership boundary.
 - Review finds no unintended replacement or deletion.
-- Public-IP and public-Key-Vault assertions pass.
+- Assertions prove that public IPs are limited to Bastion and the two outbound NAT Gateways, VM
+  NICs have no public IPs, and Key Vault is private after provisioning.
+- Live validation proves the access and management subnets reference the source NAT Gateway and
+  the compute subnet references the distinct burst NAT Gateway.
 - Preflight proves each role-specific image exists in its assigned region, supports its assigned VM
   size's architecture and VM generation, and shares a compatible AlmaLinux family and major
   release with the other role.

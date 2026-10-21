@@ -72,6 +72,7 @@ operator action.
 | `peer_site` | The other Regional Network Site; global peering is bidirectional |
 | `private_dns_links` | Required zones linked to each VNET that consumes them |
 | `approved_flows` | Least-privilege source, destination, protocol, and port tuples |
+| `egress_gateway` | One regional Standard NAT Gateway with one managed Standard public IP; associated only with VM-hosting subnets in this site |
 
 ## Administrative Host
 

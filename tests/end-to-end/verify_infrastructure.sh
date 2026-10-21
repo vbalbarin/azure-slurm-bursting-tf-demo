@@ -28,4 +28,34 @@ for host_key in cyclecloud scheduler windows_admin; do
   [[ -z "$public_address" ]] || { echo "$host_key unexpectedly has a public address" >&2; exit 4; }
 done
 
-az network bastion list --query "[?provisioningState=='Succeeded'] | length(@)" --output tsv | grep -qv '^0$'
+environment_name="$(jq -r '.environment_name' "$INVENTORY_FILE")"
+source_nat_id="$(
+  az network nat gateway list \
+    --query "[?name=='${environment_name}-source-nat' && provisioningState=='Succeeded'].id | [0]" \
+    --output tsv
+)"
+burst_nat_id="$(
+  az network nat gateway list \
+    --query "[?name=='${environment_name}-burst-nat' && provisioningState=='Succeeded'].id | [0]" \
+    --output tsv
+)"
+[[ -n "$source_nat_id" && -n "$burst_nat_id" && "$source_nat_id" != "$burst_nat_id" ]]
+
+az network nat gateway show --ids "$source_nat_id" \
+  --query 'length(publicIpAddresses)' --output tsv | grep -qx '1'
+az network nat gateway show --ids "$burst_nat_id" \
+  --query 'length(publicIpAddresses)' --output tsv | grep -qx '1'
+
+for subnet in snet-access snet-management; do
+  az network vnet list \
+    --query "[?name=='vnet-source'].subnets[] | [?name=='${subnet}'].natGateway.id | [0]" \
+    --output tsv | grep -Fqx "$source_nat_id"
+done
+
+az network vnet list \
+  --query "[?name=='vnet-burst'].subnets[] | [?name=='snet-compute'].natGateway.id | [0]" \
+  --output tsv | grep -Fqx "$burst_nat_id"
+
+az network bastion list \
+  --query "[?name=='${environment_name}-bastion' && provisioningState=='Succeeded' && sku.name=='Standard'] | length(@)" \
+  --output tsv | grep -qx '1'

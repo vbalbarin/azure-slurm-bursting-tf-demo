@@ -4035,8 +4035,9 @@ run_logged "$DEMO_EVIDENCE_DIR/21-infrastructure-validation.log" \
   tests/end-to-end/verify_infrastructure.sh
 ```
 
-Confirm active provisioning completes within 90 minutes excluding approval waits, public-inbound
-probes fail, and CycleCloud and Key Vault resolve privately from authorized locations.
+Confirm active provisioning completes within 90 minutes excluding approval waits, VM and
+application public-inbound probes fail, CycleCloud and Key Vault resolve privately from authorized
+locations, and the two regional NAT Gateways have the exact subnet associations required below.
 
 ## B6. Converge CycleCloud and scheduler twice
 
@@ -4065,8 +4066,11 @@ Do not use `set -x`; the convergence path consumes protected references and cred
 
 ## B7. Verify private Windows administration
 
-Connect to the Windows administration VM only through Azure Bastion RDP. Do not create a direct
-Bastion SSH tunnel to the scheduler or CycleCloud VM. Run:
+From the Azure portal, connect to the Windows administration VM through the Bastion Standard
+browser RDP experience. Record the Bastion resource ID, Windows VM resource ID, connection time,
+and successful session result without recording credentials. A timeout or inability to establish
+the portal session is an acceptance blocker. Do not create a direct Bastion SSH tunnel to the
+scheduler or CycleCloud VM. Run:
 
 ```powershell
 .\tests\end-to-end\verify_private_administration.ps1 `
@@ -4083,6 +4087,9 @@ Confirm:
 - the authorized application identity can authenticate;
 - the imported headless cluster is visible; and
 - an untrusted public client cannot resolve or connect.
+- the Windows, scheduler, and CycleCloud VM NICs have no public IP configurations;
+- the source access and management subnets reference the source-region NAT Gateway; and
+- the burst compute subnet references the distinct burst-region NAT Gateway.
 
 Transfer the resulting secret-free JSON with the B8.1 Windows Bastion handoff. Stage it under
 `$DEMO_STATE_DIR/incoming/windows-admin/` before promotion into `$DEMO_EVIDENCE_DIR`.
@@ -4125,12 +4132,12 @@ Transfer the resulting evidence with the B8.1 scheduler tunnel into
 
 ## B8.1 Transfer node evidence through the Windows jump host
 
-The Premium private-only Bastion permits RDP only to the Windows administration VM. Bastion MUST
-NOT provide a direct SSH or SCP tunnel to either Linux host. Use an approved native RDP client with
+The Standard Bastion permits RDP only to the Windows administration VM. Bastion MUST NOT provide a
+direct SSH or SCP tunnel to either Linux host. Portal/browser RDP is the required administration
+acceptance path. For the protected evidence handoff, use an approved native RDP client with
 protected-drive redirection, then use SSH and SCP from the Windows jump host to the private Linux
-addresses. The pinned Bastion module makes tunneling incompatible with Bastion session recording,
-so session recording is disabled; the archive manifest, protected transfer logs, host-key record,
-and promoted files are the transfer audit evidence. Do not use the Terraform `tfstate` container
+addresses. Session recording is disabled; the archive manifest, protected transfer logs, host-key
+record, and promoted files are the transfer audit evidence. Do not use the Terraform `tfstate` container
 as an evidence-transfer channel.
 
 On each Linux VM, create a protected archive and manifest from the expected evidence directory.
@@ -4190,8 +4197,13 @@ scp -i $PrivateKey `
 
 Copy each archive from protected Windows staging to the matching role directory on the redirected
 protected drive. Copy `private-administration.json` and its SHA-256 file into the redirected
-`windows-admin` directory in the same RDP session. Do not enable a public endpoint, direct Bastion
-SSH, WinRM, clipboard transfer, or an additional guest listener solely for evidence transfer.
+`windows-admin` directory in the same RDP session. Do not enable a public VM endpoint, direct
+Bastion SSH, WinRM, clipboard transfer, or an additional guest listener solely for evidence
+transfer.
+
+The two NAT Gateways are a self-contained demonstration choice, not a production landing-zone
+recommendation. A production deployment should normally use governed hub/connectivity egress and
+duplicate regional egress infrastructure only when a documented requirement makes it necessary.
 
 Back in the development container, reject unsafe archive paths, extract into each role-specific
 protected directory, verify every manifest digest, and require the secret-pattern scan to find no
