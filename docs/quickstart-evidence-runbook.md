@@ -3881,10 +3881,13 @@ tests/end-to-end/cyclecloud_stack.sh prepare
 tests/end-to-end/cyclecloud_stack.sh what-if
 ```
 
-Review the compiled template and what-if. Require exactly one
-`Microsoft.Compute/virtualMachines` resource named for CycleCloud. Confirm the matching pinned
-Marketplace plan and image, the Terraform-owned NIC ID, no public IP, system identity, OS disk, and
-the required `FromImage` data disk at LUN 0. Then create the approval:
+Review the compiled template and what-if. Azure can emit `Ignore` records for unrelated existing
+resource-group resources; retain those records in the digest-bound raw what-if, but exclude them
+from the VM-only actionable-change guard. Require every non-`Ignore` record to target the
+`Microsoft.Compute/virtualMachines` resource named for CycleCloud, and require the initial
+deployment to contain its create action. Confirm the matching pinned Marketplace plan and image,
+the Terraform-owned NIC ID, no public IP, system identity, OS disk, and the required `FromImage`
+data disk at LUN 0. Then create the approval:
 
 ```bash
 if read -r -p "Authorized CycleCloud stack reference: " CYCLECLOUD_APPROVAL_REFERENCE &&

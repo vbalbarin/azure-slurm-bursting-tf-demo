@@ -129,11 +129,19 @@ case "$mode" in
       --result-format FullResourcePayloads \
       --output json |
       jq -S . >"$CYCLECLOUD_WHAT_IF_FILE"
-    jq -e '
-      [.changes[] | select(
-        (.resourceId | ascii_downcase | contains("/providers/microsoft.compute/virtualmachines/")) |
-        not
-      )] | length == 0
+    jq -e --arg mode "$mode" '
+      [.changes[] | select(.changeType != "Ignore")] as $actionable |
+      all($actionable[];
+        .resourceId | ascii_downcase |
+        contains("/providers/microsoft.compute/virtualmachines/")
+      ) and
+      (
+        $mode == "reconcile" or
+        (
+          ($actionable | length) == 1 and
+          $actionable[0].changeType == "Create"
+        )
+      )
     ' "$CYCLECLOUD_WHAT_IF_FILE" >/dev/null
     printf '%s  %s\n' "$(digest "$CYCLECLOUD_WHAT_IF_FILE")" "$CYCLECLOUD_WHAT_IF_FILE"
     ;;

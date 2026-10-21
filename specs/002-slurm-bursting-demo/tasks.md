@@ -301,3 +301,4 @@ Task T048: Private-administration acceptance procedure
 - [X] T079 Add the conditional Key Vault-only exclusion tag, enforce explicit foundation-plan authorization, and remove it automatically with the existing private-only hardening inputs
 - [X] T080 Add Terraform, policy, provisioning, and live-evidence assertions proving the exclusion never reaches common/resource-group tags and cannot survive hardening
 - [X] T081 Correct the source-network NSG contract so Bastion reaches only the Windows jump host over RDP and the Windows access subnet reaches the management subnet over SSH and CycleCloud HTTPS
+- [X] T082 Correct the CycleCloud what-if boundary guard so Azure `Ignore` records remain in reviewed evidence but only actionable records are evaluated against the VM-only exception

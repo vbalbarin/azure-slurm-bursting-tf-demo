@@ -79,6 +79,112 @@ def test_stack_apply_rejects_changed_template_before_azure(tmp_path: Path) -> No
     assert not Path(environment["FAKE_AZ_LOG"]).exists()
 
 
+def _write_what_if_commands(
+    environment: dict[str, str],
+    changes: list[dict[str, str]],
+) -> None:
+    fake_bin = Path(environment["PATH"].split(":", 1)[0])
+    what_if_result = fake_bin.parent / "what-if-result.json"
+    what_if_result.write_text(json.dumps({"changes": changes}))
+    environment["FAKE_WHAT_IF_RESULT"] = str(what_if_result)
+    _write_executable(
+        fake_bin / "terraform",
+        """#!/usr/bin/env python3
+import json
+print(json.dumps({
+    "resource_group_name": "demo-rg",
+    "vm_name": "demo-cyclecloud",
+}))
+""",
+    )
+    _write_executable(
+        fake_bin / "az",
+        """#!/usr/bin/env python3
+import os
+from pathlib import Path
+import sys
+
+args = sys.argv[1:]
+if args[:2] == ["account", "show"]:
+    print("00000000-0000-0000-0000-000000000000")
+elif args[:3] == ["deployment", "group", "validate"]:
+    pass
+elif args[:3] == ["deployment", "group", "what-if"]:
+    print(Path(os.environ["FAKE_WHAT_IF_RESULT"]).read_text())
+else:
+    raise SystemExit(9)
+""",
+    )
+
+
+def test_what_if_ignores_azure_ignore_records(tmp_path: Path) -> None:
+    environment = _stack_environment(tmp_path)
+    _write_what_if_commands(
+        environment,
+        [
+            {
+                "changeType": "Ignore",
+                "resourceId": (
+                    "/subscriptions/example/resourceGroups/demo-rg/"
+                    "providers/Microsoft.Network/virtualNetworks/demo"
+                ),
+            },
+            {
+                "changeType": "Create",
+                "resourceId": (
+                    "/subscriptions/example/resourceGroups/demo-rg/"
+                    "providers/Microsoft.Compute/virtualMachines/demo-cyclecloud"
+                ),
+            },
+        ],
+    )
+
+    result = subprocess.run(
+        [str(STACK_SCRIPT), "what-if"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_what_if_rejects_actionable_non_vm_changes(tmp_path: Path) -> None:
+    environment = _stack_environment(tmp_path)
+    _write_what_if_commands(
+        environment,
+        [
+            {
+                "changeType": "Modify",
+                "resourceId": (
+                    "/subscriptions/example/resourceGroups/demo-rg/"
+                    "providers/Microsoft.Network/virtualNetworks/demo"
+                ),
+            },
+            {
+                "changeType": "Create",
+                "resourceId": (
+                    "/subscriptions/example/resourceGroups/demo-rg/"
+                    "providers/Microsoft.Compute/virtualMachines/demo-cyclecloud"
+                ),
+            },
+        ],
+    )
+
+    result = subprocess.run(
+        [str(STACK_SCRIPT), "what-if"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+
+
 def test_secret_writer_records_references_without_values(tmp_path: Path) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
