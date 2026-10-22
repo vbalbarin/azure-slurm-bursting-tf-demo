@@ -320,3 +320,9 @@ Task T048: Private-administration acceptance procedure
 - [X] T088 Add policy and provisioning tests and update the specification, plan, research, data model, contract, quickstart, README, and evidence runbook
 - [X] T089 Require the approved foundation plan to contain the exact temporary Key Vault provisioning posture before apply
 - [X] T090 Require final backend readiness to retain at least 40 minutes of its one-hour validity window when foundation apply begins
+
+---
+
+## Phase 13: Supported Bastion Client Acceptance
+
+- [X] T091 Require successful authentication through at least one supported Bastion Standard RDP client while retaining portal/browser behavior as advisory interoperability evidence when native-client authentication passes

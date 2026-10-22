@@ -443,6 +443,25 @@ def test_runbook_uses_protected_windows_jump_host_evidence_transfer() -> None:
     assert "copy them directly into `/evidence`" in runbook
 
 
+def test_runbook_accepts_any_supported_bastion_rdp_client() -> None:
+    runbook = (ROOT / "docs/quickstart-evidence-runbook.md").read_text()
+    administration = runbook.split(
+        "## B7. Verify private Windows administration", 1
+    )[1].split("## B8.", 1)[0]
+    normalized = " ".join(administration.split())
+
+    assert "supported Bastion Standard browser or native RDP client" in normalized
+    assert "browser-client session failure is advisory" in normalized
+    assert (
+        "failure of every supported Bastion RDP path is an acceptance blocker"
+        in normalized
+    )
+    assert (
+        "inability to establish the portal session is an acceptance blocker"
+        not in normalized
+    )
+
+
 def test_runbook_persists_only_protected_run_context() -> None:
     runbook = (ROOT / "docs/quickstart-evidence-runbook.md").read_text()
     helper = runbook.split("persist_run_context() {", 1)[1].split("```", 1)[0]

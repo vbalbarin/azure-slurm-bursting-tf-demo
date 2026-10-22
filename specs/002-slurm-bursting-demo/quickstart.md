@@ -165,8 +165,10 @@ Expected outcome:
 
 ## 5. Verify private administration
 
-From the Azure portal, use Bastion Standard browser RDP to connect to the Windows administration
-host. Treat inability to establish this portal session as an acceptance blocker. Bastion does not
+Use a supported Bastion Standard browser or native RDP client to connect to the Windows
+administration host. Attempt and record the Azure portal browser result. A browser-client session
+failure is advisory when native-client Bastion RDP authentication succeeds; inability to
+authenticate through every supported Bastion RDP path is an acceptance blocker. Bastion does not
 connect directly to the Linux hosts. From the Windows jump host, use SSH for scheduler or
 CycleCloud host administration and open the private CycleCloud name in a browser using HTTPS.
 Authenticate with the authorized application identity.

@@ -102,9 +102,12 @@ compute subnet.
 
 **Rationale**: Private-only Bastion resolves its service endpoint to a private address and requires
 VPN or ExpressRoute connectivity for a non-Azure operator client. That does not satisfy the common
-customer and field workflow of opening an RDP session from the Azure portal. Bastion Standard
+customer and field workflow of opening an RDP session without direct VM ingress. Bastion Standard
 supports portal/browser RDP and native-client tunneling without assigning a public IP to the
-target VM. Independent public-IP ownership exposes the provider's `ip_tags` input and prevents
+target VM. Acceptance requires either supported path to authenticate; portal/browser behavior is
+recorded as interoperability evidence rather than treated as intrinsic infrastructure behavior
+when native-client authentication succeeds. Independent public-IP ownership exposes the
+provider's `ip_tags` input and prevents
 Azure's service-added tag from causing a perpetual replacement plan. It also keeps the public IP
 independently reviewable while Terraform dependency ordering still deletes Bastion before its IP.
 NAT Gateway restores explicit outbound connectivity for VM subnets whose default

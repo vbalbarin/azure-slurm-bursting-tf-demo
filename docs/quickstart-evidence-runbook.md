@@ -4081,11 +4081,13 @@ Do not use `set -x`; the convergence path consumes protected references and cred
 
 ## B7. Verify private Windows administration
 
-From the Azure portal, connect to the Windows administration VM through the Bastion Standard
-browser RDP experience. Record the Bastion resource ID, Windows VM resource ID, connection time,
-and successful session result without recording credentials. A timeout or inability to establish
-the portal session is an acceptance blocker. Do not create a direct Bastion SSH tunnel to the
-scheduler or CycleCloud VM. Run:
+Connect to the Windows administration VM through a supported Bastion Standard browser or native
+RDP client. Attempt the Azure portal browser experience and record the Bastion resource ID,
+Windows VM resource ID, connection time, and result without recording credentials. If the browser
+client fails, validate the same target and protected credentials through native-client Bastion
+RDP. A browser-client session failure is advisory when native-client authentication succeeds;
+failure of every supported Bastion RDP path is an acceptance blocker. Do not create a direct
+Bastion SSH tunnel to the scheduler or CycleCloud VM. Run:
 
 ```powershell
 .\tests\end-to-end\verify_private_administration.ps1 `
@@ -4148,12 +4150,12 @@ Transfer the resulting evidence with the B8.1 scheduler tunnel into
 ## B8.1 Transfer node evidence through the Windows jump host
 
 The Standard Bastion permits RDP only to the Windows administration VM. Bastion MUST NOT provide a
-direct SSH or SCP tunnel to either Linux host. Portal/browser RDP is the required administration
-acceptance path. For the protected evidence handoff, use an approved native RDP client with
-protected-drive redirection, then use SSH and SCP from the Windows jump host to the private Linux
-addresses. Session recording is disabled; the archive manifest, protected transfer logs, host-key
-record, and promoted files are the transfer audit evidence. Do not use the Terraform `tfstate` container
-as an evidence-transfer channel.
+direct SSH or SCP tunnel to either Linux host. At least one supported browser or native-client
+Bastion RDP path is required for administration acceptance. For the protected evidence handoff,
+use an approved native RDP client with protected-drive redirection, then use SSH and SCP from the
+Windows jump host to the private Linux addresses. Session recording is disabled; the archive
+manifest, protected transfer logs, host-key record, and promoted files are the transfer audit
+evidence. Do not use the Terraform `tfstate` container as an evidence-transfer channel.
 
 On each Linux VM, create a protected archive and manifest from the expected evidence directory.
 Exclude the archive and manifest themselves:

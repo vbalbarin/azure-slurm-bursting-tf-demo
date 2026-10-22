@@ -227,11 +227,14 @@ headless cluster and its nodes.
   networking, and the CycleCloud application MUST NOT be directly reachable from the public
   internet. The application MUST present a certificate valid for its private name, with the
   certificate stored in the secret store and its trust chain installed on the Windows host.
-- **FR-007**: Azure Bastion Standard MUST provide portal/browser RDP access only to the Windows
-  administration VM through a root-owned Standard public IP passed into the Bastion module,
-  without assigning public IP addresses to any VM. The public IP configuration MUST explicitly
-  model Azure's reserved `FirstPartyUsage = "/Unprivileged"` IP tag so a refresh does not propose
-  replacement. The Windows VM MUST be the jump host for SSH to the scheduler and
+- **FR-007**: Azure Bastion Standard MUST provide supported browser or native-client RDP access
+  only to the Windows administration VM through a root-owned Standard public IP passed into the
+  Bastion module, without assigning public IP addresses to any VM. Acceptance MUST require at
+  least one supported Bastion RDP path to authenticate successfully. Portal/browser
+  interoperability SHOULD be recorded, but a browser-client session failure MUST NOT block
+  acceptance when native-client Bastion RDP authentication succeeds. The public IP configuration
+  MUST explicitly model Azure's reserved `FirstPartyUsage = "/Unprivileged"` IP tag so a refresh
+  does not propose replacement. The Windows VM MUST be the jump host for SSH to the scheduler and
   CycleCloud hosts and for HTTPS access to the private CycleCloud application. Direct Bastion SSH
   to the scheduler or CycleCloud hosts MUST be denied.
 - **FR-008**: A centralized secret store MUST contain all generated administrative passwords,

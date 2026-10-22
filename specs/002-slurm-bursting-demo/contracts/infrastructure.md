@@ -33,8 +33,10 @@
 3. Hosts, CycleCloud, and Key Vault have no accepted public inbound endpoint. Bastion Standard is
    the sole interactive public ingress endpoint, and no VM NIC has a public IP. Bastion consumes
    a separately owned Standard public IP whose reserved Azure service IP tag is declared exactly.
-4. Bastion permits portal/browser RDP only to the Windows administration VM. That VM is the jump
-   host for SSH to the scheduler and CycleCloud hosts and HTTPS to the private CycleCloud
+4. Bastion permits supported browser or native-client RDP only to the Windows administration VM.
+   At least one supported Bastion RDP path authenticates successfully; portal/browser
+   interoperability is advisory when native-client authentication passes. The Windows VM is the
+   jump host for SSH to the scheduler and CycleCloud hosts and HTTPS to the private CycleCloud
    application; Bastion has no direct SSH path to those Linux hosts.
 5. Key Vault public access is disabled in the accepted environment; its private DNS resolves from
    both consuming networks. Neither the provisioning `/32` rule nor `SecurityControl=Ignore` can
