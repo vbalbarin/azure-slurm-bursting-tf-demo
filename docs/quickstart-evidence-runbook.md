@@ -3758,12 +3758,16 @@ Create `$APPROVAL_FILE` only after plan generation:
   "preflight_digest": "<preflight.json SHA-256>",
   "capacity_probe_digest": "<capacity-probe.json SHA-256>",
   "approval_reference": "<approved change or review reference>",
-  "key_vault_policy_exclusion_approved": true
+  "key_vault_policy_exclusion_approved": true,
+  "key_vault_provisioning_ipv4_cidr": "<approved runner IPv4>/32"
 }
 ```
 
 Any source, input, backend context, selected placement, plan, or evidence change invalidates
-approval.
+approval. Before apply, `provision.sh` also inspects the reviewed plan and requires exactly one
+Key Vault create with public access enabled, default deny, exactly the approved runner `/32`, and
+the Key Vault-only `SecurityControl=Ignore` tag. A stale private-only input therefore fails before
+Azure resources are created.
 
 ## B5. Apply the exact reviewed Terraform foundation plan
 

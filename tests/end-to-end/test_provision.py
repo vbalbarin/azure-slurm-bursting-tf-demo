@@ -32,7 +32,26 @@ if command in {{"fmt", "validate", "apply"}}:
 elif command == "plan":
     sys.exit(int(os.environ.get("FAKE_FOUNDATION_PLAN_STATUS", "0")))
 elif command == "show":
-    print("{{}}")
+    cidr = os.environ.get("FAKE_KEY_VAULT_CIDR", "32.216.31.25/32")
+    public_access = os.environ.get("FAKE_KEY_VAULT_PUBLIC_ACCESS", "true") == "true"
+    print(json.dumps({{
+        "resource_changes": [{{
+            "address": "module.key_vault.azurerm_key_vault.this",
+            "change": {{
+                "actions": ["create"],
+                "after": {{
+                    "public_network_access_enabled": public_access,
+                    "network_acls": [{{
+                        "default_action": "Deny",
+                        "ip_rules": [cidr] if public_access else None
+                    }}],
+                    "tags": {{
+                        "SecurityControl": "Ignore"
+                    }} if public_access else {{}}
+                }}
+            }}
+        }}]
+    }}))
 elif command == "output":
     print(json.dumps({{
         "environment_name": "demo",
@@ -114,6 +133,7 @@ def _environment(tmp_path: Path) -> dict[str, str]:
                 ).hexdigest(),
                 "approval_reference": "review-123",
                 "key_vault_policy_exclusion_approved": True,
+                "key_vault_provisioning_ipv4_cidr": "32.216.31.25/32",
             }
         )
     )
@@ -213,6 +233,27 @@ def test_rejects_unapproved_key_vault_policy_exclusion(tmp_path: Path) -> None:
 
     assert result.returncode == 11
     assert "temporary Key Vault policy exclusion" in result.stderr
+    invocations = Path(environment["FAKE_TERRAFORM_LOG"]).read_text()
+    assert "apply" not in invocations
+
+
+def test_rejects_private_key_vault_posture_in_foundation_plan(
+    tmp_path: Path,
+) -> None:
+    environment = _environment(tmp_path)
+    environment["FAKE_KEY_VAULT_PUBLIC_ACCESS"] = "false"
+
+    result = subprocess.run(
+        [str(SCRIPT)],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 11
+    assert "exact approved Key Vault provisioning window" in result.stderr
     invocations = Path(environment["FAKE_TERRAFORM_LOG"]).read_text()
     assert "apply" not in invocations
 

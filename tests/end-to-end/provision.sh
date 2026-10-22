@@ -34,6 +34,10 @@ approved_digest="$(jq -er '.plan_digest' "$APPROVAL_FILE")"
 approved_preflight_digest="$(jq -er '.preflight_digest' "$APPROVAL_FILE")"
 approved_capacity_probe_digest="$(jq -er '.capacity_probe_digest' "$APPROVAL_FILE")"
 approval_reference="$(jq -er '.approval_reference' "$APPROVAL_FILE")"
+approved_key_vault_cidr="$(
+  jq -er '.key_vault_provisioning_ipv4_cidr |
+    select(test("^([0-9]{1,3}\\.){3}[0-9]{1,3}/32$"))' "$APPROVAL_FILE"
+)"
 if ! jq -e '.key_vault_policy_exclusion_approved == true' \
   "$APPROVAL_FILE" >/dev/null; then
   echo "Approval must explicitly authorize the temporary Key Vault policy exclusion" >&2
@@ -51,6 +55,21 @@ fi
   echo "Approved capacity-probe digest does not match the supplied probe evidence" >&2
   exit 11
 }
+
+if ! terraform -chdir=terraform show -json "$PLAN_FILE" |
+  jq -e --arg cidr "$approved_key_vault_cidr" '
+    [.resource_changes[]? |
+      select(.address == "module.key_vault.azurerm_key_vault.this")] as $vaults |
+    ($vaults | length) == 1 and
+    $vaults[0].change.actions == ["create"] and
+    $vaults[0].change.after.public_network_access_enabled == true and
+    $vaults[0].change.after.network_acls[0].default_action == "Deny" and
+    $vaults[0].change.after.network_acls[0].ip_rules == [$cidr] and
+    $vaults[0].change.after.tags.SecurityControl == "Ignore"
+  ' >/dev/null; then
+  echo "Reviewed plan does not contain the exact approved Key Vault provisioning window" >&2
+  exit 11
+fi
 
 preflight_assessed_at="$(jq -er '.capacity.assessed_at' "$PREFLIGHT_RESULTS_FILE")"
 preflight_age="$(($(date -u +%s) - $(date -u -d "$preflight_assessed_at" +%s)))"
