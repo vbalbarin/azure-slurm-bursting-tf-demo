@@ -4034,7 +4034,9 @@ $DEMO_EVIDENCE_DIR/cyclecloud-stack/virtual-machine.json
 $DEMO_EVIDENCE_DIR/key-vault-hardening.json
 ```
 
-Validate the secret-free inventory and private infrastructure:
+Validate the secret-free inventory and private infrastructure. The infrastructure verifier checks
+the Terraform-managed private DNS records through the Azure control plane because the development
+runner is intentionally outside the private VNET DNS resolution path:
 
 ```bash
 run_logged "$DEMO_EVIDENCE_DIR/20-inventory-validation.log" \
@@ -4047,8 +4049,10 @@ run_logged "$DEMO_EVIDENCE_DIR/21-infrastructure-validation.log" \
 ```
 
 Confirm active provisioning completes within 90 minutes excluding approval waits, VM and
-application public-inbound probes fail, CycleCloud and Key Vault resolve privately from authorized
-locations, and the two regional NAT Gateways have the exact subnet associations required below.
+application public-inbound probes fail, the expected CycleCloud and Key Vault private DNS records
+exist, and the two regional NAT Gateways have the exact subnet associations required below.
+Runtime private DNS resolution remains a B7 assertion performed from the Windows administration
+VM inside the source VNET.
 
 ## B6. Converge CycleCloud and scheduler twice
 

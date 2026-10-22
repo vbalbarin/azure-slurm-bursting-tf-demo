@@ -45,6 +45,29 @@ def test_bastion_public_ip_has_independent_avm_ownership() -> None:
     assert 'FirstPartyUsage = "/Unprivileged"' in block
 
 
+def test_cyclecloud_private_dns_has_managed_a_record() -> None:
+    source = terraform_file("security.tf")
+    private_dns = re.search(
+        r'(?ms)^module "cyclecloud_private_dns" \{(.*?)^\}',
+        source,
+    )
+    assert private_dns
+    block = private_dns.group(1)
+    assert "a_records = {" in block
+    assert "name         = local.names.cyclecloud" in block
+    assert "ttl          = 300" in block
+    assert (
+        "ip_addresses = [module.cyclecloud_nic.resource.private_ip_address]"
+        in block
+    )
+
+
+def test_infrastructure_verifier_uses_control_plane_dns_records() -> None:
+    source = (ROOT / "tests" / "end-to-end" / "verify_infrastructure.sh").read_text()
+    assert "az network private-dns record-set a show" in source
+    assert "dig +short" not in source
+
+
 def test_vm_subnets_use_regional_nat_gateways() -> None:
     source = terraform_file("network.tf")
     assert source.count('source  = "Azure/avm-res-network-natgateway/azurerm"') == 2

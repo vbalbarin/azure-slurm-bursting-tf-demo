@@ -28,6 +28,14 @@ module "cyclecloud_private_dns" {
   enable_telemetry = false
   tags             = local.common_tags
 
+  a_records = {
+    cyclecloud = {
+      name         = local.names.cyclecloud
+      ttl          = 300
+      ip_addresses = [module.cyclecloud_nic.resource.private_ip_address]
+    }
+  }
+
   virtual_network_links = {
     source = {
       name               = "cyclecloud-source-link"

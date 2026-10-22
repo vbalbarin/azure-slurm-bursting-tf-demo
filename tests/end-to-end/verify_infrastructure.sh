@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for command in az jq dig nc; do
+for command in az jq; do
   command -v "$command" >/dev/null || { echo "Missing required command: $command" >&2; exit 2; }
 done
 
@@ -19,9 +19,36 @@ if grep -Eqi '"(password|private_key|secret_value)"[[:space:]]*:' "$INVENTORY_FI
 fi
 
 cyclecloud_name="$(jq -r '.private_hosts.cyclecloud.name' "$INVENTORY_FILE")"
-key_vault_name="$(jq -r '.key_vault_private_name' "$INVENTORY_FILE")"
-dig +short "$cyclecloud_name" | grep -Eq '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)'
-dig +short "$key_vault_name" | grep -Eq '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)'
+cyclecloud_address="$(jq -r '.private_hosts.cyclecloud.private_address' "$INVENTORY_FILE")"
+cyclecloud_fqdn="$(
+  jq -r '.application_access.cyclecloud_private_url | sub("^https://"; "")' \
+    "$INVENTORY_FILE"
+)"
+key_vault_fqdn="$(jq -r '.key_vault_private_name' "$INVENTORY_FILE")"
+resource_group_name="$(
+  az vm list \
+    --query "[?name=='${cyclecloud_name}'].resourceGroup | [0]" \
+    --output tsv
+)"
+[[ -n "$resource_group_name" ]]
+
+cyclecloud_record_name="${cyclecloud_fqdn%%.*}"
+cyclecloud_zone_name="${cyclecloud_fqdn#*.}"
+az network private-dns record-set a show \
+  --resource-group "$resource_group_name" \
+  --zone-name "$cyclecloud_zone_name" \
+  --name "$cyclecloud_record_name" \
+  --query 'aRecords[].ipv4Address' \
+  --output tsv | grep -Fqx "$cyclecloud_address"
+
+key_vault_record_name="${key_vault_fqdn%%.*}"
+key_vault_zone_name="${key_vault_fqdn#*.}"
+az network private-dns record-set a show \
+  --resource-group "$resource_group_name" \
+  --zone-name "$key_vault_zone_name" \
+  --name "$key_vault_record_name" \
+  --query 'length(aRecords)' \
+  --output tsv | grep -Eq '^[1-9][0-9]*$'
 
 for host_key in cyclecloud scheduler windows_admin; do
   public_address="$(jq -r ".private_hosts.${host_key}.public_address // empty" "$INVENTORY_FILE")"
