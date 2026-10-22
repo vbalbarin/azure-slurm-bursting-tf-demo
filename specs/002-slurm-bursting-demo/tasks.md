@@ -326,3 +326,14 @@ Task T048: Private-administration acceptance procedure
 ## Phase 13: Supported Bastion Client Acceptance
 
 - [X] T091 Require successful authentication through at least one supported Bastion Standard RDP client while retaining portal/browser behavior as advisory interoperability evidence when native-client authentication passes
+
+---
+
+## Phase 14: Automated CycleCloud First Run
+
+- [X] T092 Add Terraform-owned control and locker identities, a dedicated compute resource group, private locker storage and Blob DNS, and exact CycleCloud RBAC scopes
+- [X] T093 Pass the control identity and secure custom data through the VM-only Bicep boundary and implement fail-closed first-run administrator, TLS, CLI, and managed-identity provider initialization
+- [X] T094 Generate and store protected CycleCloud administrator and TLS material, retain only secret references in evidence, and install only the public CA certificate on Windows
+- [X] T095 Refactor CycleCloud Chef convergence to require `/etc/cyclecloud/cli.ini` and the `azure` provider before cluster import, removing the unsupported credential environment and locker grant
+- [X] T096 Add regression coverage, update design and operator artifacts, and pass targeted Chef, Bicep, shell, Terraform, policy, and full repository validation
+- [ ] T097 Run the governed prerequisite plan, secret-write window, VM-only rebuild, first-run verification, two-pass convergence, and private administration acceptance

@@ -1,7 +1,6 @@
 default['cyclecloud']['version'] = '8.9.3'
 default['cyclecloud']['package_uri'] = nil
 default['cyclecloud']['private_name'] = nil
-default['cyclecloud']['certificate_secret_id'] = nil
 default['cyclecloud']['cluster_name'] = nil
 default['cyclecloud']['demo_username'] = 'slurmdemo'
 default['cyclecloud']['project_name'] = 'slurm'
@@ -10,7 +9,7 @@ default['cyclecloud']['source_template'] = '/opt/cycle/jetpack/system/projects/s
 default['cyclecloud']['headless_template'] = '/opt/cycle/jetpack/system/projects/slurm/templates/slurm-headless.txt'
 default['cyclecloud']['processor_root'] = '/opt/headless-template'
 default['cyclecloud']['inventory_path'] = '/var/lib/cyclecloud/slurm-versions.json'
-default['cyclecloud']['credential_file'] = '/run/cyclecloud/credentials'
+default['cyclecloud']['cli_config'] = '/etc/cyclecloud/cli.ini'
 default['cyclecloud']['burst_region'] = nil
 default['cyclecloud']['burst_zone'] = nil
 default['cyclecloud']['burst_vm_size'] = nil

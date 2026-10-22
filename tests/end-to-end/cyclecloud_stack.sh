@@ -82,6 +82,8 @@ case "$mode" in
       --arg vm_size "$(jq -er '.vm_size' <<<"$values")" \
       --arg zone "$(jq -er '.zone' <<<"$values")" \
       --arg nic_resource_id "$(jq -er '.nic_resource_id' <<<"$values")" \
+      --arg user_assigned_identity_resource_id "$(jq -er '.user_assigned_identity_resource_id' <<<"$values")" \
+      --arg custom_data "$(jq -er '.custom_data' <<<"$values")" \
       --arg admin_ssh_public_key "$(tr -d '\r\n' <"$CYCLECLOUD_SSH_PUBLIC_KEY_FILE")" \
       --arg image_publisher "$(jq -er '.image.publisher' <<<"$values")" \
       --arg image_offer "$(jq -er '.image.offer' <<<"$values")" \
@@ -99,6 +101,8 @@ case "$mode" in
           vmSize: {value: $vm_size},
           zone: {value: $zone},
           nicResourceId: {value: $nic_resource_id},
+          userAssignedIdentityResourceId: {value: $user_assigned_identity_resource_id},
+          customData: {value: $custom_data},
           adminSshPublicKey: {value: $admin_ssh_public_key},
           imagePublisher: {value: $image_publisher},
           imageOffer: {value: $image_offer},

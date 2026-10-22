@@ -96,6 +96,16 @@ operator action.
 | `configuration_policy` | Pinned Chef policy artifact |
 | `configuration_state` | `pending`, `converging`, `converged`, `failed` |
 
+## CycleCloud Platform Boundary
+
+| Field | Rules |
+|---|---|
+| `control_identity` | User-assigned identity attached to the VM; subscription Reader plus only the dedicated compute, burst-network, Key Vault, and locker-identity permissions required by CycleCloud |
+| `locker_identity` | Separate user-assigned identity with Blob data access only to the private locker account |
+| `compute_resource_group` | Dedicated Terraform-owned resource group selected by the `azure` provider account |
+| `locker` | Private Terraform-owned storage account and `cyclecloud` container reached through a Blob private endpoint |
+| `first_run_state` | `pending`, `bootstrapping`, `complete`, or `failed`; `complete` requires administrator hot-import, TLS import, protected CLI initialization, and provider creation |
+
 ## Secret
 
 | Field | Rules |

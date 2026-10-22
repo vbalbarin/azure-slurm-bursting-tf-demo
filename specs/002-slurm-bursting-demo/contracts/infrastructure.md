@@ -17,6 +17,7 @@
 | CycleCloud version/image | Pinned to the planning decision and accepted Marketplace terms |
 | CycleCloud Bicep artifact | Source-controlled VM-only template from the approved source commit |
 | CycleCloud SSH public key | Protected operator-approved public key; its private counterpart never enters source or evidence |
+| CycleCloud first-run platform | Dedicated compute resource group, private locker storage/container, separate control and locker user-assigned identities, and exact RBAC scopes |
 | Scheduler image | Exact-version standard AlmaLinux image available in the source region and compatible with the scheduler VM size |
 | Burst-compute image | Independent exact-version AlmaLinux HPC image available in the burst region and compatible with the burst VM size |
 | Windows image | Pinned supported Windows Server image |
@@ -49,6 +50,8 @@
    distinct burst-region Standard NAT Gateway serves only the compute VM subnet. Each gateway has
    one managed Standard public IP; private-endpoint and Bastion subnets have no workload NAT
    Gateway association.
+10. CycleCloud uses its control identity for Azure orchestration and Key Vault reads, its separate
+    locker identity for private Blob data access, and no storage account shared key.
 
 ## Validation contract
 
@@ -59,7 +62,7 @@ Deployment is blocked unless:
 - No direct resource block or local Terraform module is present.
 - The CycleCloud Bicep template compiles, contains only one VM resource, pins the approved
   Marketplace image and plan, declares the image data disk at LUN 0, and references the
-  Terraform-owned NIC.
+  Terraform-owned NIC, control user-assigned identity, and secure custom data.
 - The canonical CycleCloud deployment-stack what-if digest matches its approval and contains no
   resource outside the VM-only ownership boundary.
 - Review finds no unintended replacement or deletion.
@@ -90,14 +93,17 @@ Deployment is blocked unless:
   changing deployment inputs.
 - The exact reviewed saved plan is applied.
 - The one-time secret writer accepts only mode-0600 protected files, passes file paths rather than
-  values to Azure CLI, and records only versioned secret IDs and names.
+  values to Azure CLI, and records only the seven expected versioned secret IDs and names.
+- Generated CycleCloud TLS has the private-name SAN, a protected private CA, a password-protected
+  PFX with one private key, and a public CA certificate suitable for Windows trust installation.
 - The exact foundation plan shows `SecurityControl=Ignore` only on the Key Vault, default-deny
   networking, and exactly one approved `/32`, and its approval explicitly authorizes the temporary
   exclusion.
 - A separate exact Terraform hardening plan removes the provisioning `/32`, disables Key Vault
   public access, and removes `SecurityControl=Ignore` in the same apply before acceptance.
 - The exact reviewed CycleCloud deployment-stack what-if is deployed only after its Terraform-owned
-  NIC exists.
+  NIC, identities, dedicated compute resource group, private locker, RBAC, and private Blob DNS
+  exist.
 
 ## Failure behavior
 

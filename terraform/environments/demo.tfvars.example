@@ -72,5 +72,4 @@ demo_username        = "slurmdemo"
 demo_user_uid_gid    = 11200
 
 # Supply these sensitive values through the approved environment-specific input channel.
-cyclecloud_certificate_secret_id = "https://example.vault.azure.net/secrets/cyclecloud-tls/version"
 chef_policy_archive_uri           = "https://protected.example.invalid/policies"

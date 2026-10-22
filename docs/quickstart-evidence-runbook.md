@@ -3860,8 +3860,27 @@ the live posture proof. Secret writing remains blocked unless the final evidence
 `matched`, the exact `/32` is present, `SecurityControl=Ignore` exists only on the vault, and the
 resource group remains untagged.
 
-Write the protected credentials through the Key Vault data plane during this bounded window. The
-script passes file paths rather than values to Azure CLI and records only secret IDs and names:
+Generate the CycleCloud application administrator and private TLS material inside protected state.
+Do not reuse the manually created `hpcadmin00` account from an investigative appliance: an
+approved rebuild discards that VM-local state and creates the declared `hpcadmin` account.
+
+```bash
+export CYCLECLOUD_PRIVATE_NAME="$(
+  terraform -chdir=terraform output -json cyclecloud_deployment |
+    jq -r '.private_name'
+)"
+export CYCLECLOUD_ADMIN_PASSWORD_FILE="$DEMO_STATE_DIR/cyclecloud-admin-password"
+export CYCLECLOUD_TLS_CA_FILE="$DEMO_STATE_DIR/cyclecloud-tls-ca.crt"
+export CYCLECLOUD_TLS_PFX_FILE="$DEMO_STATE_DIR/cyclecloud-tls.pfx"
+export CYCLECLOUD_TLS_PFX_PASSWORD_FILE="$DEMO_STATE_DIR/cyclecloud-tls-pfx-password"
+tests/end-to-end/generate_cyclecloud_bootstrap_secrets.sh
+```
+
+The generator verifies the private-name SAN and certificate lifetime and writes every private
+artifact with owner-only permissions. Write the three existing administrative secrets plus the
+generated CycleCloud administrator password, PFX, PFX password, and public CA certificate through
+the Key Vault data plane during this bounded window. The script passes file paths rather than
+values to Azure CLI and records only seven secret IDs and names:
 
 ```bash
 export ADMIN_SECRET_EVIDENCE_FILE="$DEMO_EVIDENCE_DIR/admin-secret-references.json"
@@ -3895,10 +3914,13 @@ tests/end-to-end/cyclecloud_stack.sh what-if
 Review the compiled template and what-if. Azure can emit `Ignore` records for unrelated existing
 resource-group resources; retain those records in the digest-bound raw what-if, but exclude them
 from the VM-only actionable-change guard. Require every non-`Ignore` record to target the
-`Microsoft.Compute/virtualMachines` resource named for CycleCloud, and require the initial
-deployment to contain its create action. Confirm the matching pinned Marketplace plan and image,
-the Terraform-owned NIC ID, no public IP, system identity, OS disk, and the required `FromImage`
-data disk at LUN 0. Then create the approval:
+`Microsoft.Compute/virtualMachines` resource named for CycleCloud. For an initial run require its
+create action; for controlled first-run remediation require only the approved replacement of that
+same VM. Confirm the matching pinned Marketplace plan and image, the Terraform-owned NIC ID, no
+public IP, the Terraform-owned control user-assigned identity, secure custom data, OS disk, and the
+required `FromImage` data disk at LUN 0. The dedicated compute resource group, locker storage and
+private endpoint, identities, RBAC, and Blob private DNS are Terraform-owned prerequisites and
+MUST NOT appear as stack actions. Then create the approval:
 
 ```bash
 if read -r -p "Authorized CycleCloud stack reference: " CYCLECLOUD_APPROVAL_REFERENCE &&
@@ -4059,12 +4081,21 @@ VM inside the source VNET.
 Use Bastion RDP to reach the Windows administration jump host. From that host, use SSH over the
 private network to run:
 
+- `cloud-init status --wait --long` on the rebuilt CycleCloud VM, stopping unless it reports
+  completion without errors;
+- `cyclecloud --config=/etc/cyclecloud/cli.ini account show azure` on the CycleCloud VM, stopping
+  unless the managed-identity provider exists;
+- a private HTTPS request using the generated CA certificate, stopping on a name, chain, or HTTP
+  failure;
 - `chef/bin/converge-cyclecloud.sh` twice on the CycleCloud VM; and
 - `chef/bin/converge-scheduler.sh` twice on the scheduler.
 
 The second run on each host must report zero updated resources. Confirm CycleCloud `8.9.3`, the
-pinned Slurm project/version, role-specific images, services, identities, `/sched`, `/shared`, and
-the headless-template contracts.
+`hpcadmin` application administrator, protected CLI configuration, `azure` managed-identity
+provider, dedicated compute resource group, private locker, pinned Slurm project/version,
+role-specific images, services, identities, `/sched`, `/shared`, and the headless-template
+contracts. The Chef run MUST fail rather than import a cluster when the protected CLI
+configuration or provider account is absent.
 
 `/evidence` exists only in the development container. Capture logs to a protected temporary
 directory on each VM. Do not copy them directly into `/evidence`; use the B8.1 Bastion transfer

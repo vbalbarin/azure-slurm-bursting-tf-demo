@@ -196,7 +196,9 @@ none is supported by CycleCloud. Manual editing was rejected as non-repeatable.
 `azurecyclecloud:azure-cyclecloud:cyclecloud8-gen2:8.9.320260827` appliance. Terraform owns its
 standalone NIC and all surrounding infrastructure through pinned AVMs. A source-controlled Bicep
 deployment stack owns only the VM, matching Marketplace plan, OS disk, required image data disk at
-LUN 0, and system-assigned identity.
+LUN 0, user-assigned control identity attachment, and secure custom-data handoff. Terraform owns
+the control and locker identities, dedicated compute resource group, private locker
+storage/container and endpoint, RBAC, and private Blob DNS.
 
 **Rationale**: Azure image metadata for every evaluated CycleCloud 8.9 Gen2 image declares an
 embedded data disk at LUN 0. The pinned compute AVM uses `azurerm_linux_virtual_machine`, whose
@@ -225,17 +227,19 @@ template deployment was rejected because deleting its deployment record does not
 
 ## Guest configuration boundary
 
-**Decision**: Terraform creates VMs and invokes only a minimal bootstrap through AVM-supported
-custom data or VM extensions. Version-controlled Chef Local policy and cookbooks own subsequent
-CycleCloud and scheduler convergence. Chef does not create or mutate Azure control-plane
-resources.
+**Decision**: Terraform creates VMs and renders a protected-reference-only CycleCloud first-run
+cloud-init document. That bootstrap uses the control identity to retrieve generated administrator
+and TLS material, hot-import the initial application administrator, import the PFX, initialize
+`/etc/cyclecloud/cli.ini`, and create the managed-identity Azure provider. Version-controlled Chef
+Local policy and cookbooks own subsequent CycleCloud cluster and scheduler convergence. Chef does
+not create or mutate Azure control-plane resources.
 
 **Rationale**: This cleanly implements the constitution's control-plane and guest-configuration
 separation. Chef Local requires no Chef server and provides native idempotent resources. The
-CycleCloud cookbook installs and configures the pinned service, private TLS certificate, CLI,
-project discovery, headless template generation, and cluster import. The scheduler cookbook owns
-Slurm/Munge identities, packages, NFS exports, demonstration identity, autoscaler integration,
-services, and configuration.
+CycleCloud cookbook installs and configures the pinned service, verifies the bootstrap-owned CLI
+and provider, performs project discovery and headless template generation, and imports the
+cluster. The scheduler cookbook owns Slurm/Munge identities, packages, NFS exports, demonstration
+identity, autoscaler integration, services, and configuration.
 
 **Alternatives considered**: Terraform provisioners and large cloud-init documents were rejected
 because they obscure state and idempotency. Chef Server was rejected as unnecessary infrastructure.
@@ -245,7 +249,8 @@ mode.
 ## Secrets and identity
 
 **Decision**: Use Entra ID and least-privilege RBAC for Azure and Key Vault. Generate the
-CycleCloud and scheduler SSH keys and Windows password only in protected run state. Terraform
+CycleCloud and scheduler SSH keys, Windows password, CycleCloud administrator password, and private
+CA/server/PFX material only in protected run state. Terraform
 receives only the scheduler public key and Windows password as sensitive environment inputs and
 does not own Key Vault secret resources. During one-time secret writes, enable Key Vault public
 access with default deny and only the approved runner's exact `/32`. The active management-group
@@ -257,8 +262,8 @@ Terraform hardening plan that disables public access, removes all public IP rule
 exclusion tag in the same apply. The accepted environment requires that hardening apply and
 private endpoint DNS linked to both VNETs. Never write values into source, ordinary logs,
 inventory, evidence, or nonsensitive Terraform outputs.
-Install the private CycleCloud certificate from Key Vault and place its trust chain on the Windows
-host through managed guest configuration.
+Install the PFX into CycleCloud through the supported keystore command. Store only the generated
+public CA certificate in the Windows trusted-root store through managed guest configuration.
 
 **Rationale**: This matches the clarified identity, networking, and certificate requirements while
 allowing local credentials only where the products require them.

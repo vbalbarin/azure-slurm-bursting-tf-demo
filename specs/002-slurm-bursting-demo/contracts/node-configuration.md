@@ -15,12 +15,12 @@
 The converged node must:
 
 1. Run pinned CycleCloud 8.9.3 at a private DNS name with no public application ingress.
-2. Present the Key Vault-held certificate and full trusted chain for that private name.
-3. Provide the CycleCloud CLI non-interactively.
-4. Discover and record installed Slurm project versions.
-5. Fetch the selected project source and invoke the headless-template processor.
-6. Validate and import one cluster with the configured stable cluster name.
-7. Grant only the required demonstration-user cluster access.
+2. Present the bootstrap-imported Key Vault PFX and full trusted chain for that private name.
+3. Provide the CycleCloud CLI non-interactively through protected `/etc/cyclecloud/cli.ini`.
+4. Reject convergence unless the bootstrap-created `azure` managed-identity provider exists.
+5. Discover and record installed Slurm project versions.
+6. Fetch the selected project source and invoke the headless-template processor.
+7. Validate and import one cluster with the configured stable cluster name.
 
 ## Scheduler node outcome
 

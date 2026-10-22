@@ -30,7 +30,8 @@ headless template, and use a guarded Python helper when no suitable native parse
 - Q: How should the released CycleCloud Marketplace appliance be deployed when its required image
   data disk cannot be represented by the approved Terraform VM module? → A: Terraform owns the NIC
   and every surrounding resource; a source-pinned Bicep deployment stack owns only the CycleCloud
-  VM, Marketplace plan, OS disk, required image data disk, and system identity.
+  VM, Marketplace plan, OS disk, required image data disk, user-assigned control identity
+  attachment, and secure custom-data handoff.
 - Q: What certificate trust model should the private CycleCloud website use? → A: Use a private
   certificate stored in Key Vault and install its trust chain on the Windows administration host.
 - Q: How long should security, administrative, and cluster lifecycle audit records be retained
@@ -217,16 +218,24 @@ headless cluster and its nodes.
 - **FR-004a**: The pinned CycleCloud Marketplace VM MUST be deployed from a version-controlled
   Bicep template through a deployment stack. Terraform MUST own its NIC and all surrounding
   infrastructure. The stack MUST own only the VM, Marketplace plan, OS disk, required image data
-  disk at LUN 0, and system-assigned identity. Deployment requires an exact digest-approved
+  disk at LUN 0, user-assigned control identity attachment, and secure custom-data handoff.
+  Deployment requires an exact digest-approved
   what-if, drift reconciliation uses a new what-if, and cleanup deletes the stack-owned VM before
   Terraform-owned dependencies.
+- **FR-004b**: Terraform MUST create a dedicated CycleCloud compute resource group, a private
+  locker storage account and container, separate control and locker user-assigned identities,
+  private Blob DNS, and least-privilege role assignments. First boot MUST non-interactively create
+  the local `hpcadmin` application administrator, install private-name TLS from protected Key
+  Vault secrets, initialize a protected CLI configuration, and create the managed-identity Azure
+  provider account before guest convergence can import a cluster.
 - **FR-005**: The source-region network MUST contain one supported AlmaLinux scheduler host using
   a pinned image compatible with the selected scheduler VM size, and one supported Windows
   administration host.
 - **FR-006**: The Windows host MUST be able to access the CycleCloud application over private
   networking, and the CycleCloud application MUST NOT be directly reachable from the public
   internet. The application MUST present a certificate valid for its private name, with the
-  certificate stored in the secret store and its trust chain installed on the Windows host.
+  password-protected PFX stored in the secret store and only its generated private CA certificate
+  installed in the Windows trusted-root store.
 - **FR-007**: Azure Bastion Standard MUST provide supported browser or native-client RDP access
   only to the Windows administration VM through a root-owned Standard public IP passed into the
   Bastion module, without assigning public IP addresses to any VM. Acceptance MUST require at
@@ -253,7 +262,10 @@ headless cluster and its nodes.
   resource and secret-store access. Secret access MUST be auditable, and secret values MUST NOT
   appear in source control, deployment outputs, logs, plans, or general VM metadata.
 - **FR-010**: The CycleCloud and scheduler hosts MUST be prepared consistently with the repository
-  guidance through Chef Local without interactive configuration steps after deployment.
+  guidance without interactive configuration steps after deployment. CycleCloud first-run
+  application initialization MUST complete through cloud-init before Chef Local uses the protected
+  `/etc/cyclecloud/cli.ini`; Chef MUST fail explicitly when that file or the `azure` provider
+  account is unavailable.
 - **FR-011**: The environment MUST discover the installed CycleCloud release and its associated
   Slurm project and template rather than assuming a fixed template path or project version.
 - **FR-012**: The environment MUST produce a headless cluster definition from the discovered

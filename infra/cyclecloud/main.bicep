@@ -20,6 +20,13 @@ param zone string
 @description('Resource ID of the Terraform-owned CycleCloud NIC.')
 param nicResourceId string
 
+@description('Terraform-owned control-plane user-assigned managed identity resource ID.')
+param userAssignedIdentityResourceId string
+
+@secure()
+@description('Base64-encoded cloud-init payload that performs protected first-run configuration.')
+param customData string
+
 @description('Administrative Linux username.')
 param adminUsername string = 'cyclecloudadmin'
 
@@ -56,7 +63,10 @@ resource cyclecloudVm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
   ]
   tags: tags
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentityResourceId}': {}
+    }
   }
   plan: {
     name: planName
@@ -80,6 +90,7 @@ resource cyclecloudVm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
     osProfile: {
       computerName: vmName
       adminUsername: adminUsername
+      customData: customData
       linuxConfiguration: {
         disablePasswordAuthentication: true
         ssh: {
@@ -123,4 +134,4 @@ resource cyclecloudVm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
 }
 
 output vmResourceId string = cyclecloudVm.id
-output principalId string = cyclecloudVm.identity.principalId
+output userAssignedIdentityResourceId string = userAssignedIdentityResourceId

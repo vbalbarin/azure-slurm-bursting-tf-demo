@@ -34,6 +34,7 @@ module "cyclecloud_private_dns" {
       ttl          = 300
       ip_addresses = [module.cyclecloud_nic.resource.private_ip_address]
     }
+
   }
 
   virtual_network_links = {
@@ -43,6 +44,27 @@ module "cyclecloud_private_dns" {
     }
     burst = {
       name               = "cyclecloud-burst-link"
+      virtual_network_id = module.burst_vnet.resource_id
+    }
+  }
+}
+
+module "blob_private_dns" {
+  source  = "Azure/avm-res-network-privatednszone/azurerm"
+  version = "0.5.0"
+
+  domain_name      = local.private_dns_zones.blob
+  parent_id        = module.resource_group.resource_id
+  enable_telemetry = false
+  tags             = local.common_tags
+
+  virtual_network_links = {
+    source = {
+      name               = "blob-source-link"
+      virtual_network_id = module.source_vnet.resource_id
+    }
+    burst = {
+      name               = "blob-burst-link"
       virtual_network_id = module.burst_vnet.resource_id
     }
   }
@@ -68,13 +90,19 @@ module "key_vault" {
     ip_rules       = var.key_vault_provisioning_access_enabled ? var.key_vault_provisioning_ipv4_cidrs : []
   }
 
-  role_assignments = {
+  role_assignments = merge({
     for id in var.operator_group_object_ids : id => {
       role_definition_id_or_name = "Key Vault Secrets Officer"
       principal_id               = id
       principal_type             = "Group"
     }
-  }
+    }, {
+    cyclecloud_secrets_user = {
+      role_definition_id_or_name = "Key Vault Secrets User"
+      principal_id               = module.cyclecloud_control_identity.principal_id
+      principal_type             = "ServicePrincipal"
+    }
+  })
 
   private_endpoints = {
     vault = {

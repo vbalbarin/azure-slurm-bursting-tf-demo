@@ -46,7 +46,6 @@ variables {
   windows_vm_size                  = "Standard_D2s_v6"
   burst_vm_size                    = "Standard_HB120rs_v3"
   cluster_name                     = "demo-cluster"
-  cyclecloud_certificate_secret_id = "https://example.invalid/secrets/tls/version"
   chef_policy_archive_uri          = "https://example.invalid/policies"
   deployment_source_commit         = "0000000000000000000000000000000000000000"
   deployment_principal_id          = "11111111-1111-4111-8111-111111111111"

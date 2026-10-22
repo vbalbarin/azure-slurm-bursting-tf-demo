@@ -5,7 +5,6 @@ describe 'cyclecloud_node::default' do
   override_attributes['cyclecloud'] = {
     'package_uri' => 'https://packages.example.invalid/cyclecloud.rpm',
     'private_name' => 'cyclecloud.internal',
-    'certificate_secret_id' => 'https://vault.example.invalid/secrets/tls/version',
     'cluster_name' => 'demo',
     'burst_region' => 'westus3',
     'burst_zone' => '1',
@@ -16,8 +15,12 @@ describe 'cyclecloud_node::default' do
   let(:chef_run) { chef_runner.converge('cyclecloud_node::default') }
   before do
     stub_command('headless-template --help >/dev/null 2>&1').and_return(false)
-    stub_command("cyclecloud show_cluster 'demo' >/dev/null 2>&1").and_return(false)
-    stub_command("cyclecloud locker list 'demo' | grep -Fx 'slurmdemo'").and_return(false)
+    stub_command(
+      "test -s '/etc/cyclecloud/cli.ini' && cyclecloud --config='/etc/cyclecloud/cli.ini' account show azure >/dev/null 2>&1"
+    ).and_return(true)
+    stub_command(
+      "cyclecloud --config='/etc/cyclecloud/cli.ini' show_cluster 'demo' >/dev/null 2>&1"
+    ).and_return(false)
   end
 
   it { is_expected.to install_rpm_package('cyclecloud').with(version: '8.9.3') }
@@ -33,5 +36,6 @@ describe 'cyclecloud_node::default' do
     ).with_content('Zone = 1')
   end
   it { is_expected.to create_template('/etc/cyclecloud/slurm-cluster.properties').with(mode: '0600') }
+  it { is_expected.not_to run_ruby_block('require-cyclecloud-bootstrap') }
   it { is_expected.to run_execute('import-headless-slurm-cluster') }
 end

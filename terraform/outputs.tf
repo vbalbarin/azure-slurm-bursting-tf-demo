@@ -55,13 +55,25 @@ output "inventory" {
 output "cyclecloud_deployment" {
   description = "Secret-free inputs for the separately approved CycleCloud VM-only Bicep deployment stack."
   value = {
-    location            = var.source_region
-    resource_group_name = module.resource_group.name
-    vm_name             = local.names.cyclecloud
-    vm_size             = var.cyclecloud_vm_size
-    zone                = "1"
-    nic_resource_id     = module.cyclecloud_nic.resource_id
-    image               = var.cyclecloud_image
-    tags                = local.common_tags
+    location                           = var.source_region
+    resource_group_name                = module.resource_group.name
+    vm_name                            = local.names.cyclecloud
+    vm_size                            = var.cyclecloud_vm_size
+    zone                               = "1"
+    nic_resource_id                    = module.cyclecloud_nic.resource_id
+    user_assigned_identity_resource_id = module.cyclecloud_control_identity.resource_id
+    user_assigned_identity_client_id   = module.cyclecloud_control_identity.client_id
+    locker_identity_resource_id        = module.cyclecloud_locker_identity.resource_id
+    locker_storage_account_name        = module.cyclecloud_locker_storage.name
+    compute_resource_group_name        = module.cyclecloud_compute_resource_group.name
+    subscription_id                    = var.subscription_id
+    tenant_id                          = var.tenant_id
+    burst_region                       = var.burst_region
+    key_vault_name                     = local.names.key_vault
+    private_name                       = "${local.names.cyclecloud}.${local.private_dns_zones.cyclecloud}"
+    cyclecloud_admin_username          = var.cyclecloud_admin_username
+    custom_data                        = local.cyclecloud_custom_data
+    image                              = var.cyclecloud_image
+    tags                               = local.common_tags
   }
 }

@@ -188,6 +188,14 @@ module "burst_vnet" {
   enable_telemetry = false
   tags             = local.common_tags
 
+  role_assignments = {
+    cyclecloud_network_contributor = {
+      role_definition_id_or_name = "Network Contributor"
+      principal_id               = module.cyclecloud_control_identity.principal_id
+      principal_type             = "ServicePrincipal"
+    }
+  }
+
   subnets = {
     compute = {
       name                            = "snet-compute"

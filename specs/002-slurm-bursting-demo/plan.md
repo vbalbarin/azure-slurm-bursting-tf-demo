@@ -18,8 +18,12 @@ The separately selected burst region hosts transient compute on an independently
 pinned AlmaLinux HPC image compatible with its selected compute size. Terraform calls pinned Azure
 Verified Modules directly for every surrounding Azure resource. A source-controlled Bicep
 deployment stack owns only the released CycleCloud Marketplace VM because its required image data
-disk cannot be represented by the approved Terraform VM module. Chef Local converges the
-CycleCloud and scheduler guests. A narrowly scoped Python processor discovers the installed Slurm project,
+disk cannot be represented by the approved Terraform VM module. Terraform also owns separate
+CycleCloud control and locker identities, a dedicated compute resource group, and a private locker
+storage account/container. Secure cloud-init retrieves generated administrator and TLS material
+from Key Vault, initializes the application and protected CLI, and creates the managed-identity
+Azure provider account before Chef Local converges the CycleCloud and scheduler guests. A narrowly
+scoped Python processor discovers the installed Slurm project,
 transforms its cluster template into a headless definition with guarded atomic writes, and fails
 closed when the pinned product, regional, or role-specific image combination is incompatible. The
 acceptance path submits one job in the source region and proves that one transient compute node
@@ -49,8 +53,10 @@ pinned compatible scheduler and burst-compute AlmaLinux images; the Slurm projec
 the pinned CycleCloud image; Chef Local; CycleCloud CLI and `azslurm`; pytest and Bandit for the
 fallback processor
 
-**Storage**: Key Vault for credentials and certificates; scheduler-hosted NFS for `/sched` and
-`/shared`; Log Analytics with 90-day retention; local configuration files managed by Chef
+**Storage**: Key Vault for credentials and generated private TLS material; a private
+managed-identity-authenticated CycleCloud locker account/container; scheduler-hosted NFS for
+`/sched` and `/shared`; Log Analytics with 90-day retention; local configuration files managed by
+cloud-init and Chef
 
 **Testing**: `terraform fmt -check`, `terraform validate`, TFLint, Checkov, reviewed Terraform
 plan; Cookstyle, Chef unit tests, Test Kitchen and InSpec with a second-converge no-change gate;
@@ -84,10 +90,11 @@ VM size, and compatible operating-system family/major release; configuration mus
 non-interactive and idempotent; secrets must not appear in outputs or logs
 
 **Scale/Scope**: One resource group spanning two regions, two VNETs, bidirectional global peering,
-two regional NAT Gateways, dedicated management and burst-workload subnets, one source-region CycleCloud VM, one
-source-region scheduler VM, one source-region Windows VM, one source-region Bastion host, one Key
-Vault, one Log Analytics workspace, one headless cluster, one demonstration user, and at most one
-burst-region node during acceptance
+two regional NAT Gateways, dedicated management and burst-workload subnets, one source-region
+CycleCloud VM with a control identity, one dedicated compute resource group, one locker identity
+and private locker storage account/container, one source-region scheduler VM, one source-region
+Windows VM, one source-region Bastion host, one Key Vault, one Log Analytics workspace, one
+headless cluster, one demonstration user, and at most one burst-region node during acceptance
 
 ## Constitution Check
 

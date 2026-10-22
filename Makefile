@@ -7,8 +7,10 @@ validate: bicep-validate terraform-fmt terraform-validate terraform-test bootstr
 
 bicep-validate:
 	az bicep build --file infra/cyclecloud/main.bicep --stdout >/dev/null
+	bash -n infra/cyclecloud/bootstrap.sh
 	bash -n tests/end-to-end/cyclecloud_stack.sh
 	bash -n tests/end-to-end/finalize_provisioning.sh
+	bash -n tests/end-to-end/generate_cyclecloud_bootstrap_secrets.sh
 	bash -n tests/end-to-end/key_vault_reconciliation.sh
 	bash -n tests/end-to-end/store_admin_secrets.sh
 

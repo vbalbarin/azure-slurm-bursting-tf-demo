@@ -10,6 +10,9 @@ import subprocess
 ROOT = Path(__file__).parents[2]
 STACK_SCRIPT = ROOT / "tests/end-to-end/cyclecloud_stack.sh"
 SECRET_SCRIPT = ROOT / "tests/end-to-end/store_admin_secrets.sh"
+BOOTSTRAP_SECRET_SCRIPT = (
+    ROOT / "tests/end-to-end/generate_cyclecloud_bootstrap_secrets.sh"
+)
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -212,7 +215,15 @@ print(json.dumps({"id": f"https://demo-vault.vault.azure.net/secrets/{name}/vers
 """,
     )
     protected_files = []
-    for name in ("cyclecloud", "scheduler", "windows"):
+    for name in (
+        "cyclecloud",
+        "scheduler",
+        "windows",
+        "cyclecloud-admin",
+        "cyclecloud-pfx",
+        "cyclecloud-pfx-password",
+        "cyclecloud-ca",
+    ):
         path = tmp_path / name
         path.write_text(f"secret-{name}")
         path.chmod(0o600)
@@ -225,6 +236,10 @@ print(json.dumps({"id": f"https://demo-vault.vault.azure.net/secrets/{name}/vers
         "CYCLECLOUD_SSH_PRIVATE_KEY_FILE": str(protected_files[0]),
         "SCHEDULER_SSH_PRIVATE_KEY_FILE": str(protected_files[1]),
         "WINDOWS_ADMIN_PASSWORD_FILE": str(protected_files[2]),
+        "CYCLECLOUD_ADMIN_PASSWORD_FILE": str(protected_files[3]),
+        "CYCLECLOUD_TLS_PFX_FILE": str(protected_files[4]),
+        "CYCLECLOUD_TLS_PFX_PASSWORD_FILE": str(protected_files[5]),
+        "CYCLECLOUD_TLS_CA_FILE": str(protected_files[6]),
         "ADMIN_SECRET_EVIDENCE_FILE": str(evidence),
     }
 
@@ -243,4 +258,38 @@ print(json.dumps({"id": f"https://demo-vault.vault.azure.net/secrets/{name}/vers
         json.loads(line)
         for line in Path(environment["FAKE_AZ_LOG"]).read_text().splitlines()
     ]
+    assert len(calls) == 7
     assert all("--file" in call and "--value" not in call for call in calls)
+
+
+def test_bootstrap_secret_generator_creates_protected_complete_material(
+    tmp_path: Path,
+) -> None:
+    environment = {
+        **os.environ,
+        "CYCLECLOUD_PRIVATE_NAME": "cyclecloud.internal",
+        "CYCLECLOUD_ADMIN_PASSWORD_FILE": str(tmp_path / "admin-password"),
+        "CYCLECLOUD_TLS_CA_FILE": str(tmp_path / "ca.crt"),
+        "CYCLECLOUD_TLS_PFX_FILE": str(tmp_path / "server.pfx"),
+        "CYCLECLOUD_TLS_PFX_PASSWORD_FILE": str(tmp_path / "pfx-password"),
+    }
+
+    result = subprocess.run(
+        [str(BOOTSTRAP_SECRET_SCRIPT)],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    for key in (
+        "CYCLECLOUD_ADMIN_PASSWORD_FILE",
+        "CYCLECLOUD_TLS_CA_FILE",
+        "CYCLECLOUD_TLS_PFX_FILE",
+        "CYCLECLOUD_TLS_PFX_PASSWORD_FILE",
+    ):
+        path = Path(environment[key])
+        assert path.is_file()
+        assert path.stat().st_mode & 0o077 == 0

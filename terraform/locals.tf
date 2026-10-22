@@ -1,6 +1,7 @@
 locals {
-  resource_group_name = "rg-${var.environment_name}-slurm"
-  cyclecloud_version  = "8.9.3"
+  resource_group_name                    = "rg-${var.environment_name}-slurm"
+  cyclecloud_compute_resource_group_name = "rg-${var.environment_name}-cyclecloud-compute"
+  cyclecloud_version                     = "8.9.3"
   scheduler_image_urn = join(":", [
     var.scheduler_image.publisher,
     var.scheduler_image.offer,
@@ -17,16 +18,19 @@ locals {
   max_burst_nodes = 1
 
   names = {
-    source_vnet   = "vnet-source"
-    burst_vnet    = "vnet-burst"
-    cyclecloud    = "${var.environment_name}-cyclecloud"
-    scheduler     = "${var.environment_name}-scheduler"
-    windows       = "${var.environment_name}-admin"
-    bastion       = "${var.environment_name}-bastion"
-    source_nat    = "${var.environment_name}-source-nat"
-    burst_nat     = "${var.environment_name}-burst-nat"
-    key_vault     = substr(replace("${var.environment_name}-slurm-kv", "-", ""), 0, 24)
-    log_analytics = "${var.environment_name}-logs"
+    source_vnet         = "vnet-source"
+    burst_vnet          = "vnet-burst"
+    cyclecloud          = "${var.environment_name}-cyclecloud"
+    scheduler           = "${var.environment_name}-scheduler"
+    windows             = "${var.environment_name}-admin"
+    bastion             = "${var.environment_name}-bastion"
+    source_nat          = "${var.environment_name}-source-nat"
+    burst_nat           = "${var.environment_name}-burst-nat"
+    key_vault           = substr(replace("${var.environment_name}-slurm-kv", "-", ""), 0, 24)
+    log_analytics       = "${var.environment_name}-logs"
+    cyclecloud_identity = "${var.environment_name}-cyclecloud-control"
+    locker_identity     = "${var.environment_name}-cyclecloud-locker"
+    locker_storage      = substr("st${replace(var.environment_name, "-", "")}cc${substr(md5(var.subscription_id), 0, 8)}", 0, 24)
   }
 
   source_subnets = {
@@ -43,6 +47,7 @@ locals {
   private_dns_zones = {
     key_vault  = "privatelink.vaultcore.azure.net"
     cyclecloud = "cyclecloud.internal"
+    blob       = "privatelink.blob.core.windows.net"
   }
 
   # tflint-ignore: terraform_unused_declarations

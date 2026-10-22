@@ -1,6 +1,6 @@
 require 'json'
 
-required = %w(package_uri private_name certificate_secret_id cluster_name burst_region burst_zone burst_vm_size burst_image_urn scheduler_private_address)
+required = %w(package_uri private_name cluster_name burst_region burst_zone burst_vm_size burst_image_urn scheduler_private_address)
 missing = required.select { |key| node['cyclecloud'][key].nil? || node['cyclecloud'][key].to_s.empty? }
 raise "Missing required CycleCloud attributes: #{missing.join(', ')}" unless missing.empty?
 
@@ -16,22 +16,6 @@ rpm_package 'cyclecloud' do
   source '/var/tmp/cyclecloud.rpm'
   version node['cyclecloud']['version']
   action :install
-end
-
-directory '/etc/cyclecloud/tls' do
-  owner 'root'
-  group 'root'
-  mode '0700'
-  recursive true
-end
-
-execute 'retrieve-cyclecloud-private-certificate' do
-  command lazy {
-    "az keyvault secret download --id '#{node['cyclecloud']['certificate_secret_id']}' " \
-      '--file /etc/cyclecloud/tls/cyclecloud.pfx --encoding base64'
-  }
-  creates '/etc/cyclecloud/tls/cyclecloud.pfx'
-  sensitive true
 end
 
 directory node['cyclecloud']['processor_root'] do
@@ -98,25 +82,23 @@ template '/etc/cyclecloud/slurm-cluster.properties' do
   sensitive true
 end
 
-execute 'import-headless-slurm-cluster' do
-  command lazy {
-    "cyclecloud import_cluster '#{node['cyclecloud']['cluster_name']}' " \
-      "-f '#{node['cyclecloud']['headless_template']}' -c /etc/cyclecloud/slurm-cluster.properties"
-  }
-  environment 'CYCLECLOUD_CREDENTIAL_FILE' => node['cyclecloud']['credential_file']
-  sensitive true
-  not_if "cyclecloud show_cluster '#{node['cyclecloud']['cluster_name']}' >/dev/null 2>&1"
+ruby_block 'require-cyclecloud-bootstrap' do
+  block do
+    raise 'CycleCloud first-run bootstrap is incomplete: protected CLI configuration or Azure provider account is unavailable'
+  end
+  not_if "test -s '#{node['cyclecloud']['cli_config']}' && " \
+         "cyclecloud --config='#{node['cyclecloud']['cli_config']}' account show azure >/dev/null 2>&1"
 end
 
-execute 'grant-demonstration-user-cluster-access' do
+execute 'import-headless-slurm-cluster' do
   command lazy {
-    "cyclecloud locker grant '#{node['cyclecloud']['cluster_name']}' " \
-      "'#{node['cyclecloud']['demo_username']}'"
+    "cyclecloud --config='#{node['cyclecloud']['cli_config']}' " \
+      "import_cluster '#{node['cyclecloud']['cluster_name']}' " \
+      "-f '#{node['cyclecloud']['headless_template']}' -c /etc/cyclecloud/slurm-cluster.properties"
   }
-  environment 'CYCLECLOUD_CREDENTIAL_FILE' => node['cyclecloud']['credential_file']
   sensitive true
-  not_if "cyclecloud locker list '#{node['cyclecloud']['cluster_name']}' | " \
-         "grep -Fx '#{node['cyclecloud']['demo_username']}'"
+  not_if "cyclecloud --config='#{node['cyclecloud']['cli_config']}' " \
+         "show_cluster '#{node['cyclecloud']['cluster_name']}' >/dev/null 2>&1"
 end
 
 file '/var/tmp/cyclecloud.rpm' do

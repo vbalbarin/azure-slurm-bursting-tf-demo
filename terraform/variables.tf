@@ -413,11 +413,15 @@ variable "demo_user_uid_gid" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations
-variable "cyclecloud_certificate_secret_id" {
-  description = "Versioned Key Vault secret ID for the CycleCloud private TLS certificate."
+variable "cyclecloud_admin_username" {
+  description = "Local CycleCloud application administrator created during first-run initialization."
   type        = string
-  sensitive   = true
+  default     = "hpcadmin"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9_-]{2,30}$", var.cyclecloud_admin_username))
+    error_message = "cyclecloud_admin_username must be a valid lowercase local account name."
+  }
 }
 
 # tflint-ignore: terraform_unused_declarations

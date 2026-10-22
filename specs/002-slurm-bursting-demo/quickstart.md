@@ -147,8 +147,11 @@ Expected outcome:
 
 ## 4. Verify guest convergence
 
-Run the implementation-provided Chef Local convergence entry point on the CycleCloud and scheduler
-hosts, then run it again unchanged.
+First verify the rebuilt CycleCloud VM completed cloud-init, `hpcadmin` exists, private-name TLS
+chains to the generated CA, and `cyclecloud --config=/etc/cyclecloud/cli.ini account show azure`
+reports the managed-identity provider with the dedicated compute resource group and private
+locker. Then run the implementation-provided Chef Local convergence entry point on the CycleCloud
+and scheduler hosts, and run it again unchanged.
 
 Expected outcome:
 

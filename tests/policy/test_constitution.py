@@ -59,7 +59,31 @@ def test_cyclecloud_bicep_exception_is_vm_only() -> None:
     assert "lun: 0" in source
     assert "createOption: 'FromImage'" in source
     assert "id: nicResourceId" in source
+    assert "type: 'UserAssigned'" in source
+    assert "customData: customData" in source
     assert "azurecyclecloud" not in source
+
+
+def test_cyclecloud_first_run_is_identity_and_secret_driven() -> None:
+    platform = (ROOT / "terraform" / "cyclecloud-platform.tf").read_text()
+    bootstrap = (ROOT / "infra" / "cyclecloud" / "bootstrap.sh").read_text()
+    for module in (
+        "cyclecloud_control_identity",
+        "cyclecloud_locker_identity",
+        "cyclecloud_compute_resource_group",
+        "cyclecloud_locker_storage",
+    ):
+        assert f'module "{module}"' in platform
+    assert re.search(r"public_network_access_enabled\s*=\s*false", platform)
+    assert re.search(r"shared_access_key_enabled\s*=\s*false", platform)
+    assert "az keyvault secret download" in bootstrap
+    assert '"AzureRMUseManagedIdentity": true' not in bootstrap
+    assert "AzureRMUseManagedIdentity: true" in bootstrap
+    assert '" keystore import_pfx' in bootstrap
+    assert "account create -f" in bootstrap
+    assert "ADMIN_PASSWORD=" not in (
+        ROOT / "infra" / "cyclecloud" / "custom-data.yaml.tftpl"
+    ).read_text()
 
 
 def test_cyclecloud_stack_has_digest_gates_and_delete_all_cleanup() -> None:
@@ -79,6 +103,17 @@ def test_admin_secret_writer_uses_files_and_redacts_values() -> None:
     assert "--file" in source
     assert "--value" not in source
     assert "--query '{id:id,name:name}'" in source
+
+
+def test_windows_trust_installs_only_cyclecloud_ca() -> None:
+    source = (
+        ROOT / "chef" / "cookbooks" / "windows_admin" / "recipes" / "default.rb"
+    ).read_text()
+    assert "Import-Certificate" in source
+    assert "Import-PfxCertificate" not in source
+    assert "cyclecloud-ca.cer" in (
+        ROOT / "chef" / "cookbooks" / "windows_admin" / "attributes" / "default.rb"
+    ).read_text()
 
 
 def test_secret_outputs_are_sensitive() -> None:

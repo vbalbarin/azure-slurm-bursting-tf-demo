@@ -1,0 +1,25 @@
+#cloud-config
+
+write_files:
+  - path: /usr/local/sbin/cyclecloud-first-run
+    owner: root:root
+    permissions: '0700'
+    encoding: b64
+    content: ${base64encode(bootstrap_script)}
+  - path: /etc/cyclecloud-first-run.env
+    owner: root:root
+    permissions: '0600'
+    content: |
+      CYCLECLOUD_ADMIN_USERNAME='${admin_username}'
+      CYCLECLOUD_CONTROL_IDENTITY_CLIENT_ID='${control_identity_client_id}'
+      AZURE_SUBSCRIPTION_ID='${subscription_id}'
+      AZURE_TENANT_ID='${tenant_id}'
+      CYCLECLOUD_COMPUTE_RESOURCE_GROUP='${compute_resource_group_name}'
+      CYCLECLOUD_BURST_REGION='${burst_region}'
+      CYCLECLOUD_LOCKER_STORAGE='${locker_storage_name}'
+      CYCLECLOUD_LOCKER_IDENTITY_RESOURCE_ID='${locker_identity_resource_id}'
+      CYCLECLOUD_KEY_VAULT_NAME='${key_vault_name}'
+      CYCLECLOUD_PRIVATE_NAME='${private_name}'
+
+runcmd:
+  - [bash, /usr/local/sbin/cyclecloud-first-run]
