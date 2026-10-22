@@ -12,10 +12,12 @@ done
 : "${PREFLIGHT_RESULTS_FILE:?PREFLIGHT_RESULTS_FILE is required}"
 : "${CAPACITY_PROBE_RESULTS_FILE:?CAPACITY_PROBE_RESULTS_FILE is required}"
 : "${EVIDENCE_DIR:?EVIDENCE_DIR is required}"
+: "${TF_VAR_backend_readiness_file:?TF_VAR_backend_readiness_file is required}"
 
 [[ -f "$TFVARS_FILE" ]] || { echo "TFVARS_FILE does not exist" >&2; exit 2; }
 [[ -f "$PREFLIGHT_RESULTS_FILE" ]] || { echo "PREFLIGHT_RESULTS_FILE does not exist" >&2; exit 2; }
 [[ -f "$CAPACITY_PROBE_RESULTS_FILE" ]] || { echo "CAPACITY_PROBE_RESULTS_FILE does not exist" >&2; exit 2; }
+[[ -f "$TF_VAR_backend_readiness_file" ]] || { echo "Backend readiness evidence does not exist" >&2; exit 2; }
 [[ -f "$PLAN_FILE" ]] || { echo "PLAN_FILE does not exist; create and review it before provisioning" >&2; exit 2; }
 [[ -f "$APPROVAL_FILE" ]] || { echo "APPROVAL_FILE does not exist" >&2; exit 10; }
 [[ "$PLAN_FILE" != *.tfvars* ]] || { echo "PLAN_FILE must not be a variable file" >&2; exit 2; }
@@ -75,6 +77,21 @@ preflight_assessed_at="$(jq -er '.capacity.assessed_at' "$PREFLIGHT_RESULTS_FILE
 preflight_age="$(($(date -u +%s) - $(date -u -d "$preflight_assessed_at" +%s)))"
 (( preflight_age >= 0 && preflight_age <= ${PREFLIGHT_MAX_AGE_SECONDS:-3600} )) || {
   echo "Preflight evidence is stale or has a future timestamp" >&2
+  exit 11
+}
+
+backend_readiness_assessed_at="$(
+  jq -er '
+    select(.status == "ready" and .failure_class == "none") |
+    .assessed_at
+  ' "$TF_VAR_backend_readiness_file"
+)"
+backend_readiness_age="$(
+  echo "$(($(date -u +%s) - $(date -u -d "$backend_readiness_assessed_at" +%s)))"
+)"
+(( backend_readiness_age >= 0 &&
+  backend_readiness_age <= ${FOUNDATION_READINESS_MAX_AGE_SECONDS:-1200} )) || {
+  echo "Backend readiness lacks the required foundation-apply freshness headroom" >&2
   exit 11
 }
 

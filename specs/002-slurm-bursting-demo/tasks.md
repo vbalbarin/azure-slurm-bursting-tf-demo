@@ -319,3 +319,4 @@ Task T048: Private-administration acceptance procedure
 - [X] T087 Add an immediate post-foundation no-change gate that retains raw logs in protected state and blocks secret writes or appliance deployment on drift
 - [X] T088 Add policy and provisioning tests and update the specification, plan, research, data model, contract, quickstart, README, and evidence runbook
 - [X] T089 Require the approved foundation plan to contain the exact temporary Key Vault provisioning posture before apply
+- [X] T090 Require final backend readiness to retain at least 40 minutes of its one-hour validity window when foundation apply begins

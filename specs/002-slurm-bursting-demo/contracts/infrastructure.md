@@ -67,6 +67,8 @@ Deployment is blocked unless:
 - Before the foundation apply, the reviewed plan must mechanically prove that the Key Vault
   provisioning window is enabled with default deny, exactly the approval-bound runner `/32`, and
   the Key Vault-only policy-exclusion tag. Reused private-only inputs must fail before apply.
+- Final backend readiness must be no more than 20 minutes old when foundation apply starts so the
+  immediate post-apply drift gate retains meaningful time within the one-hour readiness window.
 - Assertions prove that public IPs are limited to Bastion and the two outbound NAT Gateways, VM
   NICs have no public IPs, and Key Vault is private after provisioning.
 - Live validation proves the access and management subnets reference the source NAT Gateway and

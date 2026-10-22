@@ -137,6 +137,16 @@ def _environment(tmp_path: Path) -> dict[str, str]:
             }
         )
     )
+    readiness = tmp_path / "backend-readiness.json"
+    readiness.write_text(
+        json.dumps(
+            {
+                "status": "ready",
+                "failure_class": "none",
+                "assessed_at": assessed_at,
+            }
+        )
+    )
     return {
         **os.environ,
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
@@ -147,6 +157,7 @@ def _environment(tmp_path: Path) -> dict[str, str]:
         "PREFLIGHT_RESULTS_FILE": str(preflight),
         "CAPACITY_PROBE_RESULTS_FILE": str(probe),
         "EVIDENCE_DIR": str(evidence),
+        "TF_VAR_backend_readiness_file": str(readiness),
     }
 
 
@@ -284,5 +295,31 @@ def test_rejects_stale_preflight_evidence(tmp_path: Path) -> None:
 
     assert result.returncode == 11
     assert "stale" in result.stderr
+    invocations = Path(environment["FAKE_TERRAFORM_LOG"]).read_text()
+    assert "apply" not in invocations
+
+
+def test_rejects_backend_readiness_without_apply_headroom(
+    tmp_path: Path,
+) -> None:
+    environment = _environment(tmp_path)
+    readiness = Path(environment["TF_VAR_backend_readiness_file"])
+    content = json.loads(readiness.read_text())
+    content["assessed_at"] = (
+        datetime.now(timezone.utc) - timedelta(minutes=21)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    readiness.write_text(json.dumps(content))
+
+    result = subprocess.run(
+        [str(SCRIPT)],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 11
+    assert "freshness headroom" in result.stderr
     invocations = Path(environment["FAKE_TERRAFORM_LOG"]).read_text()
     assert "apply" not in invocations
