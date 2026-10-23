@@ -77,9 +77,15 @@ def test_cyclecloud_first_run_is_identity_and_secret_driven() -> None:
     assert re.search(r"public_network_access_enabled\s*=\s*false", platform)
     assert re.search(r"shared_access_key_enabled\s*=\s*false", platform)
     assert "az keyvault secret download" in bootstrap
+    assert "--overwrite" in bootstrap
+    assert "readonly cli_root=/usr/local/cyclecloud-cli" in bootstrap
+    assert 'ln -sfn "$cli_config" "$cli_default_config"' in bootstrap
     assert '"AzureRMUseManagedIdentity": true' not in bootstrap
     assert "AzureRMUseManagedIdentity: true" in bootstrap
-    assert '" keystore import_pfx' in bootstrap
+    assert 'sudo -u cycle_server "$cycle_root/cycle_server" keystore import_pfx' in bootstrap
+    assert bootstrap.index('" keystore import_pfx') < bootstrap.index(
+        '" stop', bootstrap.index('" keystore import_pfx')
+    )
     assert "account create -f" in bootstrap
     assert "ADMIN_PASSWORD=" not in (
         ROOT / "infra" / "cyclecloud" / "custom-data.yaml.tftpl"

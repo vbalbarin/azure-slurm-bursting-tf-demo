@@ -7,8 +7,9 @@ source /etc/cyclecloud-first-run.env
 readonly cycle_root=/opt/cycle_server
 readonly state_dir=/var/lib/cyclecloud-first-run
 readonly secret_dir=/run/cyclecloud-first-run
-readonly cli_root=/opt/cyclecloud-cli
+readonly cli_root=/usr/local/cyclecloud-cli
 readonly cli_config=/etc/cyclecloud/cli.ini
+readonly cli_default_config=/root/.cycle/config.ini
 readonly account_name=azure
 
 install -d -m 0700 "$state_dir" "$secret_dir" /etc/cyclecloud
@@ -29,6 +30,7 @@ download_secret() {
     --name "$secret_name" \
     --file "$output_file" \
     --encoding "$encoding" \
+    --overwrite \
     --output none
   chmod 0600 "$output_file"
 }
@@ -39,6 +41,11 @@ download_secret cyclecloud-tls-pfx-password "$secret_dir/pfx-password" utf-8
 
 admin_password="$(<"$secret_dir/admin-password")"
 pfx_password="$(<"$secret_dir/pfx-password")"
+chown cycle_server:cycle_server \
+  "$secret_dir/cyclecloud.pfx" \
+  "$secret_dir/pfx-password"
+chown root:cycle_server "$secret_dir"
+chmod 0750 "$secret_dir"
 
 "$cycle_root/cycle_server" start
 for _ in {1..60}; do
@@ -89,9 +96,9 @@ PY
   touch "$state_dir/account-imported"
 fi
 
-"$cycle_root/cycle_server" stop
-"$cycle_root/cycle_server" keystore import_pfx \
+sudo -u cycle_server "$cycle_root/cycle_server" keystore import_pfx \
   "$secret_dir/cyclecloud.pfx" --pass "$pfx_password"
+"$cycle_root/cycle_server" stop
 "$cycle_root/cycle_server" start
 
 if [[ ! -x "$cli_root/bin/cyclecloud" ]]; then
@@ -111,6 +118,8 @@ fi
   --username="$CYCLECLOUD_ADMIN_USERNAME" \
   --password="$admin_password"
 chmod 0600 "$cli_config"
+install -d -m 0700 "$(dirname "$cli_default_config")"
+ln -sfn "$cli_config" "$cli_default_config"
 
 jq -n \
   --arg subscription_id "$AZURE_SUBSCRIPTION_ID" \
@@ -140,10 +149,8 @@ jq -n \
     LockerAuthMode: "ManagedIdentity"
   }' >"$secret_dir/provider.json"
 
-if ! "$cli_root/bin/cyclecloud" --config="$cli_config" \
-  account show "$account_name" >/dev/null 2>&1; then
-  "$cli_root/bin/cyclecloud" --config="$cli_config" \
-    account create -f "$secret_dir/provider.json"
+if ! "$cli_root/bin/cyclecloud" account show "$account_name" >/dev/null 2>&1; then
+  "$cli_root/bin/cyclecloud" account create -f "$secret_dir/provider.json"
 fi
 
 rm -rf "$secret_dir" /tmp/cyclecloud-cli-installer

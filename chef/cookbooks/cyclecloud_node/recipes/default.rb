@@ -87,18 +87,17 @@ ruby_block 'require-cyclecloud-bootstrap' do
     raise 'CycleCloud first-run bootstrap is incomplete: protected CLI configuration or Azure provider account is unavailable'
   end
   not_if "test -s '#{node['cyclecloud']['cli_config']}' && " \
-         "cyclecloud --config='#{node['cyclecloud']['cli_config']}' account show azure >/dev/null 2>&1"
+         "test '#{node['cyclecloud']['cli_config']}' -ef /root/.cycle/config.ini && " \
+         'cyclecloud account show azure >/dev/null 2>&1'
 end
 
 execute 'import-headless-slurm-cluster' do
   command lazy {
-    "cyclecloud --config='#{node['cyclecloud']['cli_config']}' " \
-      "import_cluster '#{node['cyclecloud']['cluster_name']}' " \
+    "cyclecloud import_cluster '#{node['cyclecloud']['cluster_name']}' " \
       "-f '#{node['cyclecloud']['headless_template']}' -c /etc/cyclecloud/slurm-cluster.properties"
   }
   sensitive true
-  not_if "cyclecloud --config='#{node['cyclecloud']['cli_config']}' " \
-         "show_cluster '#{node['cyclecloud']['cluster_name']}' >/dev/null 2>&1"
+  not_if "cyclecloud show_cluster '#{node['cyclecloud']['cluster_name']}' >/dev/null 2>&1"
 end
 
 file '/var/tmp/cyclecloud.rpm' do

@@ -16,10 +16,10 @@ describe 'cyclecloud_node::default' do
   before do
     stub_command('headless-template --help >/dev/null 2>&1').and_return(false)
     stub_command(
-      "test -s '/etc/cyclecloud/cli.ini' && cyclecloud --config='/etc/cyclecloud/cli.ini' account show azure >/dev/null 2>&1"
+      "test -s '/etc/cyclecloud/cli.ini' && test '/etc/cyclecloud/cli.ini' -ef /root/.cycle/config.ini && cyclecloud account show azure >/dev/null 2>&1"
     ).and_return(true)
     stub_command(
-      "cyclecloud --config='/etc/cyclecloud/cli.ini' show_cluster 'demo' >/dev/null 2>&1"
+      "cyclecloud show_cluster 'demo' >/dev/null 2>&1"
     ).and_return(false)
   end
 
