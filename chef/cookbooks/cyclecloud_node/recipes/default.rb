@@ -88,7 +88,7 @@ ruby_block 'require-cyclecloud-bootstrap' do
   end
   not_if "test -s '#{node['cyclecloud']['cli_config']}' && " \
          "test '#{node['cyclecloud']['cli_config']}' -ef /root/.cycle/config.ini && " \
-         'cyclecloud account show azure >/dev/null 2>&1'
+         "! cyclecloud account list 2>&1 | grep -Fqx 'No accounts found'"
 end
 
 execute 'import-headless-slurm-cluster' do

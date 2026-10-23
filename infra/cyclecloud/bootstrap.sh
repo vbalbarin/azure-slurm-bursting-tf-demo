@@ -10,9 +10,12 @@ readonly secret_dir=/run/cyclecloud-first-run
 readonly cli_root=/usr/local/cyclecloud-cli
 readonly cli_config=/etc/cyclecloud/cli.ini
 readonly cli_default_config=/root/.cycle/config.ini
-readonly account_name=azure
 
 install -d -m 0700 "$state_dir" "$secret_dir" /etc/cyclecloud
+cleanup() {
+  rm -rf "$secret_dir" /tmp/cyclecloud-cli-installer
+}
+trap cleanup EXIT
 
 dnf install -y \
   https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm
@@ -20,6 +23,14 @@ dnf install -y azure-cli jq unzip
 
 az login --identity --client-id "$CYCLECLOUD_CONTROL_IDENTITY_CLIENT_ID" \
   --allow-no-subscriptions --output none
+account_name="$(
+  az account show \
+    --subscription "$AZURE_SUBSCRIPTION_ID" \
+    --query name \
+    --output tsv
+)"
+[[ -n "$account_name" ]]
+readonly account_name
 
 download_secret() {
   local secret_name="$1"
@@ -123,35 +134,38 @@ ln -sfn "$cli_config" "$cli_default_config"
 
 jq -n \
   --arg subscription_id "$AZURE_SUBSCRIPTION_ID" \
-  --arg tenant_id "$AZURE_TENANT_ID" \
   --arg resource_group "$CYCLECLOUD_COMPUTE_RESOURCE_GROUP" \
   --arg location "$CYCLECLOUD_BURST_REGION" \
   --arg storage_account "$CYCLECLOUD_LOCKER_STORAGE" \
   --arg locker_identity "$CYCLECLOUD_LOCKER_IDENTITY_RESOURCE_ID" \
+  --arg client_id "$CYCLECLOUD_CONTROL_IDENTITY_CLIENT_ID" \
   --arg account_name "$account_name" \
   '{
-    Environment: "public",
-    AzureRMUseManagedIdentity: true,
-    AzureResourceGroup: $resource_group,
-    AzureRMApplicationId: null,
-    AzureRMApplicationSecret: null,
+    AcceptMarketplaceTerms: true,
+    AuthType: "ManagedIdentity",
+    AzureRMClientId: $client_id,
     AzureRMSubscriptionId: $subscription_id,
-    AzureRMTenantId: $tenant_id,
+    AzureResourceGroup: $resource_group,
     DefaultAccount: true,
+    Environment: "public",
+    LockerAuthMode: "ManagedIdentity",
+    LockerIdentity: $locker_identity,
     Location: $location,
     Name: $account_name,
+    PredefinedCreds: true,
     Provider: "azure",
     ProviderId: $subscription_id,
     RMStorageAccount: $storage_account,
-    RMStorageContainer: "cyclecloud",
-    AcceptMarketplaceTerms: true,
-    LockerIdentity: $locker_identity,
-    LockerAuthMode: "ManagedIdentity"
+    RMStorageContainer: "cyclecloud"
   }' >"$secret_dir/provider.json"
 
-if ! "$cli_root/bin/cyclecloud" account show "$account_name" >/dev/null 2>&1; then
+account_details="$("$cli_root/bin/cyclecloud" account show "$account_name" 2>&1)"
+if grep -Fqx 'Account not found' <<<"$account_details"; then
   "$cli_root/bin/cyclecloud" account create -f "$secret_dir/provider.json"
 fi
+account_details="$("$cli_root/bin/cyclecloud" account show "$account_name" 2>&1)"
+! grep -Fqx 'Account not found' <<<"$account_details"
 
-rm -rf "$secret_dir" /tmp/cyclecloud-cli-installer
+cleanup
+trap - EXIT
 touch "$state_dir/complete"

@@ -81,12 +81,19 @@ def test_cyclecloud_first_run_is_identity_and_secret_driven() -> None:
     assert "readonly cli_root=/usr/local/cyclecloud-cli" in bootstrap
     assert 'ln -sfn "$cli_config" "$cli_default_config"' in bootstrap
     assert '"AzureRMUseManagedIdentity": true' not in bootstrap
-    assert "AzureRMUseManagedIdentity: true" in bootstrap
     assert 'sudo -u cycle_server "$cycle_root/cycle_server" keystore import_pfx' in bootstrap
     assert bootstrap.index('" keystore import_pfx') < bootstrap.index(
         '" stop', bootstrap.index('" keystore import_pfx')
     )
     assert "account create -f" in bootstrap
+    assert "grep -Fqx 'Account not found'" in bootstrap
+    assert 'AuthType: "ManagedIdentity"' in bootstrap
+    assert "AzureRMClientId: $client_id" in bootstrap
+    assert "AzureRMTenantId:" not in bootstrap
+    assert "PredefinedCreds: true" in bootstrap
+    assert "LockerIdentity: $locker_identity" in bootstrap
+    assert "RMStorageAccount: $storage_account" in bootstrap
+    assert "trap cleanup EXIT" in bootstrap
     assert "ADMIN_PASSWORD=" not in (
         ROOT / "infra" / "cyclecloud" / "custom-data.yaml.tftpl"
     ).read_text()
