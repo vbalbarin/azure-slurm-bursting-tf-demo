@@ -7,6 +7,10 @@ import subprocess
 
 ROOT = Path(__file__).parents[2]
 CONTRACTS = ROOT / "specs/003-terraform-backend-bootstrap/contracts"
+PASSWORD_EVIDENCE_SCHEMA = (
+    ROOT
+    / "specs/004-user-friendly-passwords/contracts/credential-evidence.schema.json"
+)
 PROTECTED_SUFFIXES = (".tfstate", ".tfplan")
 PROTECTED_NAMES = {
     "backend.local.tf",
@@ -25,6 +29,15 @@ SECRET_FIELD_NAMES = {
     "password",
     "refresh_token",
     "sas_token",
+}
+PASSWORD_DERIVED_FIELD_NAMES = {
+    "character_positions",
+    "encoded_value",
+    "hash",
+    "password",
+    "prefix",
+    "suffix",
+    "value",
 }
 
 
@@ -66,6 +79,14 @@ def test_backend_contracts_cannot_accept_secret_fields() -> None:
         schema = json.loads(schema_path.read_text())
         assert schema.get("additionalProperties") is False
         assert _schema_property_names(schema).isdisjoint(SECRET_FIELD_NAMES)
+
+
+def test_password_evidence_contract_cannot_accept_values_or_derivatives() -> None:
+    schema = json.loads(PASSWORD_EVIDENCE_SCHEMA.read_text())
+    assert schema.get("additionalProperties") is False
+    assert _schema_property_names(schema).isdisjoint(
+        SECRET_FIELD_NAMES | PASSWORD_DERIVED_FIELD_NAMES
+    )
 
 
 def test_protected_artifact_patterns_are_ignored_everywhere() -> None:

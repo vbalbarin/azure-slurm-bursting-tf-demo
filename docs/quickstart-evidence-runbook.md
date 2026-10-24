@@ -3474,6 +3474,9 @@ export CYCLECLOUD_SSH_PUBLIC_KEY_FILE="${CYCLECLOUD_SSH_PRIVATE_KEY_FILE}.pub"
 export SCHEDULER_SSH_PRIVATE_KEY_FILE="$DEMO_STATE_DIR/scheduler-admin"
 export SCHEDULER_SSH_PUBLIC_KEY_FILE="${SCHEDULER_SSH_PRIVATE_KEY_FILE}.pub"
 export WINDOWS_ADMIN_PASSWORD_FILE="$DEMO_STATE_DIR/windows-admin-password"
+export CYCLECLOUD_ADMIN_PASSWORD_FILE="$DEMO_STATE_DIR/cyclecloud-admin-password"
+export ADMIN_PASSWORD_EVIDENCE_FILE="$DEMO_STATE_DIR/admin-password-evidence.json"
+export ADMIN_PASSWORD_LOCK_FILE="$DEMO_STATE_DIR/admin-passwords.lock"
 
 if test ! -f "$CYCLECLOUD_SSH_PRIVATE_KEY_FILE"; then
   ssh-keygen -t rsa -b 4096 -m PEM -N '' \
@@ -3483,14 +3486,14 @@ if test ! -f "$SCHEDULER_SSH_PRIVATE_KEY_FILE"; then
   ssh-keygen -t rsa -b 4096 -m PEM -N '' \
     -f "$SCHEDULER_SSH_PRIVATE_KEY_FILE"
 fi
-if test ! -f "$WINDOWS_ADMIN_PASSWORD_FILE"; then
-  printf 'Aa1!%s' "$(openssl rand -base64 36)" \
-    >"$WINDOWS_ADMIN_PASSWORD_FILE"
-fi
+python3 tests/end-to-end/generate_admin_passwords.py \
+  --windows-password-file "$WINDOWS_ADMIN_PASSWORD_FILE" \
+  --cyclecloud-password-file "$CYCLECLOUD_ADMIN_PASSWORD_FILE" \
+  --evidence-file "$ADMIN_PASSWORD_EVIDENCE_FILE" \
+  --lock-file "$ADMIN_PASSWORD_LOCK_FILE"
 chmod 0600 \
   "$CYCLECLOUD_SSH_PRIVATE_KEY_FILE" \
-  "$SCHEDULER_SSH_PRIVATE_KEY_FILE" \
-  "$WINDOWS_ADMIN_PASSWORD_FILE"
+  "$SCHEDULER_SSH_PRIVATE_KEY_FILE"
 chmod 0644 \
   "$CYCLECLOUD_SSH_PUBLIC_KEY_FILE" \
   "$SCHEDULER_SSH_PUBLIC_KEY_FILE"
@@ -3502,6 +3505,14 @@ export TF_VAR_windows_admin_password="$(
   tr -d '\r\n' <"$WINDOWS_ADMIN_PASSWORD_FILE"
 )"
 ```
+
+The generator creates distinct 16-character interactive credentials for Windows account
+`windowsadmin` and CycleCloud application account `hpcadmin`. New values contain at least two
+uppercase, lowercase, numeric, and `!@#$%^*()-_+=` special characters. It preserves a complete
+existing set without rewriting either file. If exactly one password file exists, stop and review
+the interrupted run; do not delete or replace the surviving value unless a new-run recovery is
+explicitly approved. Display either value only through the protected operator procedure, never in
+ordinary terminal capture or evidence.
 
 Re-export these two sensitive Terraform variables from the protected files after any shell resume.
 Do not add them to `persist_run_context`.
@@ -3860,7 +3871,8 @@ the live posture proof. Secret writing remains blocked unless the final evidence
 `matched`, the exact `/32` is present, `SecurityControl=Ignore` exists only on the vault, and the
 resource group remains untagged.
 
-Generate the CycleCloud application administrator and private TLS material inside protected state.
+Generate the private TLS material inside protected state using the already accepted CycleCloud
+application administrator password.
 Do not reuse the manually created `hpcadmin00` account from an investigative appliance: an
 approved rebuild discards that VM-local state and creates the declared `hpcadmin` account.
 
@@ -3869,18 +3881,19 @@ export CYCLECLOUD_PRIVATE_NAME="$(
   terraform -chdir=terraform output -json cyclecloud_deployment |
     jq -r '.private_name'
 )"
-export CYCLECLOUD_ADMIN_PASSWORD_FILE="$DEMO_STATE_DIR/cyclecloud-admin-password"
 export CYCLECLOUD_TLS_CA_FILE="$DEMO_STATE_DIR/cyclecloud-tls-ca.crt"
 export CYCLECLOUD_TLS_PFX_FILE="$DEMO_STATE_DIR/cyclecloud-tls.pfx"
 export CYCLECLOUD_TLS_PFX_PASSWORD_FILE="$DEMO_STATE_DIR/cyclecloud-tls-pfx-password"
 tests/end-to-end/generate_cyclecloud_bootstrap_secrets.sh
 ```
 
-The generator verifies the private-name SAN and certificate lifetime and writes every private
-artifact with owner-only permissions. Write the three existing administrative secrets plus the
-generated CycleCloud administrator password, PFX, PFX password, and public CA certificate through
-the Key Vault data plane during this bounded window. The script passes file paths rather than
-values to Azure CLI and records only seven secret IDs and names:
+The TLS generator requires the pre-generated CycleCloud administrator password, verifies its
+owner-only permissions, verifies the private-name SAN and certificate lifetime, and writes every
+new private artifact with owner-only permissions. Write the three existing administrative secrets
+plus the generated CycleCloud administrator password, PFX, PFX password, and public CA certificate
+through the Key Vault data plane during this bounded window. The script validates the accepted
+password receipt, passes file paths rather than values to Azure CLI, and records only seven secret
+IDs and names:
 
 ```bash
 export ADMIN_SECRET_EVIDENCE_FILE="$DEMO_EVIDENCE_DIR/admin-secret-references.json"

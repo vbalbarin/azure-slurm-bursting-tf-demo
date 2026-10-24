@@ -16,7 +16,50 @@ done
 : "${CYCLECLOUD_TLS_PFX_FILE:?CYCLECLOUD_TLS_PFX_FILE is required}"
 : "${CYCLECLOUD_TLS_PFX_PASSWORD_FILE:?CYCLECLOUD_TLS_PFX_PASSWORD_FILE is required}"
 : "${CYCLECLOUD_TLS_CA_FILE:?CYCLECLOUD_TLS_CA_FILE is required}"
+: "${ADMIN_PASSWORD_EVIDENCE_FILE:?ADMIN_PASSWORD_EVIDENCE_FILE is required}"
 : "${ADMIN_SECRET_EVIDENCE_FILE:?ADMIN_SECRET_EVIDENCE_FILE is required}"
+
+[[ -f "$ADMIN_PASSWORD_EVIDENCE_FILE" ]] || {
+  printf 'Administrative password evidence does not exist\n' >&2
+  exit 2
+}
+[[ "$(stat -c '%a' "$ADMIN_PASSWORD_EVIDENCE_FILE")" == "600" ]] || {
+  printf 'Administrative password evidence must have mode 0600\n' >&2
+  exit 2
+}
+jq -e '
+  .schemaVersion == 1 and
+  (.status == "generated" or .status == "preserved") and
+  .policyProfile == "interactive-admin-v1" and
+  .uniquenessValidated == true and
+  .protectedModesValidated == true and
+  (
+    (.status == "generated" and .newValuePolicyValidated == true) or
+    (.status == "preserved" and .newValuePolicyValidated == null)
+  ) and
+  (.completedAt | type == "string") and
+  (.targets | type == "array" and length == 2) and
+  (
+    [.targets[] | select(
+      .target == "windows" and
+      .account == "windowsadmin" and
+      .secretName == "windows-admin-password" and
+      .disposition == $status
+    )] | length == 1
+  ) and
+  (
+    [.targets[] | select(
+      .target == "cyclecloud" and
+      .account == "hpcadmin" and
+      .secretName == "cyclecloud-admin-password" and
+      .disposition == $status
+    )] | length == 1
+  )
+' --arg status "$(jq -r '.status' "$ADMIN_PASSWORD_EVIDENCE_FILE")" \
+  "$ADMIN_PASSWORD_EVIDENCE_FILE" >/dev/null || {
+  printf 'Administrative password evidence is not accepted\n' >&2
+  exit 2
+}
 
 for file in \
   "$CYCLECLOUD_SSH_PRIVATE_KEY_FILE" \

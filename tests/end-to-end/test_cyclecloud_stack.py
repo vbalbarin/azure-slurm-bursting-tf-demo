@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import subprocess
 
+import pytest
+
 
 ROOT = Path(__file__).parents[2]
 STACK_SCRIPT = ROOT / "tests/end-to-end/cyclecloud_stack.sh"
@@ -188,7 +190,36 @@ def test_what_if_rejects_actionable_non_vm_changes(tmp_path: Path) -> None:
     assert result.returncode != 0
 
 
-def test_secret_writer_records_references_without_values(tmp_path: Path) -> None:
+def _password_evidence() -> dict[str, object]:
+    return {
+        "schemaVersion": 1,
+        "status": "generated",
+        "policyProfile": "interactive-admin-v1",
+        "targets": [
+            {
+                "target": "windows",
+                "account": "windowsadmin",
+                "secretName": "windows-admin-password",
+                "disposition": "generated",
+            },
+            {
+                "target": "cyclecloud",
+                "account": "hpcadmin",
+                "secretName": "cyclecloud-admin-password",
+                "disposition": "generated",
+            },
+        ],
+        "newValuePolicyValidated": True,
+        "uniquenessValidated": True,
+        "protectedModesValidated": True,
+        "completedAt": "2026-10-23T21:00:00Z",
+    }
+
+
+def _secret_writer_environment(
+    tmp_path: Path,
+    password_evidence: dict[str, object] | None = None,
+) -> tuple[dict[str, str], Path]:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     _write_executable(
@@ -229,6 +260,10 @@ print(json.dumps({"id": f"https://demo-vault.vault.azure.net/secrets/{name}/vers
         path.chmod(0o600)
         protected_files.append(path)
     evidence = tmp_path / "secret-references.json"
+    password_evidence_path = tmp_path / "admin-password-evidence.json"
+    if password_evidence is not None:
+        password_evidence_path.write_text(json.dumps(password_evidence))
+        password_evidence_path.chmod(0o600)
     environment = {
         **os.environ,
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
@@ -240,8 +275,17 @@ print(json.dumps({"id": f"https://demo-vault.vault.azure.net/secrets/{name}/vers
         "CYCLECLOUD_TLS_PFX_FILE": str(protected_files[4]),
         "CYCLECLOUD_TLS_PFX_PASSWORD_FILE": str(protected_files[5]),
         "CYCLECLOUD_TLS_CA_FILE": str(protected_files[6]),
+        "ADMIN_PASSWORD_EVIDENCE_FILE": str(password_evidence_path),
         "ADMIN_SECRET_EVIDENCE_FILE": str(evidence),
     }
+    return environment, evidence
+
+
+def test_secret_writer_records_references_without_values(tmp_path: Path) -> None:
+    environment, evidence = _secret_writer_environment(
+        tmp_path,
+        _password_evidence(),
+    )
 
     result = subprocess.run(
         [str(SECRET_SCRIPT)],
@@ -262,13 +306,59 @@ print(json.dumps({"id": f"https://demo-vault.vault.azure.net/secrets/{name}/vers
     assert all("--file" in call and "--value" not in call for call in calls)
 
 
+@pytest.mark.parametrize(
+    "password_evidence",
+    [
+        None,
+        {**_password_evidence(), "status": "failed"},
+        {**_password_evidence(), "uniquenessValidated": False},
+        {
+            **_password_evidence(),
+            "targets": [
+                {
+                    "target": "windows",
+                    "account": "wrong-account",
+                    "secretName": "windows-admin-password",
+                    "disposition": "generated",
+                },
+                _password_evidence()["targets"][1],
+            ],
+        },
+    ],
+)
+def test_secret_writer_rejects_unaccepted_password_evidence_before_azure(
+    tmp_path: Path,
+    password_evidence: dict[str, object] | None,
+) -> None:
+    environment, evidence = _secret_writer_environment(
+        tmp_path,
+        password_evidence,
+    )
+
+    result = subprocess.run(
+        [str(SECRET_SCRIPT)],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert not Path(environment["FAKE_AZ_LOG"]).exists()
+    assert not evidence.exists()
+
+
 def test_bootstrap_secret_generator_creates_protected_complete_material(
     tmp_path: Path,
 ) -> None:
+    admin_password = tmp_path / "admin-password"
+    admin_password.write_text("existing-admin-password")
+    admin_password.chmod(0o600)
     environment = {
         **os.environ,
         "CYCLECLOUD_PRIVATE_NAME": "cyclecloud.internal",
-        "CYCLECLOUD_ADMIN_PASSWORD_FILE": str(tmp_path / "admin-password"),
+        "CYCLECLOUD_ADMIN_PASSWORD_FILE": str(admin_password),
         "CYCLECLOUD_TLS_CA_FILE": str(tmp_path / "ca.crt"),
         "CYCLECLOUD_TLS_PFX_FILE": str(tmp_path / "server.pfx"),
         "CYCLECLOUD_TLS_PFX_PASSWORD_FILE": str(tmp_path / "pfx-password"),
@@ -293,3 +383,29 @@ def test_bootstrap_secret_generator_creates_protected_complete_material(
         path = Path(environment[key])
         assert path.is_file()
         assert path.stat().st_mode & 0o077 == 0
+
+
+def test_bootstrap_secret_generator_does_not_create_admin_password(
+    tmp_path: Path,
+) -> None:
+    admin_password = tmp_path / "admin-password"
+    environment = {
+        **os.environ,
+        "CYCLECLOUD_PRIVATE_NAME": "cyclecloud.internal",
+        "CYCLECLOUD_ADMIN_PASSWORD_FILE": str(admin_password),
+        "CYCLECLOUD_TLS_CA_FILE": str(tmp_path / "ca.crt"),
+        "CYCLECLOUD_TLS_PFX_FILE": str(tmp_path / "server.pfx"),
+        "CYCLECLOUD_TLS_PFX_PASSWORD_FILE": str(tmp_path / "pfx-password"),
+    }
+
+    result = subprocess.run(
+        [str(BOOTSTRAP_SECRET_SCRIPT)],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert not admin_password.exists()

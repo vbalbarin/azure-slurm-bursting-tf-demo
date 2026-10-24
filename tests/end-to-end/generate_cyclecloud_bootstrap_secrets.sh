@@ -15,13 +15,19 @@ done
 : "${CYCLECLOUD_TLS_PFX_PASSWORD_FILE:?CYCLECLOUD_TLS_PFX_PASSWORD_FILE is required}"
 : "${CYCLECLOUD_TLS_CA_FILE:?CYCLECLOUD_TLS_CA_FILE is required}"
 
-for file in \
-  "$CYCLECLOUD_ADMIN_PASSWORD_FILE" \
-  "$CYCLECLOUD_TLS_PFX_PASSWORD_FILE"; do
-  if [[ ! -f "$file" ]]; then
-    printf 'Aa1!%s' "$(openssl rand -base64 36 | tr -d '\r\n')" >"$file"
-  fi
-done
+[[ -f "$CYCLECLOUD_ADMIN_PASSWORD_FILE" ]] || {
+  printf 'Pre-generated CycleCloud administrator password does not exist\n' >&2
+  exit 2
+}
+[[ "$(stat -c '%a' "$CYCLECLOUD_ADMIN_PASSWORD_FILE")" == "600" ]] || {
+  printf 'CycleCloud administrator password must have mode 0600\n' >&2
+  exit 2
+}
+
+if [[ ! -f "$CYCLECLOUD_TLS_PFX_PASSWORD_FILE" ]]; then
+  printf 'Aa1!%s' "$(openssl rand -base64 36 | tr -d '\r\n')" \
+    >"$CYCLECLOUD_TLS_PFX_PASSWORD_FILE"
+fi
 
 if [[ ! -f "$CYCLECLOUD_TLS_PFX_FILE" || ! -f "$CYCLECLOUD_TLS_CA_FILE" ]]; then
   work_dir="$(mktemp -d)"
