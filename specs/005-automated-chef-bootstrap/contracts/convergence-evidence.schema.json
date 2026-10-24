@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/slurm-demo/convergence-evidence.schema.json",
+  "title": "Secret-free convergence evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "role",
+    "sourceRevision",
+    "manifestDigest",
+    "specificationDigest",
+    "chefVersion",
+    "slurmProjectVersion",
+    "attempt",
+    "startedAt",
+    "finishedAt",
+    "result",
+    "state",
+    "updatedResources",
+    "dependencyReceipts",
+    "cleanupVerified"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "role": {
+      "enum": [
+        "cyclecloud",
+        "scheduler"
+      ]
+    },
+    "sourceRevision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "manifestDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "specificationDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "chefVersion": {
+      "const": "18.11.11"
+    },
+    "slurmProjectVersion": {
+      "const": "4.0.11"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "interrupted"
+      ]
+    },
+    "state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updatedResources": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dependencyReceipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "digest",
+          "result"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "result": {
+            "const": "passed"
+          }
+        }
+      }
+    },
+    "cleanupVerified": {
+      "type": "boolean"
+    },
+    "hpcUser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uid",
+        "gid",
+        "publicKeyFingerprint"
+      ],
+      "properties": {
+        "uid": {
+          "const": 11200
+        },
+        "gid": {
+          "const": 11200
+        },
+        "publicKeyFingerprint": {
+          "type": "string",
+          "minLength": 16
+        }
+      }
+    },
+    "failureStage": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+        }
+      ]
+    }
+  }
+}

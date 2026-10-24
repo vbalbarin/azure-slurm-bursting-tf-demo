@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/slurm-demo/bootstrap-state.schema.json",
+  "title": "Bootstrap and convergence state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "role",
+    "state",
+    "sourceRevision",
+    "manifestDigest",
+    "specificationDigest",
+    "attempt",
+    "updatedAt",
+    "detailCode"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "role": {
+      "enum": [
+        "cyclecloud",
+        "scheduler"
+      ]
+    },
+    "state": {
+      "enum": [
+        "staging",
+        "environment_ready",
+        "waiting_dependencies",
+        "converging",
+        "failed_retryable",
+        "replacement_required",
+        "converged",
+        "verifying_idempotency",
+        "idempotency_verified",
+        "update_authorized",
+        "failed"
+      ]
+    },
+    "sourceRevision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "manifestDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "specificationDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "detailCode": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    }
+  }
+}

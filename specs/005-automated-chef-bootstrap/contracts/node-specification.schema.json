@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/slurm-demo/node-specification.schema.json",
+  "title": "Role node specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "role",
+    "sourceRevision",
+    "environment",
+    "clusterName",
+    "cyclecloudUrl",
+    "sourceRegion",
+    "burstRegion",
+    "schedulerPrivateAddress",
+    "burstCidr",
+    "slurmIdentity",
+    "mungeIdentity",
+    "hpcUser",
+    "secretReferences",
+    "specificationDigest"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "role": {
+      "enum": [
+        "cyclecloud",
+        "scheduler"
+      ]
+    },
+    "sourceRevision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "environment": {
+      "type": "string",
+      "minLength": 1
+    },
+    "clusterName": {
+      "const": "cross-region-demo"
+    },
+    "cyclecloudUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://[^/]+\\.cyclecloud\\.internal/?$"
+    },
+    "sourceRegion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "burstRegion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schedulerPrivateAddress": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "burstCidr": {
+      "type": "string",
+      "pattern": "^[0-9.]+/[0-9]{1,2}$"
+    },
+    "slurmIdentity": {
+      "$ref": "#/$defs/slurmIdentity"
+    },
+    "mungeIdentity": {
+      "$ref": "#/$defs/mungeIdentity"
+    },
+    "hpcUser": {
+      "$ref": "#/$defs/hpcUser"
+    },
+    "secretReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vaultUri",
+        "cyclecloudAdminPassword"
+      ],
+      "properties": {
+        "vaultUri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/]+\\.vault\\.azure\\.net/?$"
+        },
+        "cyclecloudAdminPassword": {
+          "const": "cyclecloud-admin-password"
+        }
+      }
+    },
+    "specificationDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "slurmIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uid",
+        "gid"
+      ],
+      "properties": {
+        "uid": {
+          "const": 11100
+        },
+        "gid": {
+          "const": 11100
+        }
+      }
+    },
+    "mungeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uid",
+        "gid"
+      ],
+      "properties": {
+        "uid": {
+          "const": 11101
+        },
+        "gid": {
+          "const": 11101
+        }
+      }
+    },
+    "hpcUser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "uid",
+        "gid",
+        "home"
+      ],
+      "properties": {
+        "name": {
+          "const": "hpcuser01"
+        },
+        "uid": {
+          "const": 11200
+        },
+        "gid": {
+          "const": 11200
+        },
+        "home": {
+          "const": "/shared/home/hpcuser01"
+        }
+      }
+    }
+  }
+}
