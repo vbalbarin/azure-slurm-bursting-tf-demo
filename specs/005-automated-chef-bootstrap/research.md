@@ -34,6 +34,22 @@ without introducing package-repository drift.
 data exceeds the platform limit. Chef Server and the Chef VM extension were rejected because this
 feature uses local mode and has no Chef Server.
 
+## Chef policy locks
+
+**Decision**: Generate `chef/policyfiles/cyclecloud.lock.json` and
+`chef/policyfiles/slurm.lock.json` with the pinned Chef client before bundle construction. Require
+the lock `revision_id` and lock-file SHA-256 in each artifact manifest, include the lock file in
+the role bundle, and run Chef Local from that immutable lock. A source or cookbook change without
+a regenerated reviewed lock fails validation.
+
+**Rationale**: A Policyfile source names the run list and cookbook paths but does not freeze the
+resolved cookbook graph. The lock revision is the executable policy identity required by FR-003
+and makes a zero-update rerun comparable to the initial convergence.
+
+**Alternatives considered**: Hashing only the Policyfile source was rejected because resolution
+can change independently. Generating locks on the VM was rejected because it makes deployment
+depend on runtime resolution and mutable external state.
+
 ## CycleCloud Slurm release inputs
 
 **Decision**: Pin CycleCloud Slurm `4.0.11`. Use
@@ -74,36 +90,46 @@ hand-written credential format.
 is not the supported integration entry point. Patching `azslurm` was rejected as an unmaintained
 fork. Giving the scheduler secret-write access was rejected as unnecessary.
 
-## `hpcuser01` identity and key reconciliation
+## `hpcuser01` identity and CycleCloud user gate
 
 **Decision**: Use UID/GID `11200`. Chef creates the scheduler group and user through supported
 resources with home `/shared/home/hpcuser01`, then generates an Ed25519 key once when absent. The
 private key remains mode `0600` in the shared home. The governed workflow reads only the public
-key through Azure VM Run Command and invokes a root-only CycleCloud reconciliation helper.
+key and fingerprint through Azure VM Run Command and emits a value-free identity receipt.
 
-The helper uses the version-qualified CycleCloud 8.9.3 application import interface to idempotently
-create or update the non-superuser application record, UID/GID metadata, public key, and
-`cross-region-demo` cluster access. It verifies the resulting record before emitting a secret-free
-receipt. Burst-node creation remains blocked until that receipt matches the scheduler key
-fingerprint and UID/GID.
+CycleCloud 8.9.3 has no documented application-user CLI or REST API. Following Microsoft's Slurm
+bursting reference workflow and CycleCloud user-management documentation, an authenticated
+operator uses Settings > Users and the cluster Access dialog to create or update non-superuser
+`hpcuser01`, enable node access with UID `11200`, install the exact public key, and grant
+non-administrative node access to `cross-region-demo`. The workflow accepts a bounded operator
+attestation bound to the scheduler receipt digest and approved specification. If the UI requires
+an application password, the operator uses a separately generated protected one-time value,
+selects password reset, and discards the value without placing it in evidence. Burst acceptance
+then verifies the observed compute-node name, UID, SSH key behavior, and shared-home ownership
+against the scheduler receipt and records the observed primary GID.
 
 **Rationale**: This preserves the original demonstration model: the scheduler is the key-pair
 authority, CycleCloud propagates the public identity to burst nodes, and the same numeric identity
-owns the shared home. A fixed value avoids nondeterministic UI-assigned UIDs.
+owns the shared home. It also uses the only supported CycleCloud 8.9.3 application-user interface
+instead of fabricating an undocumented payload. A fixed UID avoids nondeterministic UI assignment;
+Microsoft's supported UI documents UID but not GID configuration, so the observed primary GID is
+evidence rather than a claimed configurable input. Acceptance rejects conflicts and requires the
+bounded job and shared-home access to succeed.
 
-**Alternatives considered**: Directly editing Linux account databases was rejected. Creating a
-local `hpcuser01` on the appliance was rejected because it confuses OS and CycleCloud application
-identities. Pre-generating a second private key outside the scheduler was rejected because it
-unnecessarily broadens private-key custody. LDAP/AD remains a documented production extension,
-not part of this bounded demo.
+**Alternatives considered**: `cyclecloud account create` was rejected because it manages Azure
+cloud-provider accounts. The undocumented `/opt/cycle_server/config/data` datastore import was
+rejected because no supported UID, GID, SSH-key, and cluster-ACL schema exists. Direct cluster
+template provisioning was rejected for this feature because it would no longer demonstrate
+CycleCloud's built-in user propagation. Directly editing Linux account databases and creating a
+local appliance account were rejected. LDAP/AD remains the production extension.
 
 ## Dependency dispatch
 
 **Decision**: Use the governed end-to-end workflow and Azure VM Run Command. It verifies the
 CycleCloud state receipt, imported cluster, scheduler environment-ready receipt, Key Vault RBAC,
-and required secret references; invokes the scheduler wrapper; reconciles `hpcuser01`; and then
-performs second-run checks. All Run Command payloads contain references or public data, never
-secrets.
+and required secret references; invokes the scheduler wrapper; publishes the `hpcuser01` identity
+receipt; pauses for the accepted manual CycleCloud user gate; and then performs second-run and
+burst checks. All Run Command payloads contain references or public data, never secrets.
 
 **Rationale**: Run Command works without public ingress and uses the existing Azure authorization
 boundary. The operator workflow already owns ordered, evidence-producing deployment actions.
@@ -127,3 +153,36 @@ after interruption.
 **Alternatives considered**: Unlimited retries and automatic backoff were rejected because they
 hide deterministic failures. Marker-only text files were rejected because they cannot bind state
 to source and artifact identity.
+
+## Reboot and state-inspection validation
+
+**Decision**: Test both persistent VMs after successful convergence by rebooting them and proving
+that no credential rotation, cluster reimport, policy application, or convergence-attempt
+increment occurs. Measure the governed state-inspection command from invocation through
+schema-valid output for each VM and require completion in less than 60 seconds.
+
+**Rationale**: FR-017 and SC-008 require observable behavior, not merely the presence of state
+files. Explicit elapsed-time and before/after digest assertions make both requirements testable.
+
+**Alternatives considered**: Treating cloud-init success or a local `cat` as a proxy was rejected
+because neither measures the accepted remote operator path nor proves reboot safety.
+
+## Existing-VM policy updates
+
+**Decision**: The governed `update` operation builds and validates a new lock-bound release,
+transfers only its non-secret digest-bound payload through Run Command, stages it beside the
+current release, atomically switches `/opt/slurm-demo/current`, invokes the same role wrapper, and
+records separate update evidence. A failed validation or convergence restores the prior `current`
+target and preserves the last valid release. VMs never poll for updates.
+
+**Rationale**: FR-023a requires an executable update path rather than only an operation label.
+Side-by-side immutable releases preserve rollback and prove exactly which policy ran.
+
+**Alternatives considered**: In-place overwrite and periodic artifact discovery were rejected
+because they destroy provenance and silently change guest steady state.
+
+## References
+
+- [Automated deployment of CycleCloud and Slurm using CLI](https://techcommunity.microsoft.com/blog/azurehighperformancecomputingblog/automated-deployment-of-cyclecloud-and-slurm-using-cli/3943666)
+- [CycleCloud user management](https://learn.microsoft.com/azure/cyclecloud/concepts/user-management)
+- [CycleCloud CLI reference](https://learn.microsoft.com/azure/cyclecloud/cli)

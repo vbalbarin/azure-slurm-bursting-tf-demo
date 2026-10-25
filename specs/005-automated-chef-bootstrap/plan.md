@@ -1,6 +1,6 @@
 # Implementation Plan: Automated Chef Bootstrap and Convergence
 
-**Branch**: `005-automated-chef-bootstrap` | **Date**: 2026-10-23 | **Spec**: [spec.md](./spec.md)
+**Branch**: `005-automated-chef-bootstrap` | **Date**: 2026-10-24 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/005-automated-chef-bootstrap/spec.md`
 
 ## Summary
@@ -9,8 +9,9 @@ Deliver small, deterministic, role-specific Chef policy bundles and non-secret n
 through each VM's Azure custom-data document. Cloud-init verifies the bundle and pinned Chef Infra
 Client package before staging an immutable local execution environment. CycleCloud first-run then
 invokes CycleCloud Chef convergence automatically. A governed Azure VM Run Command workflow
-invokes scheduler convergence only after CycleCloud and secret-access gates pass, reconciles the
-scheduler-generated `hpcuser01` public key into CycleCloud, and records idempotency evidence.
+invokes scheduler convergence only after CycleCloud and secret-access gates pass. The scheduler
+emits a value-free `hpcuser01` public-identity receipt; a governed manual CycleCloud UI gate uses
+the supported product interface to enable matching node access before burst acceptance.
 
 ## Technical Context
 
@@ -40,14 +41,11 @@ and one transient burst node
 
 | Principle | Pre-design evaluation | Post-design evaluation |
 |---|---|---|
-| I. Single Root Composition with Azure Verified Modules | PASS: changes remain in the existing root; no Terraform wrapper module is introduced. | PASS: only a Key Vault role assignment and VM/custom-data inputs change; existing pinned root AVMs remain the resource boundary. |
-| II. Terraform Owns the Azure Control Plane | PASS: no Chef recipe creates or mutates Azure resources. | PASS: Azure VM Run Command is an execution transport in the governed workflow; all persistent Azure resource and RBAC state remains Terraform-owned. |
-| III. Chef Local Owns Guest Configuration | PASS: cloud-init only installs/verifies/stages and dispatches; Chef owns steady state. | PASS: contracts separate bootstrap states from Chef-owned node outcomes and require zero-update second runs. |
-| IV. Security, Networking, and Secret Lifecycle | PASS with researched vendor exception: `azslurm initconfig` only accepts its password through an argument. | PASS: the one invocation is root-only, trace-disabled, nonpersistent, and redacted; all other secret movement uses managed identity and private Key Vault access. |
-| V. Test-First Infrastructure | PASS: manifest, state, node-specification, retry, and identity contracts are testable before live deployment. | PASS: quickstart defines targeted static, unit, failure-injection, clean-boot, and idempotency gates. |
-| VI. Bounded Capacity and Verified Demonstration | PASS: the existing one-node burst limit is preserved. | PASS: `hpcuser01` reconciliation must complete before any burst-node creation, and acceptance still permits one transient node only. |
-| VII. Reproducible and Versioned Dependencies | PASS: all executable inputs require immutable versions and SHA-256 digests. | PASS: Chef 18.11.11 and CycleCloud Slurm 4.0.11 URLs/digests are recorded in the manifest contract; repository bundles are deterministically built and digested. |
-| VIII. Operability and Protected Diagnostics | PASS: local status, bounded logs, cleanup, retry state, and secret-free evidence are first-class outputs. | PASS: state and evidence contracts define atomic records, bounded attempts, cleanup proof, and operator-readable failure stages. |
+| I. Compliance-Preserving Legacy Operation | PASS: the change automates the accepted Slurm bursting demonstration without adding HA, DR, or scale. | PASS: one scheduler, one CycleCloud appliance, and one transient burst node remain the bounded topology. |
+| II. Declarative Infrastructure and Managed Node Configuration | PASS: Terraform/Bicep retain Azure ownership, Chef retains substantive guest steady state, and governed scripts only validate, package, dispatch approved entry points, and collect evidence. | PASS: VM Run Command carries only references/public data; scripts do not define Azure resources or replace Chef; the manual user gate uses CycleCloud's supported product UI because no supported API exists. |
+| III. Azure Verified Modules and CycleCloud Appliance Exception | PASS: existing pinned root AVMs remain the Terraform boundary, while the existing VM-only Bicep stack attaches but does not create the Terraform-owned identity. | PASS: only Terraform-owned RBAC and custom-data inputs plus the authorized CycleCloud VM stack change; no new non-AVM resource exception is introduced. |
+| IV. Security Without Exception | PASS: no public IP, public secret, broad role, or unverified artifact is planned; `azslurm initconfig` is the documented narrow product-interface exception. | PASS: runtime secrets use scoped managed identity and private Key Vault access; UI and evidence contracts prohibit credential capture; all executable inputs are digest-bound. |
+| V. Reliable, Idempotent, and Validated Change | PASS: immutable Policyfile locks, state, retries, reboot behavior, timing, and zero-update convergence are testable before live deployment. | PASS: contracts and quickstart require native validation, one identical-input retry, atomic state/evidence, sub-minute inspection, reboot safety, and final no-change proof. |
 
 No unjustified constitutional violation remains.
 
@@ -66,7 +64,8 @@ specs/005-automated-chef-bootstrap/
 │   ├── bootstrap-state.schema.json
 │   ├── convergence-evidence.schema.json
 │   ├── node-specification.schema.json
-│   └── governed-workflow.md
+│   ├── governed-workflow.md
+│   └── cyclecloud-user-ui-gate.md
 └── tasks.md
 ```
 
@@ -79,14 +78,16 @@ chef/
 ├── bin/
 │   ├── converge-cyclecloud.sh
 │   ├── converge-scheduler.sh
-│   ├── reconcile-cyclecloud-user.sh
+│   ├── publish-hpc-user-receipt.sh
 │   └── retrieve-key-vault-secret.py
 ├── cookbooks/
 │   ├── cyclecloud_node/
 │   └── slurm_scheduler/
-├── policies/
+├── policyfiles/
 │   ├── cyclecloud.rb
-│   └── scheduler.rb
+│   ├── cyclecloud.lock.json
+│   ├── slurm.rb
+│   └── slurm.lock.json
 └── test/
     └── integration/
 
@@ -124,12 +125,13 @@ Chef Server, Terraform provisioner, or custom Terraform module.
 
 Research is complete in [research.md](./research.md). It resolves artifact delivery, package
 pinning, Slurm release selection, secret retrieval, the `azslurm` credential boundary,
-`hpcuser01` reconciliation, dependency dispatch, retry behavior, and idempotency evidence.
+the `hpcuser01` public-identity receipt and governed UI gate, dependency dispatch, retry behavior,
+and idempotency evidence.
 
 ## Phase 1: Design Outcomes
 
 - [data-model.md](./data-model.md) defines artifacts, node specifications, dependency gates,
-  identity records, attempts, state transitions, and evidence.
+  identity receipts, manual user-gate attestations, attempts, state transitions, and evidence.
 - [contracts/](./contracts/) defines machine-validated manifests, role inputs, state, evidence,
   and the governed dispatch sequence.
 - [quickstart.md](./quickstart.md) defines the executable validation path from deterministic bundle
@@ -140,7 +142,8 @@ pinning, Slurm release selection, secret retrieval, the `azslurm` credential bou
 | Exception | Why Needed | Simpler Alternative Rejected Because |
 |---|---|---|
 | Root-only transient password argument to `azslurm initconfig` | The release-matched vendor CLI has no password-file, stdin, or environment option. | Hand-writing `autoscale.json` would depend on unsupported internal schema; patching the vendor package would create an unmaintained fork. |
-| Azure VM Run Command as scheduler dispatch and public-key handoff | VMs have no public ingress and scheduler convergence must wait for CycleCloud. | Polling from cloud-init races dependencies; SSH from the runner violates the access boundary; standing orchestration software is unnecessary for two nodes. |
+| Azure VM Run Command as scheduler dispatch and public-key receipt transport | VMs have no public ingress and scheduler convergence must wait for CycleCloud. | Polling from cloud-init races dependencies; SSH from the runner violates the access boundary; standing orchestration software is unnecessary for two nodes. |
+| Governed manual CycleCloud user gate | CycleCloud 8.9.3 documents application-user and cluster-access management only through its UI. | Its CLI manages cloud-provider accounts, not application users; its REST API has no user resource; the internal datastore is undocumented and cannot provide a versioned payload contract. |
 
 ## Implementation Sequence
 
@@ -151,8 +154,9 @@ Feature 005 consumes the existing `cyclecloud-admin-password` Key Vault referenc
 generate or rotate that credential.
 
 1. Complete and validate feature 004's protected credential-generation prerequisite.
-2. Add deterministic role-bundle construction, JSON schema validation, custom-data size gates, and
-   pinned package manifest generation.
+2. Generate and verify immutable role-specific Policyfile lock files, then add deterministic
+   role-bundle construction, JSON schema validation, custom-data size gates, and pinned package
+   manifest generation.
 3. Refactor common bootstrap to verify and install Chef, atomically stage content, lock execution,
    and write environment-ready state without logging protected values.
 4. Extend CycleCloud custom data to dispatch first-run then CycleCloud Chef convergence and verify
@@ -161,7 +165,9 @@ generate or rotate that credential.
    retrieval and protected `azslurm` initialization.
 6. Replace `slurmdemo` with `hpcuser01` UID/GID 11200 and add idempotent scheduler SSH-key
    generation.
-7. Add the governed dependency check, scheduler dispatch, CycleCloud user reconciliation,
-   one-retry limit, second-convergence checks, and evidence capture.
-8. Update the governed runbook and execute targeted tests, clean VM rebuilds, one-node burst, and
-   final no-change acceptance.
+7. Add the governed dependency check, scheduler dispatch, digest-bound public-identity receipt,
+   manual CycleCloud UI gate, explicit existing-VM policy staging/update path, one-retry limit,
+   second-convergence checks, and evidence capture.
+8. Update the governed runbook and execute targeted tests, approved infrastructure deployment,
+   named VM rebuilds, administrative login checks, reboot safety checks, one-node burst, final
+   Terraform no-change acceptance, and final CycleCloud deployment-stack what-if reconciliation.

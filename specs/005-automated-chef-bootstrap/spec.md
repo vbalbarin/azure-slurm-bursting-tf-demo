@@ -17,6 +17,14 @@
 - Q: When bootstrap or first convergence fails after the VM is created, what recovery behavior should the governed workflow use? → A: Permit one governed in-place retry with identical inputs; replace the VM if it fails again.
 - Q: Which identities should administer CycleCloud and submit Slurm jobs? → A: `hpcadmin` is the CycleCloud administrator and scheduler-integration identity; `hpcuser01` is the nonprivileged scheduler login and Slurm job-submission identity whose public key and stable UID/GID are propagated by CycleCloud to burst nodes.
 
+### Session 2026-10-24
+
+- Q: How is `hpcuser01` created and granted cluster access when CycleCloud 8.9.3 exposes no
+  supported application-user CLI or REST API? → A: Use a governed manual UI gate matching the
+  Microsoft reference workflow: the scheduler produces the public key and value-free receipt, an
+  operator configures the non-superuser CycleCloud user and cluster access through the supported
+  UI, and automation blocks burst-node creation until the resulting node identity is verified.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Receive a Ready CycleCloud Appliance (Priority: P1)
@@ -109,8 +117,9 @@ verify approved artifact identities, successful checks, secret-free logs, and ze
 - Bootstrap is interrupted after downloading artifacts but before installation or convergence.
 - CycleCloud first-run succeeds but provider creation or cluster import fails.
 - The protected `hpcadmin` integration credential exists but the scheduler identity cannot read it.
-- The scheduler creates `hpcuser01` but its public key or stable UID/GID is not reflected in the
-  CycleCloud user record before burst nodes are created.
+- The scheduler creates `hpcuser01` but the governed CycleCloud UI gate has not recorded the
+  matching public key, stable UID, and non-administrative cluster access before burst nodes are
+  created.
 - A previously successful VM is rebooted after bootstrap completion.
 - An operator reruns bootstrap or convergence while a previous run is active.
 - A policy update is approved for an existing VM without replacing that VM.
@@ -168,10 +177,20 @@ verify approved artifact identities, successful checks, secret-free logs, and ze
   `/shared/home/hpcuser01`; no automation may directly edit `/etc/passwd`, `/etc/shadow`, or
   `/etc/group`.
 - **FR-014b**: Scheduler convergence MUST generate or preserve the protected `hpcuser01` SSH key
-  pair in its shared home, and a governed workflow MUST register the public key, stable UID/GID,
-  and cluster access in the CycleCloud `hpcuser01` application record before burst-node creation.
-- **FR-014c**: Burst nodes created by CycleCloud MUST receive the same `hpcuser01` name, UID/GID,
-  public key, and shared-home semantics used by the scheduler.
+  pair in its shared home and emit a value-free public-identity receipt. Because CycleCloud 8.9.3
+  exposes no supported application-user API or CLI, an operator MUST use the supported CycleCloud
+  UI to create or update the non-superuser `hpcuser01` record, enable node access with UID `11200`,
+  install the exact public key, and grant non-administrative access to `cross-region-demo`.
+  The attestation MUST be bound to the current scheduler public-identity receipt and approved
+  specification. If the UI requires an application password, the operator MUST use a separately
+  generated protected one-time value, require password reset, and discard the value without
+  recording it. Burst-node creation MUST remain blocked until the governed workflow accepts the
+  operator attestation and verifies the resulting node identity.
+- **FR-014c**: Burst nodes created by CycleCloud MUST receive the same `hpcuser01` name, UID
+  `11200`, public key, and shared-home semantics used by the scheduler. Acceptance MUST record the
+  burst node's observed primary GID, reject identity or ownership conflicts, and require the
+  bounded job to succeed; it MUST NOT claim that the CycleCloud UI configures a GID it does not
+  expose.
 - **FR-015**: Secret values MUST be retrieved only at runtime and MUST NOT be embedded in policy
   bundles or node specifications, source control, Terraform state, routine logs, or secret-free
   evidence. When the release-matched vendor integration supports only a password command-line
@@ -247,9 +266,10 @@ verify approved artifact identities, successful checks, secret-free logs, and ze
   private endpoint, private DNS, identity, and Key Vault hardening controls.
 - **SC-010**: A complete clean rebuild through verified second convergence requires no undocumented
   manual intervention.
-- **SC-011**: Before the first burst node is created, the scheduler and CycleCloud records for
-  `hpcuser01` match on name, UID/GID `11200`, public-key fingerprint, shared-home contract, and
-  `cross-region-demo` access; the accepted burst node reports the same identity.
+- **SC-011**: Before the first burst node is accepted, the scheduler public-identity receipt,
+  governed CycleCloud UI attestation, and observed burst-node account match on name, UID `11200`,
+  public-key fingerprint, shared-home contract, and non-administrative `cross-region-demo` access;
+  evidence records the observed primary GID and proves it causes no identity or ownership conflict.
 
 ## Assumptions
 

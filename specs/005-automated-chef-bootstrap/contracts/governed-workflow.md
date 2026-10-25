@@ -41,12 +41,15 @@ the Run Command payload.
    - Invoke the local scheduler wrapper without secret arguments.
    - Collect only bounded state and secret-free evidence.
 
-5. **Reconcile workload identity**
+5. **Publish workload identity and enforce the manual gate**
    - Read `/shared/home/hpcuser01/.ssh/id_ed25519.pub` and its fingerprint through Run Command.
    - Reject malformed keys, unexpected UID/GID, or a fingerprint mismatch.
-   - Invoke the CycleCloud reconciliation wrapper with public key, UID/GID `11200`, cluster name,
-     and approved digests.
-   - Require the CycleCloud record and cluster access to match before marking the gate passed.
+   - Emit a canonical, value-free scheduler public-identity receipt bound to approved source and
+     specification digests and include its own SHA-256 digest.
+   - Block burst-node creation until an operator completes
+     `cyclecloud-user-ui-gate.md` and submits an accepted attestation matching the current receipt
+     digest, source revision, specification digest, and public-key fingerprint.
+   - Never invoke an undocumented CycleCloud user endpoint or datastore interface.
 
 6. **Verify idempotency**
    - Invoke each converged role with `verify-idempotency`.
@@ -68,9 +71,21 @@ the Run Command payload.
 - A changed digest requires the explicit `update` operation and cannot rehabilitate clean-boot
   evidence.
 
+## Existing-VM update contract
+
+- `update` accepts only a newly approved source, lock, manifest, specification, and bundle set.
+- The workflow validates all inputs before sending the non-secret payload through Run Command.
+- The role stages the release beside the current immutable release and atomically switches
+  `/opt/slurm-demo/current` only after validation.
+- The same role wrapper performs convergence and records distinct update evidence.
+- Validation or convergence failure restores the prior `current` target, preserves the last valid
+  release and failure evidence, and returns nonzero.
+- No VM polls for, discovers, or applies an update without explicit governed dispatch.
+
 ## Failure behavior
 
 Every failed gate or command returns nonzero, writes a bounded stage code, and leaves downstream
 actions unexecuted. Missing or malformed receipts, digest mismatches, unauthorized secret access,
-concurrent execution, unexpected CycleCloud user state, and nonzero idempotency updates are hard
-failures. Success-shaped fallback output is prohibited.
+concurrent execution, a missing/rejected CycleCloud UI attestation, unexpected burst-node
+identity, and nonzero idempotency updates are hard failures. Success-shaped fallback output is
+prohibited.
