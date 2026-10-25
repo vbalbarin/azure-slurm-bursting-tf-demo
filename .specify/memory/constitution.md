@@ -1,3 +1,12 @@
+<!--
+Sync Impact Report
+- Version change: 3.1.0 -> 3.2.0
+- Modified principles:
+  - II. Declarative Infrastructure and Managed Node Configuration
+- Added sections: none
+- Removed sections: none
+- Follow-up TODOs: none
+-->
 # Azure Slurm Bursting Terraform Demo Constitution
 
 ## Core Principles
@@ -16,12 +25,15 @@ configuration. Terraform is the default infrastructure control plane so resource
 reviewable, repeatable, and represented in state. One narrow exception permits the pinned
 CycleCloud Marketplace VM to be deployed by a Bicep deployment stack when the released image
 requires an image data-disk declaration that the approved Terraform VM module cannot express.
-Terraform MUST own the CycleCloud NIC and every surrounding resource. The Bicep stack MUST own only
-the CycleCloud VM, its Marketplace plan, OS disk, required image data disk, and system-assigned
-identity. The template and parameters MUST be version-controlled and version-pinned; an exact
-what-if result MUST receive digest-bound approval before deployment; reconciliation MUST repeat
-what-if; and cleanup MUST delete the stack and its VM before Terraform removes dependencies. This
-exception MUST NOT authorize another Bicep, ARM, script, or non-Terraform control-plane deployment.
+Terraform MUST own the CycleCloud NIC, user-assigned identities, role assignments, and every
+surrounding resource. The Bicep stack MUST own only the CycleCloud VM, its Marketplace plan, OS
+disk, required image data disk, system-assigned identity, and attachment of Terraform-owned
+user-assigned identities to that VM. Bicep MUST NOT create, delete, or assign roles to a
+user-assigned identity. The template and parameters MUST be version-controlled and version-pinned;
+an exact what-if result MUST receive digest-bound approval before deployment; reconciliation MUST
+repeat what-if; and cleanup MUST delete the stack and its VM before Terraform removes dependencies.
+This exception MUST NOT authorize another Bicep, ARM, script, or non-Terraform control-plane
+deployment.
 
 Configuration inside provisioned infrastructure nodes is a separate concern and MUST use an
 established configuration-management platform such as Chef, Puppet, Ansible, or Desired State
@@ -29,14 +41,23 @@ Configuration when that platform can perform the task. Node configuration conten
 version-controlled, repeatable, non-interactive, and idempotent. Configuration-management tools
 and their content MUST NOT create, mutate, or delete Azure control-plane resources.
 
-Python or Bash MAY be used only to process configuration files consumed by infrastructure nodes
-when the selected configuration-management platform cannot safely perform the required
-transformation. Each exception MUST document why the platform is insufficient, its inputs and
-outputs, and its failure behavior. Exception code MUST inspect current state, avoid a write when
-content is already correct, validate generated content before replacement, use an atomic update,
-and return a nonzero status without replacing the last valid file on failure. Repeated execution
-with unchanged inputs MUST produce no configuration change. Exception scripts MUST NOT provision
-infrastructure, invoke deployments, or act as a substitute for configuration management.
+Python or Bash MAY process configuration files consumed by infrastructure nodes when the selected
+configuration-management platform cannot safely perform the required transformation. Each
+exception MUST document why the platform is insufficient, its inputs and outputs, and its failure
+behavior. Exception code MUST inspect current state, avoid a write when content is already correct,
+validate generated content before replacement, use an atomic update, and return a nonzero status
+without replacing the last valid file on failure. Repeated execution with unchanged inputs MUST
+produce no configuration change.
+
+Source-controlled Python or Bash MAY also perform governed workflow validation, deterministic
+artifact packaging, secret-free evidence collection, protected runtime-input retrieval, and
+dispatch of already approved Terraform, Bicep, or configuration-management entry points. Such
+tooling MUST validate immutable inputs before execution, fail closed, redact protected values,
+preserve prior evidence, and remain independently testable and idempotent where it writes state.
+Workflow tooling MUST NOT define or directly create, mutate, or delete Azure resources; it MAY
+invoke only an exact reviewed Terraform plan or the constitution-authorized CycleCloud Bicep
+deployment stack. It MUST NOT implement substantive guest steady state or act as a substitute for
+the selected configuration-management platform.
 
 ### III. Azure Verified Modules and the CycleCloud Appliance Exception
 Azure infrastructure MUST be composed exclusively from published Azure Verified Modules (AVM)
@@ -72,10 +93,10 @@ for the retained workload. Resource replacement and deletion risks MUST be revie
 Terraform plan, and retained resources MUST use appropriate lifecycle protections when AVM
 interfaces permit them. Before any deployment or apply, the exact infrastructure configuration to
 be deployed MUST pass formatting and Terraform validation, and its plan MUST be reviewed for
-unintended changes. Configuration-management content and permitted exception scripts MUST pass
-their native validation and an idempotency test before use. A failed or stale validation, plan, or
-idempotency test MUST block deployment. These controls provide reliability without introducing
-unrequired high-availability, disaster-recovery, or scaling architecture.
+unintended changes. Configuration-management content and permitted workflow/exception scripts
+MUST pass their native validation and an idempotency test before use. A failed or stale validation,
+plan, or idempotency test MUST block deployment. These controls provide reliability without
+introducing unrequired high-availability, disaster-recovery, or scaling architecture.
 
 ## Workload Scope and Constraints
 
@@ -96,27 +117,31 @@ unrequired high-availability, disaster-recovery, or scaling architecture.
 1. Define every Azure control-plane infrastructure change in Terraform using pinned AVM module
    versions, except for the single CycleCloud VM-only Bicep stack authorized by Principle II.
 2. Define node configuration in a supported configuration-management platform. When an allowed
-   Python or Bash exception is necessary, record why the platform cannot perform the task and
-   verify that the exception is limited to processing a node-consumed configuration file.
-3. Review the change for compliance retention, security controls, reliability, idempotency,
+   Python or Bash configuration-processing exception is necessary, record why the platform cannot
+   perform the task and verify that the exception satisfies Principle II.
+3. Limit governed Python or Bash workflow tooling to validation, deterministic packaging,
+   secret-safe runtime input handling, evidence, and dispatch of exact approved declarative entry
+   points. Record its immutable inputs, outputs, failure behavior, and tests.
+4. Review the change for compliance retention, security controls, reliability, idempotency,
    prohibited control-plane scripting, and non-AVM Azure resources.
-4. Run `terraform fmt -check` and initialize Terraform sufficiently to run
+5. Run `terraform fmt -check` and initialize Terraform sufficiently to run
    `terraform validate`; both commands MUST succeed before a deployment plan is approved.
-5. Run native validation for configuration-management content and permitted exception scripts.
+6. Run native validation for configuration-management content and permitted workflow/exception
+   scripts.
    Test initial application, repeated application with unchanged inputs, already-compliant state,
    and invalid input. The repeated and already-compliant cases MUST report no change, and invalid
    input MUST preserve the last valid configuration.
-6. Generate a Terraform plan from the same configuration and inputs intended for deployment.
+7. Generate a Terraform plan from the same configuration and inputs intended for deployment.
    Review resource creation, mutation, replacement, and deletion, with explicit attention to
    retained legacy resources and security controls.
-7. For the CycleCloud exception, compile the source-pinned Bicep template, generate an exact
+8. For the CycleCloud exception, compile the source-pinned Bicep template, generate an exact
    deployment-stack what-if from the approved parameters, and bind approval to its digest.
-8. Run `terraform apply` and the CycleCloud stack deployment only from their successfully
+9. Run `terraform apply` and the CycleCloud stack deployment only from their successfully
    validated and reviewed artifacts, then apply only the validated node configuration. Any
    infrastructure, node-configuration, module, provider, template, variable, parameter, input, or
    state-context change after validation MUST invalidate the applicable gate and require validation
    and review again.
-9. Record Terraform and Bicep validation, plan and what-if review, node-configuration validation,
+10. Record Terraform and Bicep validation, plan and what-if review, node-configuration validation,
    exception justification, and idempotency-test evidence with the change for compliance
    traceability.
 
@@ -135,4 +160,4 @@ MUST rule. Compliance MUST be re-evaluated whenever Terraform, provider, AVM,
 configuration-management tool, or permitted script-runtime versions change and before every
 deployment.
 
-**Version**: 3.1.0 | **Ratified**: 2026-10-07 | **Last Amended**: 2026-10-20
+**Version**: 3.2.0 | **Ratified**: 2026-10-07 | **Last Amended**: 2026-10-24
