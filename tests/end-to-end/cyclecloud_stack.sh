@@ -84,6 +84,15 @@ case "$mode" in
       --arg nic_resource_id "$(jq -er '.nic_resource_id' <<<"$values")" \
       --arg user_assigned_identity_resource_id "$(jq -er '.user_assigned_identity_resource_id' <<<"$values")" \
       --arg custom_data "$(jq -er '.custom_data' <<<"$values")" \
+      --arg chef_payload_base64 "$(jq -er '.chef_payload_base64' <<<"$values")" \
+      --arg chef_manifest_base64 "$(jq -er '.chef_manifest_base64' <<<"$values")" \
+      --arg chef_node_specification_base64 "$(jq -er '.chef_node_specification_base64' <<<"$values")" \
+      --arg chef_policy_lock_base64 "$(jq -er '.chef_policy_lock_base64' <<<"$values")" \
+      --arg chef_payload_sha256 "$(jq -er '.chef_payload_sha256' <<<"$values")" \
+      --arg chef_manifest_sha256 "$(jq -er '.chef_manifest_sha256' <<<"$values")" \
+      --arg chef_node_specification_sha256 "$(jq -er '.chef_node_specification_sha256' <<<"$values")" \
+      --arg chef_policy_lock_sha256 "$(jq -er '.chef_policy_lock_sha256' <<<"$values")" \
+      --argjson chef_decoded_size_bytes "$(jq -er '.chef_decoded_size_bytes' <<<"$values")" \
       --arg admin_ssh_public_key "$(tr -d '\r\n' <"$CYCLECLOUD_SSH_PUBLIC_KEY_FILE")" \
       --arg image_publisher "$(jq -er '.image.publisher' <<<"$values")" \
       --arg image_offer "$(jq -er '.image.offer' <<<"$values")" \
@@ -103,6 +112,15 @@ case "$mode" in
           nicResourceId: {value: $nic_resource_id},
           userAssignedIdentityResourceId: {value: $user_assigned_identity_resource_id},
           customData: {value: $custom_data},
+          chefPayloadBase64: {value: $chef_payload_base64},
+          chefManifestBase64: {value: $chef_manifest_base64},
+          chefNodeSpecificationBase64: {value: $chef_node_specification_base64},
+          chefPolicyLockBase64: {value: $chef_policy_lock_base64},
+          chefPayloadSha256: {value: $chef_payload_sha256},
+          chefManifestSha256: {value: $chef_manifest_sha256},
+          chefNodeSpecificationSha256: {value: $chef_node_specification_sha256},
+          chefPolicyLockSha256: {value: $chef_policy_lock_sha256},
+          chefDecodedSizeBytes: {value: $chef_decoded_size_bytes},
           adminSshPublicKey: {value: $admin_ssh_public_key},
           imagePublisher: {value: $image_publisher},
           imageOffer: {value: $image_offer},

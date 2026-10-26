@@ -5,7 +5,7 @@ driver:
 provisioner:
   name: chef_zero
   product_name: chef
-  product_version: 18.8.54
+  product_version: 18.11.11
 
 verifier:
   name: inspec

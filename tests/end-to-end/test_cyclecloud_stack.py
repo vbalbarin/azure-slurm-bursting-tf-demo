@@ -15,11 +15,91 @@ SECRET_SCRIPT = ROOT / "tests/end-to-end/store_admin_secrets.sh"
 BOOTSTRAP_SECRET_SCRIPT = (
     ROOT / "tests/end-to-end/generate_cyclecloud_bootstrap_secrets.sh"
 )
+FIRST_RUN = ROOT / "infra/cyclecloud/bootstrap.sh"
+BICEP_TEMPLATE = ROOT / "infra/cyclecloud/main.bicep"
+CONVERGENCE_WRAPPER = ROOT / "chef/bin/converge-cyclecloud.sh"
 
 
 def _write_executable(path: Path, content: str) -> None:
     path.write_text(content)
     path.chmod(0o755)
+
+
+def test_cyclecloud_first_run_stages_verified_payload_before_convergence() -> None:
+    script = FIRST_RUN.read_text(encoding="utf-8")
+    assert "CYCLECLOUD_CHEF_PAYLOAD_B64" in script
+    assert "CYCLECLOUD_CHEF_PAYLOAD_SHA256" in script
+    assert "CYCLECLOUD_CHEF_MANIFEST_B64" in script
+    assert "CYCLECLOUD_CHEF_SPECIFICATION_B64" in script
+    assert "CYCLECLOUD_CHEF_POLICY_LOCK_B64" in script
+    assert script.index('touch "$state_dir/complete"') < script.index(
+        "CHEF_POLICY_NAME=cyclecloud"
+    )
+    assert script.index("sha256sum") < script.index("chef/bootstrap/linux.sh")
+    assert script.index("chef/bootstrap/linux.sh") < script.index(
+        "chef/bin/converge-cyclecloud.sh"
+    )
+
+
+def test_cyclecloud_first_run_cleans_protected_material_and_is_reboot_safe() -> None:
+    script = FIRST_RUN.read_text(encoding="utf-8")
+    assert 'rm -rf "$secret_dir"' in script
+    assert 'if [[ -f "$state_dir/converged" ]]' in script
+    assert "exec /opt/slurm-demo/current/chef/bin/converge-cyclecloud.sh" not in script
+
+
+def test_cyclecloud_bicep_declares_payload_contract_without_more_resources() -> None:
+    template = BICEP_TEMPLATE.read_text(encoding="utf-8")
+    for parameter in (
+        "chefPayloadBase64",
+        "chefManifestBase64",
+        "chefNodeSpecificationBase64",
+        "chefPolicyLockBase64",
+        "chefPayloadSha256",
+        "chefManifestSha256",
+        "chefNodeSpecificationSha256",
+        "chefPolicyLockSha256",
+    ):
+        assert f"param {parameter} string" in template
+    assert "@maxLength(80000)" in template
+    assert "@maxValue(60000)" in template
+    assert sum(line.startswith("resource ") for line in template.splitlines()) == 1
+
+
+def test_cyclecloud_stack_passes_terraform_payload_contract_to_bicep() -> None:
+    script = STACK_SCRIPT.read_text(encoding="utf-8")
+    for field in (
+        "chef_payload_base64",
+        "chef_manifest_base64",
+        "chef_node_specification_base64",
+        "chef_policy_lock_base64",
+        "chef_payload_sha256",
+        "chef_manifest_sha256",
+        "chef_node_specification_sha256",
+        "chef_policy_lock_sha256",
+        "chef_decoded_size_bytes",
+    ):
+        assert f".{field}" in script
+    for parameter in (
+        "chefPayloadBase64",
+        "chefManifestBase64",
+        "chefNodeSpecificationBase64",
+        "chefPolicyLockBase64",
+        "chefPayloadSha256",
+        "chefManifestSha256",
+        "chefNodeSpecificationSha256",
+        "chefPolicyLockSha256",
+        "chefDecodedSizeBytes",
+    ):
+        assert f"{parameter}: {{value:" in script
+
+
+def test_cyclecloud_convergence_uses_immutable_current_release() -> None:
+    script = CONVERGENCE_WRAPPER.read_text(encoding="utf-8")
+    assert "/opt/slurm-demo/current" in script
+    assert "record-evidence" in script
+    assert "--policy-revision" in script
+    assert "--policy-lock-sha256" in script
 
 
 def _stack_environment(tmp_path: Path) -> dict[str, str]:

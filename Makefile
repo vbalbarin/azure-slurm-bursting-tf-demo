@@ -3,17 +3,25 @@ CHECKOV := $(if $(wildcard .venv/bin/checkov),.venv/bin/checkov,checkov)
 
 .PHONY: validate bicep-validate terraform-fmt terraform-init terraform-validate terraform-test bootstrap-init bootstrap-test backend-contract-test backend-evidence-test policy-test end-to-end-unit python-test python-type python-security chef-style chef-unit chef-integration
 
-validate: bicep-validate terraform-fmt terraform-validate terraform-test bootstrap-test backend-contract-test backend-evidence-test policy-test end-to-end-unit python-type python-security python-test
+validate: bicep-validate terraform-fmt terraform-validate terraform-test bootstrap-test backend-contract-test backend-evidence-test policy-test end-to-end-unit python-type python-security python-test chef-style chef-unit
 
 bicep-validate:
 	az bicep build --file infra/cyclecloud/main.bicep --stdout >/dev/null
 	$(PYTHON) -m py_compile tests/end-to-end/generate_admin_passwords.py
+	$(PYTHON) -m py_compile chef/bin/convergence_state.py
+	$(PYTHON) -m py_compile chef/bin/retrieve-key-vault-secret.py
 	bash -n infra/cyclecloud/bootstrap.sh
 	bash -n tests/end-to-end/cyclecloud_stack.sh
 	bash -n tests/end-to-end/finalize_provisioning.sh
 	bash -n tests/end-to-end/generate_cyclecloud_bootstrap_secrets.sh
 	bash -n tests/end-to-end/key_vault_reconciliation.sh
 	bash -n tests/end-to-end/store_admin_secrets.sh
+	bash -n tests/end-to-end/build_chef_policy_bundles.sh
+	bash -n tests/end-to-end/converge_linux_roles.sh
+	bash -n chef/bin/converge-cyclecloud.sh
+	bash -n chef/bin/converge-scheduler.sh
+	bash -n chef/bin/publish-hpc-user-receipt.sh
+	bash -n chef/test/integration/idempotency/verify.sh
 
 terraform-fmt:
 	terraform -chdir=terraform fmt -check -recursive
@@ -52,7 +60,7 @@ policy-test:
 	$(PYTHON) -m pytest tests/policy
 
 end-to-end-unit:
-	$(PYTHON) -m pytest tests/end-to-end/test_preflight.py tests/end-to-end/test_verify_inventory.py tests/end-to-end/test_capacity_probe.py tests/end-to-end/test_provision.py tests/end-to-end/test_cyclecloud_stack.py tests/end-to-end/test_generate_admin_passwords.py tests/end-to-end/test_key_vault_reconciliation.py tests/end-to-end/test_export_preflight_env.py tests/end-to-end/test_marketplace_terms.py tests/end-to-end/test_render_preflight_summary.py
+	$(PYTHON) -m pytest tests/end-to-end/test_preflight.py tests/end-to-end/test_verify_inventory.py tests/end-to-end/test_capacity_probe.py tests/end-to-end/test_provision.py tests/end-to-end/test_cyclecloud_stack.py tests/end-to-end/test_generate_admin_passwords.py tests/end-to-end/test_key_vault_reconciliation.py tests/end-to-end/test_export_preflight_env.py tests/end-to-end/test_marketplace_terms.py tests/end-to-end/test_render_preflight_summary.py tests/end-to-end/test_chef_bootstrap_contracts.py tests/end-to-end/test_convergence_audit.py tests/end-to-end/test_converge_linux_roles.py tests/end-to-end/test_scheduler_bootstrap.py
 
 python-test:
 	PYTHONPATH=tools/headless_template/src $(PYTHON) -m pytest tools/headless_template/tests

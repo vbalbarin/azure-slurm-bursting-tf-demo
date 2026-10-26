@@ -16,6 +16,29 @@ locals {
   ])
   # tflint-ignore: terraform_unused_declarations
   max_burst_nodes = 1
+  chef_role_payloads = var.chef_role_payloads != null ? var.chef_role_payloads : {
+    for role in ["cyclecloud", "scheduler"] :
+    role => {
+      policy_archive_base64 = ""
+      manifest_json = jsonencode({
+        schemaVersion    = 1
+        role             = role
+        sourceRevision   = ""
+        policyName       = role == "scheduler" ? "slurm" : "cyclecloud"
+        policyRevision   = ""
+        policyLockSha256 = ""
+        artifacts = [{
+          name      = "${role}.tgz"
+          kind      = "policy"
+          version   = ""
+          uri       = null
+          sha256    = ""
+          sizeBytes = 0
+        }]
+        manifestDigest = ""
+      })
+    }
+  }
 
   names = {
     source_vnet         = "vnet-source"
@@ -29,6 +52,7 @@ locals {
     key_vault           = substr(replace("${var.environment_name}-slurm-kv", "-", ""), 0, 24)
     log_analytics       = "${var.environment_name}-logs"
     cyclecloud_identity = "${var.environment_name}-cyclecloud-control"
+    scheduler_identity  = "${var.environment_name}-scheduler-bootstrap"
     locker_identity     = "${var.environment_name}-cyclecloud-locker"
     locker_storage      = substr("st${replace(var.environment_name, "-", "")}cc${substr(md5(var.subscription_id), 0, 8)}", 0, 24)
   }
@@ -74,4 +98,57 @@ locals {
       SecurityControl = "Ignore"
     } : {}
   )
+
+  scheduler_private_address = cidrhost(local.source_subnets.management, 10)
+  scheduler_key_vault_role  = "Key Vault Secrets User"
+  cyclecloud_admin_secret_name = join("-", [
+    "cyclecloud",
+    "admin",
+    "password",
+  ])
+
+  chef_node_specification_common = {
+    schemaVersion           = 1
+    sourceRevision          = try(jsondecode(local.chef_role_payloads.scheduler.manifest_json).sourceRevision, "")
+    environment             = var.environment_name
+    clusterName             = var.cluster_name
+    cyclecloudUrl           = "https://${local.names.cyclecloud}.${local.private_dns_zones.cyclecloud}"
+    sourceRegion            = var.source_region
+    burstRegion             = var.burst_region
+    schedulerPrivateAddress = local.scheduler_private_address
+    burstCidr               = local.burst_subnets.compute
+    slurmIdentity = {
+      uid = var.slurm_uid_gid
+      gid = var.slurm_uid_gid
+    }
+    mungeIdentity = {
+      uid = var.munge_uid_gid
+      gid = var.munge_uid_gid
+    }
+    hpcUser = {
+      name = var.demo_username
+      uid  = var.demo_user_uid_gid
+      gid  = var.demo_user_uid_gid
+      home = var.demo_user_home
+    }
+    secretReferences = {
+      vaultUri                = "https://${local.names.key_vault}.vault.azure.net"
+      cyclecloudAdminPassword = local.cyclecloud_admin_secret_name
+    }
+  }
+
+  chef_node_specifications_without_digest = {
+    for role in ["cyclecloud", "scheduler"] :
+    role => merge(local.chef_node_specification_common, {
+      role           = role
+      sourceRevision = try(jsondecode(local.chef_role_payloads[role].manifest_json).sourceRevision, "")
+    })
+  }
+
+  chef_node_specifications = {
+    for role, specification in local.chef_node_specifications_without_digest :
+    role => merge(specification, {
+      specificationDigest = sha256(jsonencode(specification))
+    })
+  }
 }

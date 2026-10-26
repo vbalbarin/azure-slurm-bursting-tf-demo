@@ -6,6 +6,11 @@
 .terraform/
 .venv/
 **/__pycache__/
+node_modules/
+coverage/
+Dockerfile*
+.dockerignore
+.env*
 *.log*
 *.tfplan
 *.tfstate*

@@ -35,6 +35,9 @@ terraform.rc
 .bundle/
 vendor/bundle/
 Berksfile.lock
+*.gem
+log/
+tmp/
 
 # Python
 __pycache__/

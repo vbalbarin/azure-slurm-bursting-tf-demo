@@ -45,12 +45,22 @@ variables {
   scheduler_vm_size                = "Standard_D4s_v6"
   windows_vm_size                  = "Standard_D2s_v6"
   burst_vm_size                    = "Standard_HB120rs_v3"
-  cluster_name                     = "demo-cluster"
+  cluster_name                     = "cross-region-demo"
   chef_policy_archive_uri          = "https://example.invalid/policies"
   deployment_source_commit         = "0000000000000000000000000000000000000000"
   deployment_principal_id          = "11111111-1111-4111-8111-111111111111"
   backend_storage_account_name     = "stslurmdemoeus01a1b2"
   current_execution_context_digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  chef_role_payloads = {
+    cyclecloud = {
+      policy_archive_base64 = base64encode("cyclecloud-policy-archive")
+      manifest_json         = file("tests/fixtures/cyclecloud-manifest.json")
+    }
+    scheduler = {
+      policy_archive_base64 = base64encode("scheduler-policy-archive")
+      manifest_json         = file("tests/fixtures/scheduler-manifest.json")
+    }
+  }
   backend_readiness_json = jsonencode({
     source_commit = "0000000000000000000000000000000000000000"
     assessed_at   = timestamp()

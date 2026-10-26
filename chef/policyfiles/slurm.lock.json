@@ -1,0 +1,13 @@
+{
+  "name": "slurm",
+  "revision_id": "37151b004a5baf870d6991c112b29c4b785a4068b6c8a4683157386812f3a04c",
+  "run_list": [
+    "recipe[slurm_scheduler::default]"
+  ],
+  "cookbook_locks": {
+    "slurm_scheduler": {
+      "version": "0.1.0",
+      "source": "../cookbooks/slurm_scheduler"
+    }
+  }
+}

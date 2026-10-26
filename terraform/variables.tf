@@ -372,8 +372,8 @@ variable "cluster_name" {
   type        = string
 
   validation {
-    condition     = can(regex("^[A-Za-z][A-Za-z0-9-]{2,31}$", var.cluster_name))
-    error_message = "cluster_name must be 3-32 alphanumeric or hyphen characters and start with a letter."
+    condition     = var.cluster_name == "cross-region-demo"
+    error_message = "cluster_name must be exactly cross-region-demo."
   }
 }
 
@@ -389,27 +389,58 @@ variable "idle_timeout_minutes" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations
 variable "demo_username" {
   description = "Stable nonprivileged demonstration account name."
   type        = string
-  default     = "slurmdemo"
+  default     = "hpcuser01"
 
   validation {
-    condition     = can(regex("^[a-z_][a-z0-9_-]{2,30}$", var.demo_username))
-    error_message = "demo_username must be a valid nonprivileged Linux account name."
+    condition     = var.demo_username == "hpcuser01"
+    error_message = "demo_username must be exactly hpcuser01."
   }
 }
 
-# tflint-ignore: terraform_unused_declarations
 variable "demo_user_uid_gid" {
-  description = "Unused numeric UID and GID shared by scheduler and compute."
+  description = "Fixed UID and GID shared by the hpcuser01 scheduler and compute accounts."
   type        = number
   default     = 11200
 
   validation {
-    condition     = var.demo_user_uid_gid >= 10000 && !contains([11100, 11101], var.demo_user_uid_gid)
-    error_message = "demo_user_uid_gid must be at least 10000 and differ from Slurm and Munge IDs."
+    condition     = var.demo_user_uid_gid == 11200
+    error_message = "demo_user_uid_gid must be exactly 11200."
+  }
+}
+
+variable "demo_user_home" {
+  description = "Shared home path for hpcuser01."
+  type        = string
+  default     = "/shared/home/hpcuser01"
+
+  validation {
+    condition     = var.demo_user_home == "/shared/home/hpcuser01"
+    error_message = "demo_user_home must be exactly /shared/home/hpcuser01."
+  }
+}
+
+variable "slurm_uid_gid" {
+  description = "Fixed UID and GID for the Slurm service identity."
+  type        = number
+  default     = 11100
+
+  validation {
+    condition     = var.slurm_uid_gid == 11100
+    error_message = "slurm_uid_gid must be exactly 11100."
+  }
+}
+
+variable "munge_uid_gid" {
+  description = "Fixed UID and GID for the Munge service identity."
+  type        = number
+  default     = 11101
+
+  validation {
+    condition     = var.munge_uid_gid == 11101
+    error_message = "munge_uid_gid must be exactly 11101."
   }
 }
 
@@ -424,9 +455,113 @@ variable "cyclecloud_admin_username" {
   }
 }
 
+variable "chef_role_payloads" {
+  description = "Non-secret, immutable Chef policy archives and manifests delivered directly through VM custom data."
+  type = object({
+    cyclecloud = object({
+      policy_archive_base64 = string
+      manifest_json         = string
+    })
+    scheduler = object({
+      policy_archive_base64 = string
+      manifest_json         = string
+    })
+  })
+  default  = null
+  nullable = true
+
+  validation {
+    condition = var.chef_role_payloads == null || alltrue([
+      for role in ["cyclecloud", "scheduler"] :
+      length(var.chef_role_payloads[role].policy_archive_base64) > 0 &&
+      length(var.chef_role_payloads[role].policy_archive_base64) % 4 == 0 &&
+      can(regex("^[A-Za-z0-9+/]*={0,2}$", var.chef_role_payloads[role].policy_archive_base64)) &&
+      can(jsondecode(var.chef_role_payloads[role].manifest_json))
+    ])
+    error_message = "Each Chef role payload must contain a non-empty Base64 policy archive and a JSON manifest."
+  }
+
+  validation {
+    condition = var.chef_role_payloads == null || alltrue([
+      for role in ["cyclecloud", "scheduler"] :
+      try(toset(keys(jsondecode(var.chef_role_payloads[role].manifest_json))) == toset([
+        "schemaVersion",
+        "role",
+        "sourceRevision",
+        "policyName",
+        "policyRevision",
+        "policyLockSha256",
+        "artifacts",
+        "manifestDigest",
+      ]), false)
+    ])
+    error_message = "Chef manifests must contain only the approved, non-secret manifest fields."
+  }
+
+  validation {
+    condition = var.chef_role_payloads == null || alltrue([
+      for role in ["cyclecloud", "scheduler"] :
+      try(jsondecode(var.chef_role_payloads[role].manifest_json).schemaVersion == 1, false) &&
+      try(jsondecode(var.chef_role_payloads[role].manifest_json).role == role, false) &&
+      try(jsondecode(var.chef_role_payloads[role].manifest_json).policyName == (role == "scheduler" ? "slurm" : "cyclecloud"), false) &&
+      try(can(regex("^[0-9a-f]{40}$", jsondecode(var.chef_role_payloads[role].manifest_json).sourceRevision)), false) &&
+      try(can(regex("^[0-9a-f]{64}$", jsondecode(var.chef_role_payloads[role].manifest_json).policyRevision)), false) &&
+      try(can(regex("^[0-9a-f]{64}$", jsondecode(var.chef_role_payloads[role].manifest_json).policyLockSha256)), false) &&
+      try(can(regex("^[0-9a-f]{64}$", jsondecode(var.chef_role_payloads[role].manifest_json).manifestDigest)), false)
+      ]) && try(
+      jsondecode(var.chef_role_payloads.cyclecloud.manifest_json).sourceRevision ==
+      jsondecode(var.chef_role_payloads.scheduler.manifest_json).sourceRevision &&
+      jsondecode(var.chef_role_payloads.scheduler.manifest_json).sourceRevision == var.deployment_source_commit,
+      false
+    )
+    error_message = "Chef manifest roles, policy names, source revisions, digests, and lock identities must be complete and mutually consistent."
+  }
+
+  validation {
+    condition = var.chef_role_payloads == null || (
+      alltrue(flatten([
+        for role in ["cyclecloud", "scheduler"] : [
+          for artifact in try(jsondecode(var.chef_role_payloads[role].manifest_json).artifacts, []) :
+          try(
+            toset(keys(artifact)) == toset(["name", "kind", "version", "uri", "sha256", "sizeBytes"]) &&
+            contains(["policy", "policy-lock", "package", "project", "tool"], artifact.kind) &&
+            can(regex("^[0-9a-f]{64}$", artifact.sha256)) &&
+            artifact.sizeBytes > 0 &&
+            !can(regex("(?i)(^|[/-])(latest|main|master|head)($|[/?#])", artifact.version)) &&
+            (artifact.uri == null || (
+              startswith(artifact.uri, "https://") &&
+              !can(regex("(?i)(/latest|/refs/heads/|[?&]ref=(main|master|head))", artifact.uri))
+            )),
+            false
+          )
+        ]
+        ])) && alltrue([
+        for role in ["cyclecloud", "scheduler"] :
+        try(length(jsondecode(var.chef_role_payloads[role].manifest_json).artifacts) >= 2, false) &&
+        try(length([
+          for artifact in jsondecode(var.chef_role_payloads[role].manifest_json).artifacts : artifact
+          if artifact.kind == "policy-lock" &&
+          artifact.version == jsondecode(var.chef_role_payloads[role].manifest_json).policyRevision &&
+          artifact.sha256 == jsondecode(var.chef_role_payloads[role].manifest_json).policyLockSha256
+        ]) == 1, false) &&
+        try(length([
+          for artifact in jsondecode(var.chef_role_payloads[role].manifest_json).artifacts : artifact
+          if artifact.kind == "policy" &&
+          artifact.version == jsondecode(var.chef_role_payloads[role].manifest_json).sourceRevision
+        ]) == 1, false)
+      ])
+    )
+    error_message = "Chef artifacts must be immutable HTTPS or directly delivered content with matching policy and Policyfile-lock identities."
+  }
+}
+
+# Retained only so existing protected variable files remain parseable during migration to direct
+# role payload delivery. This value is not used by bootstrap rendering.
 # tflint-ignore: terraform_unused_declarations
 variable "chef_policy_archive_uri" {
-  description = "Protected URI used by minimal bootstrap to retrieve pinned Chef policy archives."
+  description = "Deprecated protected policy URI input; direct Chef role payloads are now required."
   type        = string
+  default     = null
+  nullable    = true
   sensitive   = true
 }

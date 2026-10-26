@@ -7,9 +7,6 @@
         DefaultValue = <%= node['cyclecloud']['idle_timeout_minutes'] %>
 
 [[nodearray burst]]
-    MachineType = <%= node['cyclecloud']['burst_vm_size'] %>
-    ImageName = <%= node['cyclecloud']['burst_image_urn'] %>
-    Zone = <%= node['cyclecloud']['burst_zone'] %>
     MaxCoreCount = 1
     ReturnProxy = false
     [[[configuration]]]
@@ -21,3 +18,7 @@
         munge.user.gid = 11101
         shared.sched = <%= node['cyclecloud']['scheduler_private_address'] %>:/sched
         shared.data = <%= node['cyclecloud']['scheduler_private_address'] %>:/shared
+        hpc.user.name = <%= node['cyclecloud']['hpc_user_name'] %>
+        hpc.user.uid = <%= node['cyclecloud']['hpc_user_uid'] %>
+        hpc.user.gid = <%= node['cyclecloud']['hpc_user_gid'] %>
+        hpc.user.home = <%= node['cyclecloud']['hpc_user_home'] %>

@@ -1,5 +1,5 @@
 locals {
-  linux_bootstrap = base64encode(<<-CLOUD_INIT
+  scheduler_custom_data = base64encode(<<-CLOUD_INIT
     #cloud-config
     package_update: true
     packages:
@@ -10,10 +10,40 @@ locals {
         permissions: '0700'
         encoding: b64
         content: ${base64encode(file("${path.module}/../chef/bootstrap/linux.sh"))}
+      - path: /var/lib/slurm-demo/bootstrap/scheduler.tgz
+        owner: root:root
+        permissions: '0400'
+        encoding: b64
+        content: ${local.chef_role_payloads.scheduler.policy_archive_base64}
+      - path: /var/lib/slurm-demo/bootstrap/scheduler.manifest.json
+        owner: root:root
+        permissions: '0400'
+        encoding: b64
+        content: ${base64encode(local.chef_role_payloads.scheduler.manifest_json)}
+      - path: /var/lib/slurm-demo/bootstrap/scheduler.node-specification.json
+        owner: root:root
+        permissions: '0400'
+        encoding: b64
+        content: ${base64encode(jsonencode(local.chef_node_specifications.scheduler))}
     runcmd:
-      - [ sh, -c, "echo 'Chef policy convergence requires protected runtime inputs' > /var/log/chef-bootstrap-ready" ]
+      - [ install, -d, -m, '0700', /var/lib/slurm-demo/bootstrap ]
+      - [ env, CHEF_POLICY_NAME=slurm, CHEF_MANIFEST_PATH=/var/lib/slurm-demo/bootstrap/scheduler.manifest.json, CHEF_NODE_SPECIFICATION_PATH=/var/lib/slurm-demo/bootstrap/scheduler.node-specification.json, CHEF_POLICY_ARCHIVE_PATH=/var/lib/slurm-demo/bootstrap/scheduler.tgz, /usr/local/sbin/chef-policy-bootstrap ]
   CLOUD_INIT
   )
+}
+
+resource "terraform_data" "scheduler_bootstrap_contract" {
+  input = {
+    manifest_digest      = jsondecode(local.chef_role_payloads.scheduler.manifest_json).manifestDigest
+    specification_digest = local.chef_node_specifications.scheduler.specificationDigest
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(base64decode(local.scheduler_custom_data)) <= 60000
+      error_message = "Rendered scheduler custom data must not exceed the 60000-byte safety gate."
+    }
+  }
 }
 
 module "cyclecloud_nic" {
@@ -46,7 +76,7 @@ module "scheduler_vm" {
   os_type             = "Linux"
   sku_size            = var.scheduler_vm_size
   zone                = "1"
-  custom_data         = local.linux_bootstrap
+  custom_data         = local.scheduler_custom_data
   enable_telemetry    = false
   tags                = local.common_tags
 
@@ -62,7 +92,7 @@ module "scheduler_vm" {
   }
 
   managed_identities = {
-    system_assigned = true
+    user_assigned_resource_ids = [module.scheduler_identity.resource_id]
   }
 
   network_interfaces = {
@@ -74,7 +104,8 @@ module "scheduler_vm" {
           name                          = "primary"
           create_public_ip_address      = false
           private_ip_subnet_resource_id = module.source_vnet.subnets["management"].resource_id
-          private_ip_address_allocation = "Dynamic"
+          private_ip_address            = local.scheduler_private_address
+          private_ip_address_allocation = "Static"
           is_primary_ipconfiguration    = true
         }
       }
@@ -124,6 +155,16 @@ module "windows_admin_vm" {
           is_primary_ipconfiguration    = true
         }
       }
+    }
+  }
+}
+resource "terraform_data" "chef_role_payload_gate" {
+  input = var.chef_role_payloads != null
+
+  lifecycle {
+    precondition {
+      condition     = var.chef_role_payloads != null
+      error_message = "Approved immutable Chef role payloads are required for an infrastructure plan."
     }
   }
 }

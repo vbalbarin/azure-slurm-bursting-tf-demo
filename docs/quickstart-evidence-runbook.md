@@ -4089,39 +4089,154 @@ exist, and the two regional NAT Gateways have the exact subnet associations requ
 Runtime private DNS resolution remains a B7 assertion performed from the Windows administration
 VM inside the source VNET.
 
-## B6. Converge CycleCloud and scheduler twice
+## B6. Converge CycleCloud and scheduler through governed entry points
 
-Use Bastion RDP to reach the Windows administration jump host. From that host, use SSH over the
-private network to run:
+Do not invoke Chef directly, copy a credential into custom data, or use an undocumented
+CycleCloud user API. The rebuilt CycleCloud appliance converges once from verified custom data.
+The rebuilt scheduler stages its verified immutable release and stops in `waiting_dependencies`.
+Scheduler convergence is dispatched only through Azure VM Run Command after the dependency
+receipts pass.
 
-- `cloud-init status --wait --long` on the rebuilt CycleCloud VM, stopping unless it reports
-  completion without errors;
-- `cyclecloud --config=/etc/cyclecloud/cli.ini account show azure` on the CycleCloud VM, stopping
-  unless the managed-identity provider exists;
-- a private HTTPS request using the generated CA certificate, stopping on a name, chain, or HTTP
-  failure;
-- `chef/bin/converge-cyclecloud.sh` twice on the CycleCloud VM; and
-- `chef/bin/converge-scheduler.sh` twice on the scheduler.
+Create a mode-`0600` run context containing only the names and immutable identifiers accepted by
+`tests/end-to-end/converge_linux_roles.sh`:
 
-The second run on each host must report zero updated resources. Confirm CycleCloud `8.9.3`, the
-`hpcadmin` application administrator, protected CLI configuration, `azure` managed-identity
-provider, dedicated compute resource group, private locker, pinned Slurm project/version,
-role-specific images, services, identities, `/sched`, `/shared`, and the headless-template
-contracts. The Chef run MUST fail rather than import a cluster when the protected CLI
-configuration or provider account is absent.
-
-`/evidence` exists only in the development container. Capture logs to a protected temporary
-directory on each VM. Do not copy them directly into `/evidence`; use the B8.1 Bastion transfer
-procedure to stage, verify, and promote them into:
-
-```text
-$DEMO_EVIDENCE_DIR/cyclecloud-converge-1.log
-$DEMO_EVIDENCE_DIR/cyclecloud-converge-2.log
-$DEMO_EVIDENCE_DIR/scheduler-converge-1.log
-$DEMO_EVIDENCE_DIR/scheduler-converge-2.log
+```bash
+cat >"$DEMO_STATE_DIR/linux-role-context.env" <<EOF
+AZURE_SUBSCRIPTION_ID=$AZURE_SUBSCRIPTION_ID
+RESOURCE_GROUP=$RESOURCE_GROUP
+CYCLECLOUD_VM_NAME=$CYCLECLOUD_VM_NAME
+SCHEDULER_VM_NAME=$SCHEDULER_VM_NAME
+SCHEDULER_MANAGED_IDENTITY_CLIENT_ID=$SCHEDULER_MANAGED_IDENTITY_CLIENT_ID
+SOURCE_REVISION=$SOURCE_COMMIT
+CYCLECLOUD_MANIFEST_DIGEST=$CYCLECLOUD_MANIFEST_DIGEST
+CYCLECLOUD_SPECIFICATION_DIGEST=$CYCLECLOUD_SPECIFICATION_DIGEST
+SCHEDULER_MANIFEST_DIGEST=$SCHEDULER_MANIFEST_DIGEST
+SCHEDULER_SPECIFICATION_DIGEST=$SCHEDULER_SPECIFICATION_DIGEST
+EVIDENCE_DIR=$DEMO_EVIDENCE_DIR/linux-roles
+EOF
+chmod 0600 "$DEMO_STATE_DIR/linux-role-context.env"
+export LINUX_ROLE_CONTEXT="$DEMO_STATE_DIR/linux-role-context.env"
 ```
 
-Do not use `set -x`; the convergence path consumes protected references and credential material.
+Inspect both role states. Each Run Command has a hard 55-second timeout and the workflow rejects
+unknown fields, malformed digests, stale source identities, or unsupported states:
+
+```bash
+tests/end-to-end/converge_linux_roles.sh \
+  --run-context "$LINUX_ROLE_CONTEXT" \
+  --operation inspect
+test "$?" -eq 0
+```
+
+Require CycleCloud state `converged` and scheduler state `waiting_dependencies`. Then dispatch the
+initial scheduler convergence:
+
+```bash
+tests/end-to-end/converge_linux_roles.sh \
+  --run-context "$LINUX_ROLE_CONTEXT" \
+  --operation initial
+test "$?" -eq 0
+```
+
+The workflow must prove CycleCloud readiness, scheduler staging, and managed-identity Key Vault
+secret access before dispatch. The scheduler wrapper retrieves `cyclecloud-admin-password`
+directly through IMDS and the private Key Vault REST endpoint, runs release-matched `azslurm
+initconfig` under trace-disabled root-only controls, removes all temporary protected files, and
+emits only value-free receipts. A first failure may be retried once with identical inputs:
+
+```bash
+tests/end-to-end/converge_linux_roles.sh \
+  --run-context "$LINUX_ROLE_CONTEXT" \
+  --operation retry
+```
+
+Do not retry changed inputs. A second initial-convergence failure sets `replacement_required`;
+replace that VM from approved custom data rather than repairing it interactively.
+
+### B6.1 Complete the supported CycleCloud UI user gate
+
+Use the authenticated CycleCloud UI at **Settings → Users**. Create or update exactly
+`hpcuser01` as a non-superuser, enable node access, set UID `11200`, add the scheduler-generated
+Ed25519 public key, and grant cluster-scoped `node-user` access to `cross-region-demo`. The UI
+does not govern GID; burst acceptance records the observed primary GID and rejects conflicts.
+
+If the UI requires an application password, generate it in protected state with feature 004's
+accepted CycleCloud policy, require reset, discard it immediately, and record only
+`force-reset-discarded`. Never retain that password or a reversible derivative in evidence.
+
+Validate the completed value-free attestation against the current source, scheduler
+specification, public-identity receipt digest, and key fingerprint:
+
+```bash
+tests/end-to-end/converge_linux_roles.sh \
+  --run-context "$LINUX_ROLE_CONTEXT" \
+  --operation validate-ui-attestation \
+  --identity-receipt "$DEMO_EVIDENCE_DIR/linux-roles/hpc-user-receipt.json" \
+  --ui-attestation "$DEMO_STATE_DIR/cyclecloud-user-attestation.json"
+test "$?" -eq 0
+```
+
+Burst dispatch remains blocked until this command succeeds.
+
+### B6.2 Prove explicit idempotency
+
+```bash
+tests/end-to-end/converge_linux_roles.sh \
+  --run-context "$LINUX_ROLE_CONTEXT" \
+  --operation verify-idempotency
+test "$?" -eq 0
+```
+
+Both wrappers must report zero updated resources. Any nonzero update, changed staged artifact,
+changed lock digest, or missing cleanup proof fails acceptance. Initial, retry, update, and
+idempotency evidence files are immutable and retained separately.
+
+### B6.3 Apply an approved existing-VM policy update
+
+For a policy-only update, first build and approve a new role bundle, manifest, node
+specification, and matching lock in a protected directory. Update the run context to the newly
+approved source and role digests. Then request one role at a time:
+
+```bash
+tests/end-to-end/converge_linux_roles.sh \
+  --run-context "$LINUX_ROLE_CONTEXT" \
+  --operation update \
+  --update-role scheduler \
+  --update-payload-dir "$DEMO_STATE_DIR/approved-scheduler-update"
+test "$?" -eq 0
+```
+
+The workflow revalidates the archive, canonical manifest and specification, policy revision, and
+lock digest before transfer. It writes `update_authorized`, stages the release beside the active
+release, switches `current` atomically, and retains separate update evidence. Validation or
+convergence failure restores the prior release and prior state. Never overwrite an existing
+release or relabel changed inputs as a retry.
+
+### B6.4 Prove reboot safety
+
+Before rebooting, record the governed baseline:
+
+```bash
+tests/end-to-end/converge_linux_roles.sh \
+  --run-context "$LINUX_ROLE_CONTEXT" \
+  --operation verify-reboot
+test "$?" -eq 0
+```
+
+Reboot both persistent Linux VMs through the approved Azure control-plane operation. Wait for
+Azure instance readiness, but do not run Chef or repair either guest. Repeat `verify-reboot`.
+The comparison must preserve source/manifest/specification digests, convergence attempts, states,
+public credential fingerprints, the single imported cluster, the evidence set, and
+explicit-policy-only behavior. Any autonomous Chef timer, credential rotation, cluster reimport,
+or attempt increment fails acceptance.
+
+`/evidence` exists only in the development container. VM-local protected temporary files are
+deleted by traps. Retain the schema-valid value-free Run Command, state, identity, UI-gate,
+idempotency, update, and reboot receipts under `$DEMO_EVIDENCE_DIR/linux-roles`; transfer any
+additional reviewed evidence through the B8.1 Bastion procedure. Never transfer raw Chef logs,
+authorization files, passwords, tokens, private keys, or environment dumps.
+Do not copy them directly into `/evidence`; stage, review, verify, and promote only the bounded
+secret-free receipts through the protected Windows jump-host handoff.
 
 ## B7. Verify private Windows administration
 

@@ -29,6 +29,25 @@ Expected:
 - Both node specifications validate against
   `contracts/node-specification.schema.json`.
 
+Static implementation checkpoint:
+
+- CycleCloud ChefSpec: 10 examples, 0 failures.
+- Combined CycleCloud and scheduler ChefSpec: 28 examples, 0 failures.
+- Integrated bundle, wrapper, dispatch, state, update, reboot, and secret-hygiene Python slice:
+  59 tests, 0 failures before the final audit additions.
+- CycleCloud stack contract tests: 15 passed.
+- Terraform Chef-bootstrap tests: 8 passed.
+- Both deterministic role bundles rebuilt successfully from their refreshed policy locks.
+- Bicep build, Bash syntax, ShellCheck, Cookstyle, and focused Python syntax checks passed.
+- Full registered `make validate` passed after 31 main Terraform tests, 8 capacity-probe
+  Terraform tests, and 32 backend-bootstrap Terraform tests passed.
+- Local InSpec profile validation remains blocked because this environment has no valid Chef
+  license key; `accept-no-persist` and `accept-silent` were both rejected by the installed InSpec
+  license service. No Azure Test Kitchen run was attempted.
+
+These are secret-free static results, not a substitute for the new governed Azure run in sections
+4 through 12.
+
 ## 2. Generate or preserve administrative credentials
 
 Run feature 004 in a new protected evidence context. Review its value-free receipt before any

@@ -11,6 +11,9 @@ PASSWORD_EVIDENCE_SCHEMA = (
     ROOT
     / "specs/004-user-friendly-passwords/contracts/credential-evidence.schema.json"
 )
+CHEF_BOOTSTRAP_CONTRACTS = (
+    ROOT / "specs/005-automated-chef-bootstrap/contracts"
+)
 PROTECTED_SUFFIXES = (".tfstate", ".tfplan")
 PROTECTED_NAMES = {
     "backend.local.tf",
@@ -87,6 +90,41 @@ def test_password_evidence_contract_cannot_accept_values_or_derivatives() -> Non
     assert _schema_property_names(schema).isdisjoint(
         SECRET_FIELD_NAMES | PASSWORD_DERIVED_FIELD_NAMES
     )
+
+
+def test_chef_bootstrap_contracts_cannot_accept_secret_values() -> None:
+    forbidden = SECRET_FIELD_NAMES | {
+        "private_key",
+        "raw_password",
+        "accessToken",
+        "refreshToken",
+        "secretValue",
+    }
+    for schema_path in CHEF_BOOTSTRAP_CONTRACTS.glob("*.schema.json"):
+        schema = json.loads(schema_path.read_text())
+        assert schema.get("additionalProperties") is False
+        assert _schema_property_names(schema).isdisjoint(forbidden)
+
+
+def test_chef_workflows_keep_protected_values_transient_and_evidence_value_free() -> None:
+    scheduler = (ROOT / "chef/bin/converge-scheduler.sh").read_text()
+    retriever = (ROOT / "chef/bin/retrieve-key-vault-secret.py").read_text()
+    dispatcher = (ROOT / "tests/end-to-end/converge_linux_roles.sh").read_text()
+    state_tool = (ROOT / "chef/bin/convergence_state.py").read_text()
+
+    assert "set +x" in scheduler
+    assert "trap cleanup EXIT" in scheduler
+    assert 'runtime_dir=/run/slurm-demo' in scheduler
+    assert 'rm -f "$secret_file"' in scheduler
+    assert "os.O_EXCL, 0o600" in retriever
+    assert "os.chmod(path, 0o600)" in retriever
+    assert "path.unlink(missing_ok=True)" in retriever
+    assert "secret-access-passed" in dispatcher
+    assert "cat \"$p\"" not in dispatcher
+    assert "commandLine" not in state_tool
+    assert "stdout" not in state_tool
+    assert "stderr" not in state_tool
+    assert "privateKey" not in state_tool
 
 
 def test_protected_artifact_patterns_are_ignored_everywhere() -> None:

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/slurm-demo/cyclecloud-user-attestation.schema.json",
+  "title": "CycleCloud user UI-gate attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "operator",
+    "recordedAt",
+    "userName",
+    "superuser",
+    "nodeAccessEnabled",
+    "uid",
+    "publicKeyFingerprint",
+    "sourceRevision",
+    "specificationDigest",
+    "identityReceiptDigest",
+    "clusterName",
+    "clusterPermission",
+    "applicationPasswordDisposition",
+    "result"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "operator": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "recordedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "userName": {
+      "const": "hpcuser01"
+    },
+    "superuser": {
+      "const": false
+    },
+    "nodeAccessEnabled": {
+      "const": true
+    },
+    "uid": {
+      "const": 11200
+    },
+    "publicKeyFingerprint": {
+      "type": "string",
+      "pattern": "^SHA256:[A-Za-z0-9+/]{16,}={0,2}$"
+    },
+    "sourceRevision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "specificationDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identityReceiptDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "clusterName": {
+      "const": "cross-region-demo"
+    },
+    "clusterPermission": {
+      "const": "node-user"
+    },
+    "applicationPasswordDisposition": {
+      "enum": [
+        "not-required",
+        "force-reset-discarded"
+      ]
+    },
+    "result": {
+      "enum": [
+        "accepted",
+        "rejected"
+      ]
+    }
+  }
+}

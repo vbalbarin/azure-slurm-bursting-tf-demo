@@ -68,7 +68,7 @@ windows_vm_count    = 1
 burst_node_count    = 1
 cluster_name       = "cross-region-demo"
 idle_timeout_minutes = 10
-demo_username        = "slurmdemo"
+demo_username        = "hpcuser01"
 demo_user_uid_gid    = 11200
 
 # Supply these sensitive values through the approved environment-specific input channel.

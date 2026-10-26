@@ -27,11 +27,11 @@ remain isolated in the final phase.
 
 **Purpose**: Establish executable contract, policy-lock, bundle-build, and test surfaces.
 
-- [ ] T001 Create the CycleCloud UI-gate attestation schema with `schemaVersion` exactly `1`, `userName` exactly `hpcuser01`, `superuser` exactly `false`, `nodeAccessEnabled` exactly `true`, UID exactly `11200`, cluster exactly `cross-region-demo`, permission exactly `node-user`, matching fingerprint/source revision/specification digest/identity-receipt digest, password disposition `not-required` or `force-reset-discarded`, operator/timestamp, and accepted/rejected result in `specs/005-automated-chef-bootstrap/contracts/cyclecloud-user-attestation.schema.json`
-- [ ] T002 Create the feature contract and fixture test module covering every JSON schema under `specs/005-automated-chef-bootstrap/contracts/` in `tests/end-to-end/test_chef_bootstrap_contracts.py`
-- [ ] T003 [P] Create the deterministic role-bundle builder CLI skeleton and protected output layout in `tests/end-to-end/build_chef_policy_bundles.sh`
-- [ ] T004 [P] Pin role names, run lists, and cookbook sources in `chef/policyfiles/cyclecloud.rb` and `chef/policyfiles/slurm.rb`
-- [ ] T005 [P] Register the initial contract test and Bash syntax check without changing existing validation order in `Makefile`
+- [X] T001 Create the CycleCloud UI-gate attestation schema with `schemaVersion` exactly `1`, `userName` exactly `hpcuser01`, `superuser` exactly `false`, `nodeAccessEnabled` exactly `true`, UID exactly `11200`, cluster exactly `cross-region-demo`, permission exactly `node-user`, matching fingerprint/source revision/specification digest/identity-receipt digest, password disposition `not-required` or `force-reset-discarded`, operator/timestamp, and accepted/rejected result in `specs/005-automated-chef-bootstrap/contracts/cyclecloud-user-attestation.schema.json`
+- [X] T002 Create the feature contract and fixture test module covering every JSON schema under `specs/005-automated-chef-bootstrap/contracts/` in `tests/end-to-end/test_chef_bootstrap_contracts.py`
+- [X] T003 [P] Create the deterministic role-bundle builder CLI skeleton and protected output layout in `tests/end-to-end/build_chef_policy_bundles.sh`
+- [X] T004 [P] Pin role names, run lists, and cookbook sources in `chef/policyfiles/cyclecloud.rb` and `chef/policyfiles/slurm.rb`
+- [X] T005 [P] Register the initial contract test and Bash syntax check without changing existing validation order in `Makefile`
 
 ---
 
@@ -42,16 +42,16 @@ machinery required by both Linux roles.
 
 **CRITICAL**: No role-specific convergence begins until this phase is complete.
 
-- [ ] T006 Add failing Policyfile-lock tests requiring role-specific lock files, a 64-character lock `revision_id`, matching manifest `policyRevision`, matching `policyLockSha256`, and failure when cookbook source changes without lock regeneration in `tests/end-to-end/test_chef_bootstrap_contracts.py`
-- [ ] T007 Generate reviewed immutable locks and implement pinned lock generation/verification in `chef/policyfiles/cyclecloud.lock.json`, `chef/policyfiles/slurm.lock.json`, and `tests/end-to-end/build_chef_policy_bundles.sh`
-- [ ] T008 Add failing deterministic-build tests requiring identical source trees and locks to produce identical SHA-256 values, decoded custom data no larger than `60000` bytes, manifest `sourceRevision` matching `^[0-9a-f]{40}$`, and artifact digests matching `^[0-9a-f]{64}$` in `tests/end-to-end/test_chef_bootstrap_contracts.py`
-- [ ] T009 Implement normalized owner/group, timestamps, path ordering, role separation, lock inclusion, manifest canonicalization, SHA-256 recording, and the `60000`-byte custom-data gate in `tests/end-to-end/build_chef_policy_bundles.sh`
-- [ ] T010 Add failing common bootstrap tests for Chef `18.11.11`, RPM SHA-256 `d68c339bc85ded67b793de4e20f35886c5fbd9b5a9e95dabbe5ede6211b01365`, lock/digest verification before extraction, immutable releases, atomic `current` switching, and secret-free failures in `tests/end-to-end/test_chef_bootstrap_contracts.py`
-- [ ] T011 Refactor common bootstrap to verify/install Chef `18.11.11`, validate the bundle, Policyfile lock, manifest, and node specification, stage `/opt/slurm-demo/releases/<policy-sha256>`, and atomically select `/opt/slurm-demo/current` in `chef/bootstrap/linux.sh`
-- [ ] T012 Add failing state-machine tests for `environment_ready`, `waiting_dependencies`, `converging`, `failed_retryable`, `replacement_required`, `converged`, and `idempotency_verified`, attempts limited to `1` and `2`, and identical manifest/specification digests on retry in `tests/end-to-end/test_chef_bootstrap_contracts.py`
-- [ ] T013 Implement atomic state/evidence validation, role locking, bounded failure codes, attempt preservation, and replacement-required enforcement in `chef/bin/convergence_state.py`
-- [ ] T014 [P] Define common non-secret node-specification values requiring cluster `cross-region-demo`, Slurm UID/GID `11100`, Munge UID/GID `11101`, and `hpcuser01` UID/GID `11200` with home `/shared/home/hpcuser01` in `terraform/locals.tf` and `terraform/variables.tf`
-- [ ] T015 [P] Add Terraform tests rejecting secrets, mutable versions, role/specification mismatches, missing lock identities, and oversized rendered custom data in `terraform/tests/chef-bootstrap.tftest.hcl`
+- [X] T006 Add failing Policyfile-lock tests requiring role-specific lock files, a 64-character lock `revision_id`, matching manifest `policyRevision`, matching `policyLockSha256`, and failure when cookbook source changes without lock regeneration in `tests/end-to-end/test_chef_bootstrap_contracts.py`
+- [X] T007 Generate reviewed immutable locks and implement pinned lock generation/verification in `chef/policyfiles/cyclecloud.lock.json`, `chef/policyfiles/slurm.lock.json`, and `tests/end-to-end/build_chef_policy_bundles.sh`
+- [X] T008 Add failing deterministic-build tests requiring identical source trees and locks to produce identical SHA-256 values, decoded custom data no larger than `60000` bytes, manifest `sourceRevision` matching `^[0-9a-f]{40}$`, and artifact digests matching `^[0-9a-f]{64}$` in `tests/end-to-end/test_chef_bootstrap_contracts.py`
+- [X] T009 Implement normalized owner/group, timestamps, path ordering, role separation, lock inclusion, manifest canonicalization, SHA-256 recording, and the `60000`-byte custom-data gate in `tests/end-to-end/build_chef_policy_bundles.sh`
+- [X] T010 Add failing common bootstrap tests for Chef `18.11.11`, RPM SHA-256 `d68c339bc85ded67b793de4e20f35886c5fbd9b5a9e95dabbe5ede6211b01365`, lock/digest verification before extraction, immutable releases, atomic `current` switching, and secret-free failures in `tests/end-to-end/test_chef_bootstrap_contracts.py`
+- [X] T011 Refactor common bootstrap to verify/install Chef `18.11.11`, validate the bundle, Policyfile lock, manifest, and node specification, stage `/opt/slurm-demo/releases/<policy-sha256>`, and atomically select `/opt/slurm-demo/current` in `chef/bootstrap/linux.sh`
+- [X] T012 Add failing state-machine tests for `environment_ready`, `waiting_dependencies`, `converging`, `failed_retryable`, `replacement_required`, `converged`, and `idempotency_verified`, attempts limited to `1` and `2`, and identical manifest/specification digests on retry in `tests/end-to-end/test_chef_bootstrap_contracts.py`
+- [X] T013 Implement atomic state/evidence validation, role locking, bounded failure codes, attempt preservation, and replacement-required enforcement in `chef/bin/convergence_state.py`
+- [X] T014 [P] Define common non-secret node-specification values requiring cluster `cross-region-demo`, Slurm UID/GID `11100`, Munge UID/GID `11101`, and `hpcuser01` UID/GID `11200` with home `/shared/home/hpcuser01` in `terraform/locals.tf` and `terraform/variables.tf`
+- [X] T015 [P] Add Terraform tests rejecting secrets, mutable versions, role/specification mismatches, missing lock identities, and oversized rendered custom data in `terraform/tests/chef-bootstrap.tftest.hcl`
 
 **Checkpoint**: Both roles can consume deterministic, lock-bound artifact/state contracts without
 performing role-specific configuration.
@@ -69,22 +69,22 @@ provider, and exactly one `cross-region-demo` cluster.
 
 ### Tests for User Story 1
 
-- [ ] T016 [US1] Add failing ChefSpec examples for CycleCloud `8.9.3`, Slurm project `4.0.11`, project/install artifact digests, provider readiness, validated headless transformation, and exactly one cluster import in `chef/cookbooks/cyclecloud_node/spec/unit/recipes/default_spec.rb`
-- [ ] T017 [P] [US1] Add failing bootstrap-order, digest-mismatch, cleanup, reboot-without-reimport, and no-secret-output tests for first-run followed by Chef convergence in `tests/end-to-end/test_cyclecloud_stack.py`
-- [ ] T018 [P] [US1] Add failing wrapper tests for lock contention, attempt-1 retryability, attempt-2 replacement requirement, lock/manifest/specification binding, and converged evidence in `tests/end-to-end/test_chef_bootstrap_contracts.py`
-- [ ] T019 [P] [US1] Extend CycleCloud InSpec controls for staged lock/manifest/specification permissions, Chef version, Slurm project version, cluster import, bounded state, and temporary-secret absence in `chef/test/integration/cyclecloud/controls/default.rb`
+- [X] T016 [US1] Add failing ChefSpec examples for CycleCloud `8.9.3`, Slurm project `4.0.11`, project/install artifact digests, provider readiness, validated headless transformation, and exactly one cluster import in `chef/cookbooks/cyclecloud_node/spec/unit/recipes/default_spec.rb`
+- [X] T017 [P] [US1] Add failing bootstrap-order, digest-mismatch, cleanup, reboot-without-reimport, and no-secret-output tests for first-run followed by Chef convergence in `tests/end-to-end/test_cyclecloud_stack.py`
+- [X] T018 [P] [US1] Add failing wrapper tests for lock contention, attempt-1 retryability, attempt-2 replacement requirement, lock/manifest/specification binding, and converged evidence in `tests/end-to-end/test_chef_bootstrap_contracts.py`
+- [X] T019 [P] [US1] Extend CycleCloud InSpec controls for staged lock/manifest/specification permissions, Chef version, Slurm project version, cluster import, bounded state, and temporary-secret absence in `chef/test/integration/cyclecloud/controls/default.rb`
 
 ### Implementation for User Story 1
 
-- [ ] T020 [US1] Download and verify `azure-slurm-pkg-4.0.11.tar.gz` SHA-256 `f85a1d016eca3786eb9845fcbffcefaf674bfcd4b59738597e90877047a23e36`, install it idempotently, and reject version skew in `chef/cookbooks/cyclecloud_node/recipes/default.rb`
-- [ ] T021 [US1] Install the staged `headless-template` tool, generate a separate candidate, validate it before atomic replacement, and preserve the last valid template in `chef/cookbooks/cyclecloud_node/recipes/default.rb`
-- [ ] T022 [US1] Bind provider verification, project installation, template transformation, cluster properties, and exactly-one-cluster import to explicit idempotent resources in `chef/cookbooks/cyclecloud_node/recipes/default.rb` and `chef/cookbooks/cyclecloud_node/templates/default/cluster.properties.erb`
-- [ ] T023 [US1] Refactor the wrapper to validate lock/manifest/specification digests, serialize execution, invoke Chef Local from `/opt/slurm-demo/current`, clean temporary protected files, and write schema-valid state/evidence in `chef/bin/converge-cyclecloud.sh`
-- [ ] T024 [US1] Extend first boot to verify the CycleCloud bundle/specification, complete the CycleCloud 8.9.3 first-run exception, invoke initial Chef convergence, and keep readiness false on downstream failure in `infra/cyclecloud/bootstrap.sh`
-- [ ] T025 [US1] Add role bundle, manifest, specification, lock identity, and digest parameters with decoded-size validation in `infra/cyclecloud/main.bicep`
-- [ ] T026 [US1] Render and pass the non-secret CycleCloud payload through the existing VM-stack boundary without adding Azure resources in `terraform/cyclecloud-platform.tf` and `tests/end-to-end/cyclecloud_stack.sh`
-- [ ] T027 [US1] Consume only validated node-specification values and immutable release paths in `chef/cookbooks/cyclecloud_node/attributes/default.rb` and `chef/cookbooks/cyclecloud_node/templates/default/slurm-headless-overrides.txt.erb`
-- [ ] T028 [US1] Run the CycleCloud ChefSpec, wrapper, bootstrap-stack, and InSpec fixture tests and record their secret-free expected outcomes in `specs/005-automated-chef-bootstrap/quickstart.md`
+- [X] T020 [US1] Download and verify `azure-slurm-pkg-4.0.11.tar.gz` SHA-256 `f85a1d016eca3786eb9845fcbffcefaf674bfcd4b59738597e90877047a23e36`, install it idempotently, and reject version skew in `chef/cookbooks/cyclecloud_node/recipes/default.rb`
+- [X] T021 [US1] Install the staged `headless-template` tool, generate a separate candidate, validate it before atomic replacement, and preserve the last valid template in `chef/cookbooks/cyclecloud_node/recipes/default.rb`
+- [X] T022 [US1] Bind provider verification, project installation, template transformation, cluster properties, and exactly-one-cluster import to explicit idempotent resources in `chef/cookbooks/cyclecloud_node/recipes/default.rb` and `chef/cookbooks/cyclecloud_node/templates/default/cluster.properties.erb`
+- [X] T023 [US1] Refactor the wrapper to validate lock/manifest/specification digests, serialize execution, invoke Chef Local from `/opt/slurm-demo/current`, clean temporary protected files, and write schema-valid state/evidence in `chef/bin/converge-cyclecloud.sh`
+- [X] T024 [US1] Extend first boot to verify the CycleCloud bundle/specification, complete the CycleCloud 8.9.3 first-run exception, invoke initial Chef convergence, and keep readiness false on downstream failure in `infra/cyclecloud/bootstrap.sh`
+- [X] T025 [US1] Add role bundle, manifest, specification, lock identity, and digest parameters with decoded-size validation in `infra/cyclecloud/main.bicep`
+- [X] T026 [US1] Render and pass the non-secret CycleCloud payload through the existing VM-stack boundary without adding Azure resources in `terraform/cyclecloud-platform.tf` and `tests/end-to-end/cyclecloud_stack.sh`
+- [X] T027 [US1] Consume only validated node-specification values and immutable release paths in `chef/cookbooks/cyclecloud_node/attributes/default.rb` and `chef/cookbooks/cyclecloud_node/templates/default/slurm-headless-overrides.txt.erb`
+- [X] T028 [US1] Run the CycleCloud ChefSpec, wrapper, bootstrap-stack, and InSpec fixture tests and record their secret-free expected outcomes in `specs/005-automated-chef-bootstrap/quickstart.md`
 
 **Checkpoint**: CycleCloud clean boot is independently complete; scheduler dispatch and the manual
 user gate remain unnecessary for this story.
@@ -103,27 +103,27 @@ receipt, reject malformed UI attestations, and accept the exact supported UI-gat
 
 ### Tests for User Story 2
 
-- [ ] T029 [US2] Add failing Terraform tests for scheduler custom-data staging, no autonomous convergence, Key Vault `Secrets User` least privilege, no secret values, and unchanged zero-public-IP posture in `terraform/tests/chef-bootstrap.tftest.hcl`
-- [ ] T030 [P] [US2] Add failing ChefSpec examples for Slurm/Munge UID/GID `11100`/`11101`, `hpcuser01` UID/GID `11200`, `/shared/home/hpcuser01`, Ed25519 key preservation, NFS, direct peering, one-node limit, and release `4.0.11` in `chef/cookbooks/slurm_scheduler/spec/unit/recipes/default_spec.rb`
-- [ ] T031 [P] [US2] Add failing managed-identity Key Vault REST tests for token scope, user-assigned client ID, private vault URI, mode-`0600` temporary output, redaction, and unconditional cleanup in `tests/end-to-end/test_chef_bootstrap_contracts.py`
-- [ ] T032 [P] [US2] Add failing governed-dispatch tests for CycleCloud/scheduler receipts, secret-access gate, no-secret Run Command payloads, canonical public-identity receipt digests, UI-attestation source/specification/receipt binding, one-time-password disposition, unsupported-interface rejection, and downstream blocking in `tests/end-to-end/test_converge_linux_roles.py`
-- [ ] T033 [P] [US2] Add failing remote state-inspection tests requiring schema-valid CycleCloud and scheduler state within less than `60` seconds from invocation in `tests/end-to-end/test_converge_linux_roles.py`
-- [ ] T034 [P] [US2] Add failing scheduler reboot tests proving no credential rotation, policy application, convergence-attempt increment, or autonomous Slurm convergence in `tests/end-to-end/test_scheduler_bootstrap.py`
+- [X] T029 [US2] Add failing Terraform tests for scheduler custom-data staging, no autonomous convergence, Key Vault `Secrets User` least privilege, no secret values, and unchanged zero-public-IP posture in `terraform/tests/chef-bootstrap.tftest.hcl`
+- [X] T030 [P] [US2] Add failing ChefSpec examples for Slurm/Munge UID/GID `11100`/`11101`, `hpcuser01` UID/GID `11200`, `/shared/home/hpcuser01`, Ed25519 key preservation, NFS, direct peering, one-node limit, and release `4.0.11` in `chef/cookbooks/slurm_scheduler/spec/unit/recipes/default_spec.rb`
+- [X] T031 [P] [US2] Add failing managed-identity Key Vault REST tests for token scope, user-assigned client ID, private vault URI, mode-`0600` temporary output, redaction, and unconditional cleanup in `tests/end-to-end/test_chef_bootstrap_contracts.py`
+- [X] T032 [P] [US2] Add failing governed-dispatch tests for CycleCloud/scheduler receipts, secret-access gate, no-secret Run Command payloads, canonical public-identity receipt digests, UI-attestation source/specification/receipt binding, one-time-password disposition, unsupported-interface rejection, and downstream blocking in `tests/end-to-end/test_converge_linux_roles.py`
+- [X] T033 [P] [US2] Add failing remote state-inspection tests requiring schema-valid CycleCloud and scheduler state within less than `60` seconds from invocation in `tests/end-to-end/test_converge_linux_roles.py`
+- [X] T034 [P] [US2] Add failing scheduler reboot tests proving no credential rotation, policy application, convergence-attempt increment, or autonomous Slurm convergence in `tests/end-to-end/test_scheduler_bootstrap.py`
 
 ### Implementation for User Story 2
 
-- [ ] T035 [US2] Grant only the scheduler user-assigned identity Key Vault secret-read data-plane access through the existing pinned AVM role-assignment interface in `terraform/security.tf`
-- [ ] T036 [US2] Render the verified scheduler lock/bundle/specification into first-boot custom data, stage only, and write `waiting_dependencies` without polling or starting convergence in `terraform/compute.tf`
-- [ ] T037 [US2] Implement IMDS token acquisition and private Key Vault REST retrieval with protected temporary output, explicit failures, and no Azure CLI dependency in `chef/bin/retrieve-key-vault-secret.py`
-- [ ] T038 [US2] Require a governed authorization receipt, retrieve `cyclecloud-admin-password` at runtime, invoke release-matched `azslurm initconfig` once under root-only trace-disabled controls, and clean every temporary credential path in `chef/bin/converge-scheduler.sh`
-- [ ] T039 [US2] Replace `slurmdemo` with Chef-managed `hpcuser01` group/user UID/GID `11200`, home `/shared/home/hpcuser01`, and generate-or-preserve mode-`0600` Ed25519 keys without direct account-database edits in `chef/cookbooks/slurm_scheduler/recipes/demo_user.rb`
-- [ ] T040 [US2] Download and verify `azure-slurm-install-pkg-4.0.11.tar.gz` SHA-256 `a489f4c5ec2404dc02a09792af5f32f4683e164327d89c4c2dfc8d9a30402482`, configure Slurm/Munge/NFS, and start services only after validation in `chef/cookbooks/slurm_scheduler/recipes/default.rb`
-- [ ] T041 [US2] Replace unsupported credential assumptions with release-matched generated configuration and protected modes in `chef/cookbooks/slurm_scheduler/templates/default/azslurm.conf.erb` and `chef/cookbooks/slurm_scheduler/templates/default/slurm.conf.erb`
-- [ ] T042 [US2] Implement ordered dependency inspection, authorization receipt creation, Azure VM Run Command dispatch, bounded output collection, and nonzero downstream blocking in `tests/end-to-end/converge_linux_roles.sh`
-- [ ] T043 [US2] Validate `hpcuser01` name exactly, UID/GID exactly `11200`, home exactly `/shared/home/hpcuser01`, one Ed25519 public key, derived SHA-256 fingerprint, source revision, and specification digest before emitting a canonical value-free receipt with its own SHA-256 digest in `chef/bin/publish-hpc-user-receipt.sh`
-- [ ] T044 [US2] Validate the manual CycleCloud UI attestation against the current scheduler source revision, specification digest, identity-receipt digest, and fingerprint; require non-superuser cluster-scoped `node-user` access and accepted password disposition; reject stale/overprivileged/mismatched records; and block burst dispatch without undocumented APIs in `tests/end-to-end/converge_linux_roles.sh`
-- [ ] T045 [P] [US2] Extend scheduler InSpec controls for identities, shared home, key modes, packages, NFS exports, private CycleCloud integration, services, staged contracts, and secret cleanup in `chef/test/integration/scheduler/controls/default.rb`
-- [ ] T046 [US2] Add scheduler bundle/specification outputs and secret-free dependency/public-identity receipt references required by governed dispatch in `terraform/outputs.tf`
+- [X] T035 [US2] Grant only the scheduler user-assigned identity Key Vault secret-read data-plane access through the existing pinned AVM role-assignment interface in `terraform/security.tf`
+- [X] T036 [US2] Render the verified scheduler lock/bundle/specification into first-boot custom data, stage only, and write `waiting_dependencies` without polling or starting convergence in `terraform/compute.tf`
+- [X] T037 [US2] Implement IMDS token acquisition and private Key Vault REST retrieval with protected temporary output, explicit failures, and no Azure CLI dependency in `chef/bin/retrieve-key-vault-secret.py`
+- [X] T038 [US2] Require a governed authorization receipt, retrieve `cyclecloud-admin-password` at runtime, invoke release-matched `azslurm initconfig` once under root-only trace-disabled controls, and clean every temporary credential path in `chef/bin/converge-scheduler.sh`
+- [X] T039 [US2] Replace `slurmdemo` with Chef-managed `hpcuser01` group/user UID/GID `11200`, home `/shared/home/hpcuser01`, and generate-or-preserve mode-`0600` Ed25519 keys without direct account-database edits in `chef/cookbooks/slurm_scheduler/recipes/demo_user.rb`
+- [X] T040 [US2] Download and verify `azure-slurm-install-pkg-4.0.11.tar.gz` SHA-256 `a489f4c5ec2404dc02a09792af5f32f4683e164327d89c4c2dfc8d9a30402482`, configure Slurm/Munge/NFS, and start services only after validation in `chef/cookbooks/slurm_scheduler/recipes/default.rb`
+- [X] T041 [US2] Replace unsupported credential assumptions with release-matched generated configuration and protected modes in `chef/cookbooks/slurm_scheduler/templates/default/azslurm.conf.erb` and `chef/cookbooks/slurm_scheduler/templates/default/slurm.conf.erb`
+- [X] T042 [US2] Implement ordered dependency inspection, authorization receipt creation, Azure VM Run Command dispatch, bounded output collection, and nonzero downstream blocking in `tests/end-to-end/converge_linux_roles.sh`
+- [X] T043 [US2] Validate `hpcuser01` name exactly, UID/GID exactly `11200`, home exactly `/shared/home/hpcuser01`, one Ed25519 public key, derived SHA-256 fingerprint, source revision, and specification digest before emitting a canonical value-free receipt with its own SHA-256 digest in `chef/bin/publish-hpc-user-receipt.sh`
+- [X] T044 [US2] Validate the manual CycleCloud UI attestation against the current scheduler source revision, specification digest, identity-receipt digest, and fingerprint; require non-superuser cluster-scoped `node-user` access and accepted password disposition; reject stale/overprivileged/mismatched records; and block burst dispatch without undocumented APIs in `tests/end-to-end/converge_linux_roles.sh`
+- [X] T045 [P] [US2] Extend scheduler InSpec controls for identities, shared home, key modes, packages, NFS exports, private CycleCloud integration, services, staged contracts, and secret cleanup in `chef/test/integration/scheduler/controls/default.rb`
+- [X] T046 [US2] Add scheduler bundle/specification outputs and secret-free dependency/public-identity receipt references required by governed dispatch in `terraform/outputs.tf`
 
 **Checkpoint**: Both persistent roles converge through governed entry points, and burst-node
 creation remains blocked until the supported manual CycleCloud UI attestation is accepted.
@@ -141,19 +141,19 @@ replacement transitions while secret scans remain clean.
 
 ### Tests for User Story 3
 
-- [ ] T047 [US3] Add failing evidence-contract tests requiring source revision, manifest/specification digests, Policyfile lock revision/digest, Chef `18.11.11`, Slurm `4.0.11`, timestamps, result/state, update count, dependency receipts, cleanup proof, and no additional properties in `tests/end-to-end/test_chef_bootstrap_contracts.py`
-- [ ] T048 [P] [US3] Add failing retry/update/failure-injection tests proving one identical-input retry, preserved attempt evidence, changed-input retry rejection, approved existing-VM release staging, atomic `current` switching, prior-release restoration on update failure, and `replacement_required` after the second initial failure in `tests/end-to-end/test_converge_linux_roles.py`
-- [ ] T049 [P] [US3] Extend the idempotency verifier to fail on any nonzero updated-resource count or altered staged lock/artifact digest in `chef/test/integration/idempotency/verify.sh`
-- [ ] T050 [P] [US3] Extend secret-hygiene policy tests for manifests, specifications, UI attestations, state, evidence, Run Command output, temporary paths, passwords, tokens, private keys, and reversible derivatives in `tests/policy/test_backend_secret_hygiene.py`
+- [X] T047 [US3] Add failing evidence-contract tests requiring source revision, manifest/specification digests, Policyfile lock revision/digest, Chef `18.11.11`, Slurm `4.0.11`, timestamps, result/state, update count, dependency receipts, cleanup proof, and no additional properties in `tests/end-to-end/test_chef_bootstrap_contracts.py`
+- [X] T048 [P] [US3] Add failing retry/update/failure-injection tests proving one identical-input retry, preserved attempt evidence, changed-input retry rejection, approved existing-VM release staging, atomic `current` switching, prior-release restoration on update failure, and `replacement_required` after the second initial failure in `tests/end-to-end/test_converge_linux_roles.py`
+- [X] T049 [P] [US3] Extend the idempotency verifier to fail on any nonzero updated-resource count or altered staged lock/artifact digest in `chef/test/integration/idempotency/verify.sh`
+- [X] T050 [P] [US3] Extend secret-hygiene policy tests for manifests, specifications, UI attestations, state, evidence, Run Command output, temporary paths, passwords, tokens, private keys, and reversible derivatives in `tests/policy/test_backend_secret_hygiene.py`
 
 ### Implementation for User Story 3
 
-- [ ] T051 [US3] Emit schema-valid per-attempt and idempotency evidence atomically while preserving prior attempts and excluding command lines/protected values in `chef/bin/convergence_state.py`
-- [ ] T052 [US3] Enforce `initial`, `retry`, `update`, and `verify-idempotency` operations; for `update`, validate and transfer the newly approved non-secret lock/manifest/specification/bundle payload, request side-by-side immutable staging, and retain separate update evidence in `tests/end-to-end/converge_linux_roles.sh`
-- [ ] T053 [US3] Add explicit update/idempotency modes, atomic `current` switching with prior-release restoration on failed updates, Chef updated-resource parsing, lock/artifact digest revalidation, cleanup proof, and zero-update failure handling in `chef/bin/converge-cyclecloud.sh` and `chef/bin/converge-scheduler.sh`
-- [ ] T054 [US3] Implement bounded remote state inspection with a hard timeout below `60` seconds and schema validation for both persistent VMs in `tests/end-to-end/converge_linux_roles.sh`
-- [ ] T055 [US3] Add governed before/after reboot evidence comparison for state digests, convergence attempts, credentials, cluster count, and explicit-policy-only behavior in `tests/end-to-end/converge_linux_roles.sh`
-- [ ] T056 [US3] Document state inspection, dependency transitions, protected dispatch, safe reruns, replacement recovery, public-identity receipt, manual UI gate, reboot proof, and evidence transfer in `docs/quickstart-evidence-runbook.md`
+- [X] T051 [US3] Emit schema-valid per-attempt and idempotency evidence atomically while preserving prior attempts and excluding command lines/protected values in `chef/bin/convergence_state.py`
+- [X] T052 [US3] Enforce `initial`, `retry`, `update`, and `verify-idempotency` operations; for `update`, validate and transfer the newly approved non-secret lock/manifest/specification/bundle payload, request side-by-side immutable staging, and retain separate update evidence in `tests/end-to-end/converge_linux_roles.sh`
+- [X] T053 [US3] Add explicit update/idempotency modes, atomic `current` switching with prior-release restoration on failed updates, Chef updated-resource parsing, lock/artifact digest revalidation, cleanup proof, and zero-update failure handling in `chef/bin/converge-cyclecloud.sh` and `chef/bin/converge-scheduler.sh`
+- [X] T054 [US3] Implement bounded remote state inspection with a hard timeout below `60` seconds and schema validation for both persistent VMs in `tests/end-to-end/converge_linux_roles.sh`
+- [X] T055 [US3] Add governed before/after reboot evidence comparison for state digests, convergence attempts, credentials, cluster count, and explicit-policy-only behavior in `tests/end-to-end/converge_linux_roles.sh`
+- [X] T056 [US3] Document state inspection, dependency transitions, protected dispatch, safe reruns, replacement recovery, public-identity receipt, manual UI gate, reboot proof, and evidence transfer in `docs/quickstart-evidence-runbook.md`
 
 **Checkpoint**: The same approved inputs are reproducible, auditable, reboot-safe, fail closed, and
 idempotent.
@@ -165,7 +165,7 @@ idempotent.
 **Purpose**: Complete static validation, deploy new credentials before testing them, perform clean
 rebuilds, execute the supported manual UI gate, and capture bounded burst/no-change evidence.
 
-- [ ] T057 Register all new Python, Bash, Terraform, ChefSpec, contract, state-timing, reboot, UI-attestation, and governed-workflow tests in `Makefile`
+- [X] T057 Register all new Python, Bash, Terraform, ChefSpec, contract, state-timing, reboot, UI-attestation, and governed-workflow tests in `Makefile`
 - [ ] T058 Run contract, Terraform, Bicep, Python, ShellCheck, ChefSpec, Cookstyle, InSpec fixture, secret-hygiene, and full `make validate` checks and record only secret-free expected results in `specs/005-automated-chef-bootstrap/quickstart.md`
 - [ ] T059 Generate feature 004 credentials in a new protected evidence context without attempting login against existing VMs, and retain only protected values plus the accepted value-free receipt through `docs/quickstart-evidence-runbook.md`
 - [ ] T060 Produce reviewed Terraform plan and CycleCloud Bicep what-if evidence from the approved commit, bind approval to exact digests, and record approvals in `docs/quickstart-evidence-runbook.md`

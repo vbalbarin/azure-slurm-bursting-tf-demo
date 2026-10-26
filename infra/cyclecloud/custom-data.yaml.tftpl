@@ -20,6 +20,14 @@ write_files:
       CYCLECLOUD_LOCKER_IDENTITY_RESOURCE_ID='${locker_identity_resource_id}'
       CYCLECLOUD_KEY_VAULT_NAME='${key_vault_name}'
       CYCLECLOUD_PRIVATE_NAME='${private_name}'
+      CYCLECLOUD_CHEF_PAYLOAD_B64='${chef_payload_base64}'
+      CYCLECLOUD_CHEF_MANIFEST_B64='${chef_manifest_base64}'
+      CYCLECLOUD_CHEF_SPECIFICATION_B64='${chef_specification_base64}'
+      CYCLECLOUD_CHEF_POLICY_LOCK_B64='${chef_policy_lock_base64}'
+      CYCLECLOUD_CHEF_PAYLOAD_SHA256='${chef_payload_sha256}'
+      CYCLECLOUD_CHEF_MANIFEST_SHA256='${chef_manifest_sha256}'
+      CYCLECLOUD_CHEF_SPECIFICATION_SHA256='${chef_specification_sha256}'
+      CYCLECLOUD_CHEF_POLICY_LOCK_SHA256='${chef_policy_lock_sha256}'
 
 runcmd:
   - [bash, /usr/local/sbin/cyclecloud-first-run]

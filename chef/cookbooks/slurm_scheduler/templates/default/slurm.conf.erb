@@ -9,3 +9,10 @@ ReturnToService=2
 SchedulerType=sched/backfill
 SelectType=select/cons_tres
 PartitionName=<%= node['slurm']['partition'] %> Nodes=burst-[1] Default=YES MaxTime=INFINITE State=UP
+ResumeProgram=/opt/azurehpc/slurm/resume_program.sh
+ResumeFailProgram=/opt/azurehpc/slurm/resume_fail_program.sh
+SuspendProgram=/opt/azurehpc/slurm/suspend_program.sh
+ResumeTimeout=1800
+SuspendTimeout=600
+SuspendTime=300
+Include /sched/azure.conf

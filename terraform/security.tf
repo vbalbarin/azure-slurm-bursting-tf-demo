@@ -49,6 +49,17 @@ module "cyclecloud_private_dns" {
   }
 }
 
+module "scheduler_identity" {
+  source  = "Azure/avm-res-managedidentity-userassignedidentity/azurerm"
+  version = "0.5.3"
+
+  location            = var.source_region
+  name                = local.names.scheduler_identity
+  resource_group_name = module.resource_group.name
+  enable_telemetry    = false
+  tags                = local.common_tags
+}
+
 module "blob_private_dns" {
   source  = "Azure/avm-res-network-privatednszone/azurerm"
   version = "0.5.0"
@@ -100,6 +111,11 @@ module "key_vault" {
     cyclecloud_secrets_user = {
       role_definition_id_or_name = "Key Vault Secrets User"
       principal_id               = module.cyclecloud_control_identity.principal_id
+      principal_type             = "ServicePrincipal"
+    }
+    scheduler_secrets_user = {
+      role_definition_id_or_name = local.scheduler_key_vault_role
+      principal_id               = module.scheduler_identity.principal_id
       principal_type             = "ServicePrincipal"
     }
   })

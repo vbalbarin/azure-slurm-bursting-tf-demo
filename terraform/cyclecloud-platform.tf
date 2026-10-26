@@ -1,4 +1,15 @@
 locals {
+  cyclecloud_chef_manifest_base64      = base64encode(local.chef_role_payloads.cyclecloud.manifest_json)
+  cyclecloud_chef_specification_json   = jsonencode(local.chef_node_specifications.cyclecloud)
+  cyclecloud_chef_specification_base64 = base64encode(local.cyclecloud_chef_specification_json)
+  cyclecloud_chef_lock_path            = "${path.module}/../chef/policyfiles/cyclecloud.lock.json"
+  cyclecloud_chef_lock_base64          = filebase64(local.cyclecloud_chef_lock_path)
+  cyclecloud_chef_decoded_size = (
+    length(base64decode(local.chef_role_payloads.cyclecloud.policy_archive_base64)) +
+    length(local.chef_role_payloads.cyclecloud.manifest_json) +
+    length(local.cyclecloud_chef_specification_json) +
+    length(file(local.cyclecloud_chef_lock_path))
+  )
   cyclecloud_custom_data = base64encode(templatefile(
     "${path.module}/../infra/cyclecloud/custom-data.yaml.tftpl",
     {
@@ -13,8 +24,23 @@ locals {
       locker_identity_resource_id = module.cyclecloud_locker_identity.resource_id
       key_vault_name              = local.names.key_vault
       private_name                = "${local.names.cyclecloud}.${local.private_dns_zones.cyclecloud}"
+      chef_payload_base64         = local.chef_role_payloads.cyclecloud.policy_archive_base64
+      chef_manifest_base64        = local.cyclecloud_chef_manifest_base64
+      chef_specification_base64   = local.cyclecloud_chef_specification_base64
+      chef_policy_lock_base64     = local.cyclecloud_chef_lock_base64
+      chef_payload_sha256         = jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[index(jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[*].kind, "policy")].sha256
+      chef_manifest_sha256        = sha256(local.chef_role_payloads.cyclecloud.manifest_json)
+      chef_specification_sha256   = sha256(local.cyclecloud_chef_specification_json)
+      chef_policy_lock_sha256     = filesha256(local.cyclecloud_chef_lock_path)
     }
   ))
+}
+
+check "cyclecloud_chef_payload_size" {
+  assert {
+    condition     = local.cyclecloud_chef_decoded_size <= 60000
+    error_message = "The decoded aggregate CycleCloud Chef payload must not exceed 60000 bytes."
+  }
 }
 
 module "cyclecloud_control_identity" {

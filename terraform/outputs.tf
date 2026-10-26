@@ -73,7 +73,42 @@ output "cyclecloud_deployment" {
     private_name                       = "${local.names.cyclecloud}.${local.private_dns_zones.cyclecloud}"
     cyclecloud_admin_username          = var.cyclecloud_admin_username
     custom_data                        = local.cyclecloud_custom_data
+    chef_payload_base64                = local.chef_role_payloads.cyclecloud.policy_archive_base64
+    chef_manifest_base64               = local.cyclecloud_chef_manifest_base64
+    chef_node_specification_base64     = local.cyclecloud_chef_specification_base64
+    chef_policy_lock_base64            = local.cyclecloud_chef_lock_base64
+    chef_payload_sha256                = jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[index(jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[*].kind, "policy")].sha256
+    chef_manifest_sha256               = sha256(local.chef_role_payloads.cyclecloud.manifest_json)
+    chef_node_specification_sha256     = sha256(local.cyclecloud_chef_specification_json)
+    chef_policy_lock_sha256            = filesha256(local.cyclecloud_chef_lock_path)
+    chef_decoded_size_bytes            = local.cyclecloud_chef_decoded_size
     image                              = var.cyclecloud_image
     tags                               = local.common_tags
+  }
+}
+
+output "scheduler_bootstrap" {
+  description = "Secret-free scheduler bundle, specification, identity, and governed-dispatch references."
+  value = {
+    role                    = "scheduler"
+    source_revision         = jsondecode(local.chef_role_payloads.scheduler.manifest_json).sourceRevision
+    policy_revision         = jsondecode(local.chef_role_payloads.scheduler.manifest_json).policyRevision
+    policy_lock_sha256      = jsondecode(local.chef_role_payloads.scheduler.manifest_json).policyLockSha256
+    manifest_digest         = jsondecode(local.chef_role_payloads.scheduler.manifest_json).manifestDigest
+    specification           = local.chef_node_specifications.scheduler
+    specification_digest    = local.chef_node_specifications.scheduler.specificationDigest
+    identity_resource_id    = module.scheduler_identity.resource_id
+    identity_client_id      = module.scheduler_identity.client_id
+    key_vault_role          = local.scheduler_key_vault_role
+    custom_data_sha256      = sha256(base64decode(local.scheduler_custom_data))
+    custom_data_size_bytes  = length(base64decode(local.scheduler_custom_data))
+    convergence_entry_point = "/opt/slurm-demo/current/chef/bin/converge-scheduler.sh"
+    dependency_receipts = {
+      cyclecloud_convergence = "/var/lib/slurm-demo/receipts/cyclecloud.json"
+      scheduler_environment  = "/var/lib/slurm-demo/scheduler/state.json"
+      secret_access          = "/var/lib/slurm-demo/receipts/secret-access.json"
+      hpc_user               = "/var/lib/slurm-demo/receipts/hpc-user-gate.json"
+    }
+    public_identity_receipt = "/var/lib/slurm-demo/scheduler/hpcuser01-public-identity.json"
   }
 }

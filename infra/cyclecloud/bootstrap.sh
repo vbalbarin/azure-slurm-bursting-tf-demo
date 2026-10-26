@@ -2,20 +2,79 @@
 set -euo pipefail
 umask 077
 
+# shellcheck source=/dev/null
 source /etc/cyclecloud-first-run.env
+
+: "${CYCLECLOUD_CHEF_PAYLOAD_B64:?CYCLECLOUD_CHEF_PAYLOAD_B64 is required}"
+: "${CYCLECLOUD_CHEF_MANIFEST_B64:?CYCLECLOUD_CHEF_MANIFEST_B64 is required}"
+: "${CYCLECLOUD_CHEF_SPECIFICATION_B64:?CYCLECLOUD_CHEF_SPECIFICATION_B64 is required}"
+: "${CYCLECLOUD_CHEF_POLICY_LOCK_B64:?CYCLECLOUD_CHEF_POLICY_LOCK_B64 is required}"
+: "${CYCLECLOUD_CHEF_PAYLOAD_SHA256:?CYCLECLOUD_CHEF_PAYLOAD_SHA256 is required}"
+: "${CYCLECLOUD_CHEF_MANIFEST_SHA256:?CYCLECLOUD_CHEF_MANIFEST_SHA256 is required}"
+: "${CYCLECLOUD_CHEF_SPECIFICATION_SHA256:?CYCLECLOUD_CHEF_SPECIFICATION_SHA256 is required}"
+: "${CYCLECLOUD_CHEF_POLICY_LOCK_SHA256:?CYCLECLOUD_CHEF_POLICY_LOCK_SHA256 is required}"
 
 readonly cycle_root=/opt/cycle_server
 readonly state_dir=/var/lib/cyclecloud-first-run
 readonly secret_dir=/run/cyclecloud-first-run
+readonly chef_input_dir=/run/cyclecloud-chef-input
 readonly cli_root=/usr/local/cyclecloud-cli
 readonly cli_config=/etc/cyclecloud/cli.ini
 readonly cli_default_config=/root/.cycle/config.ini
 
-install -d -m 0700 "$state_dir" "$secret_dir" /etc/cyclecloud
+install -d -m 0700 "$state_dir" "$secret_dir" "$chef_input_dir" /etc/cyclecloud
 cleanup() {
-  rm -rf "$secret_dir" /tmp/cyclecloud-cli-installer
+  rm -rf "$secret_dir" "$chef_input_dir" /tmp/cyclecloud-cli-installer
 }
 trap cleanup EXIT
+
+if [[ -f "$state_dir/converged" ]]; then
+  cleanup
+  trap - EXIT
+  exit 0
+fi
+
+decode_and_verify() {
+  local encoded="$1"
+  local expected_digest="$2"
+  local output="$3"
+  [[ "$expected_digest" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "Invalid CycleCloud Chef input digest" >&2
+    exit 1
+  }
+  printf '%s' "$encoded" | base64 --decode >"$output"
+  chmod 0600 "$output"
+  [[ "$(sha256sum "$output" | awk '{print $1}')" == "$expected_digest" ]] || {
+    echo "CycleCloud Chef input digest mismatch" >&2
+    exit 1
+  }
+}
+
+decode_and_verify "$CYCLECLOUD_CHEF_PAYLOAD_B64" \
+  "$CYCLECLOUD_CHEF_PAYLOAD_SHA256" "$chef_input_dir/cyclecloud.tgz"
+decode_and_verify "$CYCLECLOUD_CHEF_MANIFEST_B64" \
+  "$CYCLECLOUD_CHEF_MANIFEST_SHA256" "$chef_input_dir/manifest.json"
+decode_and_verify "$CYCLECLOUD_CHEF_SPECIFICATION_B64" \
+  "$CYCLECLOUD_CHEF_SPECIFICATION_SHA256" "$chef_input_dir/node-specification.json"
+decode_and_verify "$CYCLECLOUD_CHEF_POLICY_LOCK_B64" \
+  "$CYCLECLOUD_CHEF_POLICY_LOCK_SHA256" "$chef_input_dir/cyclecloud.lock.json"
+python3 - "$chef_input_dir/manifest.json" "$chef_input_dir/cyclecloud.lock.json" <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+manifest = json.loads(Path(sys.argv[1]).read_text())
+lock_path = Path(sys.argv[2])
+lock = json.loads(lock_path.read_text())
+if manifest.get("policyLockSha256") != hashlib.sha256(lock_path.read_bytes()).hexdigest():
+    raise SystemExit("CycleCloud policy lock is not bound to the manifest")
+if manifest.get("policyRevision") != lock.get("revision_id"):
+    raise SystemExit("CycleCloud policy revision mismatch")
+PY
+tar --extract --to-stdout --gzip --file "$chef_input_dir/cyclecloud.tgz" \
+  chef/bootstrap/linux.sh >"$chef_input_dir/bootstrap-linux.sh"
+chmod 0700 "$chef_input_dir/bootstrap-linux.sh"
 
 dnf install -y \
   https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm
@@ -164,8 +223,22 @@ if grep -Fqx 'Account not found' <<<"$account_details"; then
   "$cli_root/bin/cyclecloud" account create -f "$secret_dir/provider.json"
 fi
 account_details="$("$cli_root/bin/cyclecloud" account show "$account_name" 2>&1)"
-! grep -Fqx 'Account not found' <<<"$account_details"
+if grep -Fqx 'Account not found' <<<"$account_details"; then
+  echo "CycleCloud provider account creation failed" >&2
+  exit 1
+fi
 
+rm -rf "$secret_dir" /tmp/cyclecloud-cli-installer
+touch "$state_dir/complete"
+
+CHEF_POLICY_NAME=cyclecloud \
+CHEF_POLICY_ARCHIVE_PATH="$chef_input_dir/cyclecloud.tgz" \
+CHEF_MANIFEST_PATH="$chef_input_dir/manifest.json" \
+CHEF_NODE_SPECIFICATION_PATH="$chef_input_dir/node-specification.json" \
+  "$chef_input_dir/bootstrap-linux.sh"
+
+/opt/slurm-demo/current/chef/bin/converge-cyclecloud.sh
+
+touch "$state_dir/converged"
 cleanup
 trap - EXIT
-touch "$state_dir/complete"

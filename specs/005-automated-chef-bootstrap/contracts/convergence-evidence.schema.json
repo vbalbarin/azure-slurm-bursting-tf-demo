@@ -10,6 +10,8 @@
     "sourceRevision",
     "manifestDigest",
     "specificationDigest",
+    "policyRevision",
+    "policyLockSha256",
     "chefVersion",
     "slurmProjectVersion",
     "attempt",
@@ -40,6 +42,14 @@
       "pattern": "^[0-9a-f]{64}$"
     },
     "specificationDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "policyRevision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "policyLockSha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },

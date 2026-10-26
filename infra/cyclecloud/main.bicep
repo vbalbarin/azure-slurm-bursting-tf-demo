@@ -27,6 +27,48 @@ param userAssignedIdentityResourceId string
 @description('Base64-encoded cloud-init payload that performs protected first-run configuration.')
 param customData string
 
+@secure()
+@maxLength(80000)
+@description('Base64-encoded deterministic CycleCloud Chef policy bundle.')
+param chefPayloadBase64 string
+
+@secure()
+@description('Base64-encoded CycleCloud artifact manifest.')
+param chefManifestBase64 string
+
+@secure()
+@description('Base64-encoded non-secret CycleCloud node specification.')
+param chefNodeSpecificationBase64 string
+
+@secure()
+@description('Base64-encoded reviewed CycleCloud Policyfile lock.')
+param chefPolicyLockBase64 string
+
+@minLength(64)
+@maxLength(64)
+@description('SHA-256 of the decoded CycleCloud policy bundle.')
+param chefPayloadSha256 string
+
+@minLength(64)
+@maxLength(64)
+@description('SHA-256 of the decoded CycleCloud artifact manifest.')
+param chefManifestSha256 string
+
+@minLength(64)
+@maxLength(64)
+@description('SHA-256 of the decoded CycleCloud node specification.')
+param chefNodeSpecificationSha256 string
+
+@minLength(64)
+@maxLength(64)
+@description('SHA-256 of the decoded reviewed CycleCloud Policyfile lock.')
+param chefPolicyLockSha256 string
+
+@description('Maximum permitted decoded aggregate Chef payload size.')
+@minValue(1)
+@maxValue(60000)
+param chefDecodedSizeBytes int
+
 @description('Administrative Linux username.')
 param adminUsername string = 'cyclecloudadmin'
 
