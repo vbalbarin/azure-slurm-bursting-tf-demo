@@ -4,8 +4,16 @@ locals {
   cyclecloud_chef_specification_base64 = base64encode(local.cyclecloud_chef_specification_json)
   cyclecloud_chef_lock_path            = "${path.module}/../chef/policyfiles/cyclecloud.lock.json"
   cyclecloud_chef_lock_base64          = filebase64(local.cyclecloud_chef_lock_path)
+  cyclecloud_chef_archive_padding = (
+    endswith(local.chef_role_payloads.cyclecloud.policy_archive_base64, "==") ? 2 :
+    endswith(local.chef_role_payloads.cyclecloud.policy_archive_base64, "=") ? 1 : 0
+  )
+  cyclecloud_chef_archive_size = (
+    length(local.chef_role_payloads.cyclecloud.policy_archive_base64) * 3 / 4 -
+    local.cyclecloud_chef_archive_padding
+  )
   cyclecloud_chef_decoded_size = (
-    length(base64decode(local.chef_role_payloads.cyclecloud.policy_archive_base64)) +
+    local.cyclecloud_chef_archive_size +
     length(local.chef_role_payloads.cyclecloud.manifest_json) +
     length(local.cyclecloud_chef_specification_json) +
     length(file(local.cyclecloud_chef_lock_path))

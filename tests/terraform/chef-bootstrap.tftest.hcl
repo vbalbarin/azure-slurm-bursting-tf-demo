@@ -191,6 +191,18 @@ run "reject_missing_role_payloads" {
   expect_failures = [terraform_data.chef_role_payload_gate]
 }
 
+run "accept_binary_cyclecloud_policy_archive" {
+  command = plan
+
+  variables {
+    chef_role_payloads = merge(var.chef_role_payloads, {
+      cyclecloud = merge(var.chef_role_payloads.cyclecloud, {
+        policy_archive_base64 = "/w=="
+      })
+    })
+  }
+}
+
 run "reject_secret_manifest_field" {
   command = plan
   variables {
