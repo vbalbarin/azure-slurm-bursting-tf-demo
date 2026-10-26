@@ -97,6 +97,11 @@ def test_cyclecloud_first_run_is_identity_and_secret_driven() -> None:
     assert "ADMIN_PASSWORD=" not in (
         ROOT / "infra" / "cyclecloud" / "custom-data.yaml.tftpl"
     ).read_text()
+    custom_data = (
+        ROOT / "infra" / "cyclecloud" / "custom-data.yaml.tftpl"
+    ).read_text()
+    assert "encoding: gz+b64" in custom_data
+    assert "base64gzip(bootstrap_script)" in custom_data
 
 
 def test_cyclecloud_stack_has_digest_gates_and_delete_all_cleanup() -> None:

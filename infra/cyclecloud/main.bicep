@@ -25,6 +25,7 @@ param userAssignedIdentityResourceId string
 
 @secure()
 @description('Base64-encoded cloud-init payload that performs protected first-run configuration.')
+@maxLength(87380)
 param customData string
 
 @secure()

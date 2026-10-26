@@ -62,6 +62,7 @@ def test_cyclecloud_bicep_declares_payload_contract_without_more_resources() -> 
     ):
         assert f"param {parameter} string" in template
     assert "@maxLength(80000)" in template
+    assert "@maxLength(87380)" in template
     assert "@maxValue(60000)" in template
     assert sum(line.startswith("resource ") for line in template.splitlines()) == 1
 

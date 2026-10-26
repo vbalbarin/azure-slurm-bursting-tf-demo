@@ -4,8 +4,8 @@ write_files:
   - path: /usr/local/sbin/cyclecloud-first-run
     owner: root:root
     permissions: '0700'
-    encoding: b64
-    content: ${base64encode(bootstrap_script)}
+    encoding: gz+b64
+    content: ${base64gzip(bootstrap_script)}
   - path: /etc/cyclecloud-first-run.env
     owner: root:root
     permissions: '0600'
