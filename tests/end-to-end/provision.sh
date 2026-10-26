@@ -63,7 +63,10 @@ if ! terraform -chdir=terraform show -json "$PLAN_FILE" |
     [.resource_changes[]? |
       select(.address == "module.key_vault.azurerm_key_vault.this")] as $vaults |
     ($vaults | length) == 1 and
-    $vaults[0].change.actions == ["create"] and
+    (
+      $vaults[0].change.actions == ["create"] or
+      $vaults[0].change.actions == ["update"]
+    ) and
     $vaults[0].change.after.public_network_access_enabled == true and
     $vaults[0].change.after.network_acls[0].default_action == "Deny" and
     $vaults[0].change.after.network_acls[0].ip_rules == [$cidr] and

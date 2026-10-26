@@ -3776,9 +3776,10 @@ Create `$APPROVAL_FILE` only after plan generation:
 
 Any source, input, backend context, selected placement, plan, or evidence change invalidates
 approval. Before apply, `provision.sh` also inspects the reviewed plan and requires exactly one
-Key Vault create with public access enabled, default deny, exactly the approved runner `/32`, and
-the Key Vault-only `SecurityControl=Ignore` tag. A stale private-only input therefore fails before
-Azure resources are created. Final backend readiness must also be `ready/none` and no more than
+Key Vault create or in-place update with public access enabled, default deny, exactly the approved
+runner `/32`, and the Key Vault-only `SecurityControl=Ignore` tag. A stale private-only input
+therefore fails before Azure resources are changed. Final backend readiness must also be
+`ready/none` and no more than
 20 minutes old when the foundation apply begins, preserving headroom for the immediate
 post-foundation no-change plan.
 

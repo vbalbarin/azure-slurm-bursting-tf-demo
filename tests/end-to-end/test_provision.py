@@ -34,11 +34,12 @@ elif command == "plan":
 elif command == "show":
     cidr = os.environ.get("FAKE_KEY_VAULT_CIDR", "32.216.31.25/32")
     public_access = os.environ.get("FAKE_KEY_VAULT_PUBLIC_ACCESS", "true") == "true"
+    action = os.environ.get("FAKE_KEY_VAULT_ACTION", "create")
     print(json.dumps({{
         "resource_changes": [{{
             "address": "module.key_vault.azurerm_key_vault.this",
             "change": {{
-                "actions": ["create"],
+                "actions": [action],
                 "after": {{
                     "public_network_access_enabled": public_access,
                     "network_acls": [{{
@@ -180,6 +181,24 @@ def test_applies_reviewed_plan_then_requires_no_change(tmp_path: Path) -> None:
     assert any("apply" in invocation for invocation in invocations)
     assert any("plan" in invocation for invocation in invocations)
     assert (Path(environment["EVIDENCE_DIR"]) / "foundation-no-change.json").exists()
+
+
+def test_applies_reviewed_plan_with_key_vault_update(tmp_path: Path) -> None:
+    environment = _environment(tmp_path)
+    environment["FAKE_KEY_VAULT_ACTION"] = "update"
+
+    result = subprocess.run(
+        [str(SCRIPT)],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    invocations = Path(environment["FAKE_TERRAFORM_LOG"]).read_text()
+    assert "apply" in invocations
 
 
 def test_rejects_post_apply_foundation_drift(tmp_path: Path) -> None:
