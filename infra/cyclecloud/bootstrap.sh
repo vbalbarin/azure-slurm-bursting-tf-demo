@@ -110,12 +110,19 @@ download_secret cyclecloud-tls-pfx "$secret_dir/cyclecloud.pfx" base64
 download_secret cyclecloud-tls-pfx-password "$secret_dir/pfx-password" utf-8
 
 admin_password="$(<"$secret_dir/admin-password")"
-pfx_password="$(<"$secret_dir/pfx-password")"
 chown cycle_server:cycle_server \
   "$secret_dir/cyclecloud.pfx" \
   "$secret_dir/pfx-password"
 chown root:cycle_server "$secret_dir"
 chmod 0750 "$secret_dir"
+cat >"$secret_dir/import-pfx" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+exec "$cycle_root/cycle_server" keystore import_pfx \
+  "$secret_dir/cyclecloud.pfx" --pass "\$(<"$secret_dir/pfx-password")"
+EOF
+chown root:cycle_server "$secret_dir/import-pfx"
+chmod 0750 "$secret_dir/import-pfx"
 
 "$cycle_root/cycle_server" start
 for _ in {1..60}; do
@@ -166,8 +173,7 @@ PY
   touch "$state_dir/account-imported"
 fi
 
-sudo -u cycle_server "$cycle_root/cycle_server" keystore import_pfx \
-  "$secret_dir/cyclecloud.pfx" --pass "$pfx_password"
+sudo -u cycle_server "$secret_dir/import-pfx"
 "$cycle_root/cycle_server" stop
 "$cycle_root/cycle_server" start
 

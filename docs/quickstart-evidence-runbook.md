@@ -3898,6 +3898,10 @@ through the Key Vault data plane during this bounded window. The script validate
 password receipt, passes file paths rather than values to Azure CLI, and records only seven secret
 IDs and names:
 
+CycleCloud first boot imports the PFX through a protected wrapper that reads the password file as
+the `cycle_server` account. Never place the PFX password in a `sudo` command line because sudo
+auditing can persist command arguments in the guest journal.
+
 ```bash
 export ADMIN_SECRET_EVIDENCE_FILE="$DEMO_EVIDENCE_DIR/admin-secret-references.json"
 tests/end-to-end/store_admin_secrets.sh

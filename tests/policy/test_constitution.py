@@ -81,7 +81,9 @@ def test_cyclecloud_first_run_is_identity_and_secret_driven() -> None:
     assert "readonly cli_root=/usr/local/cyclecloud-cli" in bootstrap
     assert 'ln -sfn "$cli_config" "$cli_default_config"' in bootstrap
     assert '"AzureRMUseManagedIdentity": true' not in bootstrap
-    assert 'sudo -u cycle_server "$cycle_root/cycle_server" keystore import_pfx' in bootstrap
+    assert 'sudo -u cycle_server "$secret_dir/import-pfx"' in bootstrap
+    assert '--pass "$pfx_password"' not in bootstrap
+    assert 'cat >"$secret_dir/import-pfx"' in bootstrap
     assert bootstrap.index('" keystore import_pfx') < bootstrap.index(
         '" stop', bootstrap.index('" keystore import_pfx')
     )
