@@ -201,6 +201,26 @@ def test_applies_reviewed_plan_with_key_vault_update(tmp_path: Path) -> None:
     assert "apply" in invocations
 
 
+def test_applies_reviewed_plan_with_key_vault_already_in_approved_posture(
+    tmp_path: Path,
+) -> None:
+    environment = _environment(tmp_path)
+    environment["FAKE_KEY_VAULT_ACTION"] = "no-op"
+
+    result = subprocess.run(
+        [str(SCRIPT)],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    invocations = Path(environment["FAKE_TERRAFORM_LOG"]).read_text()
+    assert "apply" in invocations
+
+
 def test_rejects_post_apply_foundation_drift(tmp_path: Path) -> None:
     environment = _environment(tmp_path)
     environment["FAKE_FOUNDATION_PLAN_STATUS"] = "2"

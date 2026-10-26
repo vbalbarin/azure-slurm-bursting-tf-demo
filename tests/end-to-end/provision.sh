@@ -65,7 +65,8 @@ if ! terraform -chdir=terraform show -json "$PLAN_FILE" |
     ($vaults | length) == 1 and
     (
       $vaults[0].change.actions == ["create"] or
-      $vaults[0].change.actions == ["update"]
+      $vaults[0].change.actions == ["update"] or
+      $vaults[0].change.actions == ["no-op"]
     ) and
     $vaults[0].change.after.public_network_access_enabled == true and
     $vaults[0].change.after.network_acls[0].default_action == "Deny" and
