@@ -31,11 +31,14 @@ install -d -m 0700 "$runtime_dir"
 secret_file="$runtime_dir/cyclecloud-password.$$"
 attributes_file="$runtime_dir/chef-attributes.$$"
 chef_log="$runtime_dir/chef-output.$$"
+chef_config="$runtime_dir/chef-client.$$.rb"
+chef_cache="$runtime_dir/chef-cache.$$"
 autoscale_candidate="$runtime_dir/autoscale.$$"
 partitions_candidate="$runtime_dir/azure.conf.$$"
 cleanup() {
   rm -f "$secret_file" "$attributes_file" "$chef_log" "$autoscale_candidate" \
-    "$partitions_candidate" "$authorization_receipt"
+    "$partitions_candidate" "$authorization_receipt" "$chef_config"
+  rm -rf "$chef_cache"
 }
 trap cleanup EXIT
 trap 'exit 129' HUP
@@ -103,6 +106,8 @@ if manifest.get("sourceRevision") != specification.get("sourceRevision"):
     raise SystemExit("source revision mismatch")
 if lock.get("revision_id") != manifest.get("policyRevision"):
     raise SystemExit("policy revision mismatch")
+if lock.get("run_list") != ["recipe[slurm_scheduler::default]"]:
+    raise SystemExit("policy run list mismatch")
 if hashlib.sha256(lock_path.read_bytes()).hexdigest() != manifest.get("policyLockSha256"):
     raise SystemExit("policy lock digest mismatch")
 if authorization.get("schemaVersion") != 1:
@@ -139,13 +144,14 @@ print(
     specification["secretReferences"]["cyclecloudAdminPassword"],
     specification["cyclecloudUrl"],
     specification["clusterName"],
+    lock["run_list"][0],
     *[f'{item["name"]}={item["digest"]}' for item in receipts],
 )
 PY
 )"
 read -r source_revision manifest_digest specification_digest policy_revision \
   policy_lock_sha256 operation vault_uri secret_name cyclecloud_url cluster_name \
-  cyclecloud_receipt environment_receipt secret_access_receipt <<<"$validation"
+  chef_run_list cyclecloud_receipt environment_receipt secret_access_receipt <<<"$validation"
 
 attempt=1
 transition_state=converging
@@ -225,14 +231,19 @@ attributes = {
 Path(sys.argv[2]).write_text(json.dumps(attributes))
 PY
 chmod 0600 "$attributes_file"
+install -d -m 0700 "$chef_cache"
+printf '%s\n' \
+  "chef_repo_path \"$release_root\"" \
+  "cookbook_path [\"$release_root/chef/cookbooks\"]" \
+  "file_cache_path \"$chef_cache\"" >"$chef_config"
+chmod 0600 "$chef_config"
 
 failure_stage=chef_installation
 (
   cd "$release_root"
-  chef-client --local-mode \
-    --config-option "policy_name=slurm" \
-    --config-option "policy_group=demo" \
-    --config-option "cookbook_path=$release_root/chef/cookbooks" \
+  CHEF_LICENSE=accept-no-persist chef-client --local-mode \
+    --config "$chef_config" \
+    --override-runlist "$chef_run_list" \
     --json-attributes "$attributes_file" --log_level warn
 ) >"$chef_log" 2>&1
 
@@ -289,10 +300,9 @@ failure_stage=chef_convergence
 set +e
 (
   cd "$release_root"
-  chef-client --local-mode \
-    --config-option "policy_name=slurm" \
-    --config-option "policy_group=demo" \
-    --config-option "cookbook_path=$release_root/chef/cookbooks" \
+  CHEF_LICENSE=accept-no-persist chef-client --local-mode \
+    --config "$chef_config" \
+    --override-runlist "$chef_run_list" \
     --json-attributes "$attributes_file" --log_level warn
 ) >>"$chef_log" 2>&1
 chef_status=$?

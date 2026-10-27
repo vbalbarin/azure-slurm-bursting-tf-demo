@@ -268,15 +268,14 @@ def test_cyclecloud_wrapper_binds_state_and_evidence_to_verified_inputs() -> Non
 
 
 def test_convergence_wrappers_use_supported_chef_policy_configuration() -> None:
-    for path, policy in (
-        (CYCLECLOUD_WRAPPER, "cyclecloud"),
-        (SCHEDULER_WRAPPER, "slurm"),
-    ):
+    for path in (CYCLECLOUD_WRAPPER, SCHEDULER_WRAPPER):
         script = path.read_text(encoding="utf-8")
         assert "--policy-name" not in script
         assert "--policy-group" not in script
-        assert f'--config-option "policy_name={policy}"' in script
-        assert '--config-option "policy_group=demo"' in script
+        assert "CHEF_LICENSE=accept-no-persist chef-client" in script
+        assert '--config "$chef_config"' in script
+        assert '--override-runlist "$chef_run_list"' in script
+        assert "cookbook_path [" in script
 
 
 def _cyclecloud_wrapper_fixture(
@@ -289,7 +288,10 @@ def _cyclecloud_wrapper_fixture(
     (release / "chef/policyfiles").mkdir(parents=True)
     shutil.copy2(STATE_TOOL, release / "chef/bin/convergence_state.py")
     policy_revision = "d" * 64
-    lock = {"revision_id": policy_revision}
+    lock = {
+        "revision_id": policy_revision,
+        "run_list": ["recipe[cyclecloud_node::default]"],
+    }
     lock_path = release / "chef/policyfiles/cyclecloud.lock.json"
     lock_path.write_text(json.dumps(lock), encoding="utf-8")
     lock_digest = _sha256(lock_path)

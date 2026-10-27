@@ -100,6 +100,10 @@ checks = (
         "policy revision mismatch",
     ),
     (
+        policy_lock.get("run_list") == ["recipe[cyclecloud_node::default]"],
+        "policy run list mismatch",
+    ),
+    (
         manifest.get("policyLockSha256")
         == hashlib.sha256(lock_path.read_bytes()).hexdigest(),
         "policy lock digest mismatch",
@@ -136,11 +140,12 @@ print(
     specification["specificationDigest"],
     manifest["policyRevision"],
     manifest["policyLockSha256"],
+    policy_lock["run_list"][0],
 )
 PY
 )"
-read -r source_revision manifest_digest specification_digest policy_revision policy_lock_sha256 \
-  <<<"$validation"
+read -r source_revision manifest_digest specification_digest policy_revision \
+  policy_lock_sha256 chef_run_list <<<"$validation"
 
 state_file="$role_state/state.json"
 attempt=1
@@ -179,10 +184,16 @@ python3 "$state_tool" --state-dir "$state_root" transition \
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 readonly started_at
 readonly chef_log="$runtime_dir/chef.log"
-if chef-client --local-mode \
-  --config-option "policy_name=cyclecloud" \
-  --config-option "policy_group=demo" \
-  --config-option "cookbook_path=$release_root/chef/cookbooks" \
+readonly chef_config="$runtime_dir/client.rb"
+install -d -m 0700 "$runtime_dir/cache"
+printf '%s\n' \
+  "chef_repo_path \"$release_root\"" \
+  "cookbook_path [\"$release_root/chef/cookbooks\"]" \
+  "file_cache_path \"$runtime_dir/cache\"" >"$chef_config"
+chmod 0600 "$chef_config"
+if CHEF_LICENSE=accept-no-persist chef-client --local-mode \
+  --config "$chef_config" \
+  --override-runlist "$chef_run_list" \
   --json-attributes "$specification" \
   --log_level warn >"$chef_log" 2>&1; then
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
