@@ -491,6 +491,7 @@ variable "chef_role_payloads" {
         "policyName",
         "policyRevision",
         "policyLockSha256",
+        "policyArchiveBase64Sha256",
         "artifacts",
         "manifestDigest",
       ]), false)
@@ -507,6 +508,12 @@ variable "chef_role_payloads" {
       try(can(regex("^[0-9a-f]{40}$", jsondecode(var.chef_role_payloads[role].manifest_json).sourceRevision)), false) &&
       try(can(regex("^[0-9a-f]{64}$", jsondecode(var.chef_role_payloads[role].manifest_json).policyRevision)), false) &&
       try(can(regex("^[0-9a-f]{64}$", jsondecode(var.chef_role_payloads[role].manifest_json).policyLockSha256)), false) &&
+      try(can(regex("^[0-9a-f]{64}$", jsondecode(var.chef_role_payloads[role].manifest_json).policyArchiveBase64Sha256)), false) &&
+      try(
+        sha256(var.chef_role_payloads[role].policy_archive_base64) ==
+        jsondecode(var.chef_role_payloads[role].manifest_json).policyArchiveBase64Sha256,
+        false
+      ) &&
       try(can(regex("^[0-9a-f]{64}$", jsondecode(var.chef_role_payloads[role].manifest_json).manifestDigest)), false)
       ]) && try(
       jsondecode(var.chef_role_payloads.cyclecloud.manifest_json).sourceRevision ==

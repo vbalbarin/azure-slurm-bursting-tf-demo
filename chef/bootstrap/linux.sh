@@ -33,6 +33,7 @@ validation="$(
     "$CHEF_NODE_SPECIFICATION_PATH" "$CHEF_POLICY_ARCHIVE_PATH" <<'PY'
 import hashlib
 import json
+import base64
 from pathlib import Path
 import re
 import sys
@@ -60,6 +61,10 @@ if manifest.get("sourceRevision") != specification.get("sourceRevision"):
 if not re.fullmatch(r"[0-9a-f]{64}", manifest.get("policyLockSha256", "")):
     raise SystemExit("invalid policyLockSha256")
 archive = Path(archive_path).read_bytes()
+if manifest.get("policyArchiveBase64Sha256") != hashlib.sha256(
+    base64.b64encode(archive)
+).hexdigest():
+    raise SystemExit("policy archive transport digest mismatch")
 artifact = next(
     (item for item in manifest.get("artifacts", []) if item.get("kind") == "policy"),
     None,

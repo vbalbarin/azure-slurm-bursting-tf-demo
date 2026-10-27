@@ -21,12 +21,13 @@ locals {
     role => {
       policy_archive_base64 = ""
       manifest_json = jsonencode({
-        schemaVersion    = 1
-        role             = role
-        sourceRevision   = ""
-        policyName       = role == "scheduler" ? "slurm" : "cyclecloud"
-        policyRevision   = ""
-        policyLockSha256 = ""
+        schemaVersion             = 1
+        role                      = role
+        sourceRevision            = ""
+        policyName                = role == "scheduler" ? "slurm" : "cyclecloud"
+        policyRevision            = ""
+        policyLockSha256          = ""
+        policyArchiveBase64Sha256 = sha256("")
         artifacts = [{
           name      = "${role}.tgz"
           kind      = "policy"

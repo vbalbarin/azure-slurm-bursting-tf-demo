@@ -43,6 +43,7 @@ import gzip
 import hashlib
 import io
 import json
+import base64
 from pathlib import Path
 import sys
 import tarfile
@@ -54,8 +55,7 @@ OUTPUT = Path(sys.argv[2])
 CHEF_VERSION = "18.11.11"
 CHEF_SHA256 = "d68c339bc85ded67b793de4e20f35886c5fbd9b5a9e95dabbe5ede6211b01365"
 CHEF_URI = (
-    "https://packages.chef.io/files/stable/chef/18.11.11/el/9/"
-    "chef-18.11.11-1.el9.x86_64.rpm"
+    "https://chefdownload-commercial.chef.io/stable/chef/download"
 )
 ROLES = {
     "cyclecloud": {
@@ -153,6 +153,7 @@ for role, config in ROLES.items():
         "policyName": policy,
         "policyRevision": lock["revision_id"],
         "policyLockSha256": sha256(lock_path.read_bytes()),
+        "policyArchiveBase64Sha256": sha256(base64.b64encode(payload)),
         "artifacts": [
             {
                 "name": f"{role}.tgz",

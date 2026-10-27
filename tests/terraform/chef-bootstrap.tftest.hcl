@@ -98,6 +98,7 @@ variables {
         policyName       = "cyclecloud"
         policyRevision   = "1111111111111111111111111111111111111111111111111111111111111111"
         policyLockSha256 = "2222222222222222222222222222222222222222222222222222222222222222"
+        policyArchiveBase64Sha256 = sha256(base64encode("cyclecloud-policy-archive"))
         artifacts = [
           {
             name      = "cyclecloud.tgz"
@@ -128,6 +129,7 @@ variables {
         policyName       = "slurm"
         policyRevision   = "5555555555555555555555555555555555555555555555555555555555555555"
         policyLockSha256 = "6666666666666666666666666666666666666666666666666666666666666666"
+        policyArchiveBase64Sha256 = sha256(base64encode("scheduler-policy-archive"))
         artifacts = [
           {
             name      = "scheduler.tgz"
@@ -198,9 +200,27 @@ run "accept_binary_cyclecloud_policy_archive" {
     chef_role_payloads = merge(var.chef_role_payloads, {
       cyclecloud = merge(var.chef_role_payloads.cyclecloud, {
         policy_archive_base64 = "/w=="
+        manifest_json = jsonencode(merge(
+          jsondecode(var.chef_role_payloads.cyclecloud.manifest_json),
+          { policyArchiveBase64Sha256 = sha256("/w==") }
+        ))
       })
     })
   }
+}
+
+run "reject_mismatched_policy_archive_transport" {
+  command = plan
+
+  variables {
+    chef_role_payloads = merge(var.chef_role_payloads, {
+      cyclecloud = merge(var.chef_role_payloads.cyclecloud, {
+        policy_archive_base64 = base64encode("stale-cyclecloud-policy-archive")
+      })
+    })
+  }
+
+  expect_failures = [var.chef_role_payloads]
 }
 
 run "reject_secret_manifest_field" {
@@ -294,6 +314,14 @@ run "reject_oversized_custom_data" {
         policy_archive_base64 = base64encode(join("", [
           for index in range(1000) : "oversized-policy-archive-content-padding-0123456789-abcdefghij-ABCDEFGHIJ"
         ]))
+        manifest_json = jsonencode(merge(
+          jsondecode(var.chef_role_payloads.scheduler.manifest_json),
+          {
+            policyArchiveBase64Sha256 = sha256(base64encode(join("", [
+              for index in range(1000) : "oversized-policy-archive-content-padding-0123456789-abcdefghij-ABCDEFGHIJ"
+            ])))
+          }
+        ))
       })
     })
   }
