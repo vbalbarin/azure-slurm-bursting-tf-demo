@@ -18,6 +18,7 @@ BUILDER = ROOT / "tests" / "end-to-end" / "build_chef_policy_bundles.sh"
 STATE_TOOL = ROOT / "chef" / "bin" / "convergence_state.py"
 BOOTSTRAP = ROOT / "chef" / "bootstrap" / "linux.sh"
 CYCLECLOUD_WRAPPER = ROOT / "chef" / "bin" / "converge-cyclecloud.sh"
+SCHEDULER_WRAPPER = ROOT / "chef" / "bin" / "converge-scheduler.sh"
 
 
 def _validator(name: str) -> Draft202012Validator:
@@ -264,6 +265,18 @@ def test_cyclecloud_wrapper_binds_state_and_evidence_to_verified_inputs() -> Non
     assert "replacement_required" in script
     assert "cleanup-verified" in script
     assert "/opt/slurm-demo/current" in script
+
+
+def test_convergence_wrappers_use_supported_chef_policy_configuration() -> None:
+    for path, policy in (
+        (CYCLECLOUD_WRAPPER, "cyclecloud"),
+        (SCHEDULER_WRAPPER, "slurm"),
+    ):
+        script = path.read_text(encoding="utf-8")
+        assert "--policy-name" not in script
+        assert "--policy-group" not in script
+        assert f'--config-option "policy_name={policy}"' in script
+        assert '--config-option "policy_group=demo"' in script
 
 
 def _cyclecloud_wrapper_fixture(

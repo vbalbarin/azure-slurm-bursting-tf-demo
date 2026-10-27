@@ -229,7 +229,9 @@ chmod 0600 "$attributes_file"
 failure_stage=chef_installation
 (
   cd "$release_root"
-  chef-client --local-mode --policy-name slurm --policy-group demo \
+  chef-client --local-mode \
+    --config-option "policy_name=slurm" \
+    --config-option "policy_group=demo" \
     --config-option "cookbook_path=$release_root/chef/cookbooks" \
     --json-attributes "$attributes_file" --log_level warn
 ) >"$chef_log" 2>&1
@@ -287,7 +289,9 @@ failure_stage=chef_convergence
 set +e
 (
   cd "$release_root"
-  chef-client --local-mode --policy-name slurm --policy-group demo \
+  chef-client --local-mode \
+    --config-option "policy_name=slurm" \
+    --config-option "policy_group=demo" \
     --config-option "cookbook_path=$release_root/chef/cookbooks" \
     --json-attributes "$attributes_file" --log_level warn
 ) >>"$chef_log" 2>&1

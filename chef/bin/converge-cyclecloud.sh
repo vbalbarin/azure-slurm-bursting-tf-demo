@@ -180,8 +180,8 @@ started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 readonly started_at
 readonly chef_log="$runtime_dir/chef.log"
 if chef-client --local-mode \
-  --policy-name cyclecloud \
-  --policy-group demo \
+  --config-option "policy_name=cyclecloud" \
+  --config-option "policy_group=demo" \
   --config-option "cookbook_path=$release_root/chef/cookbooks" \
   --json-attributes "$specification" \
   --log_level warn >"$chef_log" 2>&1; then
