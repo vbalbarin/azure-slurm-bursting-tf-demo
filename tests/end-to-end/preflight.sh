@@ -53,6 +53,29 @@ run_az() {
   return "$status"
 }
 
+entra_p1_receipt() {
+  local tenant_id="$1" checked_at="$2" result="$3" detail_code="$4"
+  jq -cn \
+    --arg tenant_id "$tenant_id" \
+    --arg checked_at "$checked_at" \
+    --arg result "$result" \
+    --arg detail_code "$detail_code" \
+    '{
+      schemaVersion:1,
+      tenantId:$tenant_id,
+      checkedAt:$checked_at,
+      result:$result,
+      detailCode:$detail_code
+    }'
+}
+
+reject_entra_p1() {
+  local tenant_id="$1" checked_at="$2" detail_code="$3" message="$4"
+  entra_p1_receipt "$tenant_id" "$checked_at" failed "$detail_code"
+  echo "$message" >&2
+  exit 8
+}
+
 load_sku() {
   local region="$1" size="$2"
   local key="$region|$size"
@@ -280,8 +303,87 @@ assess_placement() {
     }'
 }
 
-progress "Checking subscription and regions"
-subscription_id="$(run_az account show --query id --output tsv)"
+progress "Checking subscription and Microsoft Entra ID P1 prerequisite"
+account_context="$(
+  run_az account show \
+    --query '{subscriptionId:id,tenantId:tenantId}' \
+    --output json
+)"
+if ! jq -e '
+  type == "object" and
+  (.subscriptionId | type == "string" and length > 0) and
+  (.tenantId | type == "string" and length > 0)
+' <<<"$account_context" >/dev/null; then
+  reject_entra_p1 "" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    entra_p1_response_ambiguous \
+    "Azure account context did not identify one subscription and tenant"
+fi
+subscription_id="$(jq -r '.subscriptionId' <<<"$account_context")"
+tenant_id="$(jq -r '.tenantId' <<<"$account_context")"
+entra_checked_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+if ! subscribed_skus="$(
+  run_az rest \
+    --method get \
+    --url "https://graph.microsoft.com/v1.0/subscribedSkus?\$select=capabilityStatus,servicePlans" \
+    --output json
+)"; then
+  reject_entra_p1 "$tenant_id" "$entra_checked_at" \
+    entra_p1_graph_query_denied \
+    "Microsoft Graph subscribedSkus query was denied or failed"
+fi
+if ! jq -e '
+  type == "object" and
+  (.value | type == "array") and
+  (.["@odata.nextLink"] == null) and
+  all(.value[];
+    type == "object" and
+    (.capabilityStatus |
+      type == "string" and
+      IN("Enabled", "Warning", "Suspended", "Deleted", "LockedOut")) and
+    (.servicePlans | type == "array") and
+    all(.servicePlans[];
+      type == "object" and
+      (.servicePlanName | type == "string" and length > 0) and
+      (.provisioningStatus |
+        type == "string" and
+        IN(
+          "Success",
+          "Disabled",
+          "PendingInput",
+          "PendingActivation",
+          "PendingProvisioning",
+          "PendingRemoval"
+        ))
+    )
+  )
+' <<<"$subscribed_skus" >/dev/null; then
+  reject_entra_p1 "$tenant_id" "$entra_checked_at" \
+    entra_p1_response_ambiguous \
+    "Microsoft Graph subscribedSkus response was incomplete or ambiguous"
+fi
+if ! jq -e '
+  any(.value[];
+    .capabilityStatus == "Enabled" and
+    any(.servicePlans[];
+      .servicePlanName == "AAD_PREMIUM" and
+      .provisioningStatus == "Success"
+    )
+  )
+' <<<"$subscribed_skus" >/dev/null; then
+  reject_entra_p1 "$tenant_id" "$entra_checked_at" \
+    entra_p1_not_available \
+    "An enabled, successfully provisioned AAD_PREMIUM service plan is required"
+fi
+entra_p1="$(
+  entra_p1_receipt \
+    "$tenant_id" \
+    "$entra_checked_at" \
+    passed \
+    entra_p1_verified
+)"
+
+progress "Checking subscription regions"
 locations="$(run_az account list-locations --query '[].name' --output tsv)"
 grep -Fxiq "$SOURCE_REGION" <<<"$locations" || { echo "Unsupported source region: $SOURCE_REGION" >&2; exit 4; }
 grep -Fxiq "$BURST_REGION" <<<"$locations" || { echo "Unsupported burst region: $BURST_REGION" >&2; exit 4; }
@@ -375,8 +477,10 @@ jq -n \
   --arg image_family "$image_family" --arg image_major "$image_major" \
   --arg image_generation "$scheduler_generation" --arg image_architecture "$scheduler_architecture" \
   --arg overall_status "$overall_status" --argjson roles "$roles_json" --argjson alternates "$alternates_json" \
+  --argjson entra_p1 "$entra_p1" \
   '{
     subscription_id:$subscription_id,
+    entraP1:$entra_p1,
     source_region:$source_region,
     burst_region:$burst_region,
     burst_zone:$burst_zone,

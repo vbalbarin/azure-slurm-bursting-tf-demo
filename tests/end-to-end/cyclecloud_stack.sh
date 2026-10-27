@@ -11,9 +11,9 @@ done
 
 mode="${1:-}"
 case "$mode" in
-  prepare|what-if|apply|reconcile|cleanup-plan|cleanup) ;;
+  prepare|what-if|apply|reconcile|rbac-apply|rbac-remove-apply|identity-receipt|cleanup-plan|cleanup) ;;
   *)
-    echo "Usage: $0 {prepare|what-if|apply|reconcile|cleanup-plan|cleanup}" >&2
+    echo "Usage: $0 {prepare|what-if|apply|reconcile|rbac-apply|rbac-remove-apply|identity-receipt|cleanup-plan|cleanup}" >&2
     exit 2
     ;;
 esac
@@ -67,6 +67,40 @@ verify_approval() {
   }
 }
 
+verify_plan_approval() {
+  local plan_file="$1"
+  local approval_file="$2"
+  local expected_phase="$3"
+  [[ -f "$plan_file" && -f "$approval_file" ]] || {
+    echo "CycleCloud RBAC plan or approval file does not exist" >&2
+    exit 10
+  }
+  [[ "$(jq -er '.plan_digest' "$approval_file")" == "$(digest "$plan_file")" ]] || {
+    echo "Approved CycleCloud RBAC plan digest does not match" >&2
+    exit 11
+  }
+  [[ "$(jq -er '.identity_phase' "$approval_file")" == "$expected_phase" ]] || {
+    echo "Approved CycleCloud identity phase does not match" >&2
+    exit 11
+  }
+  jq -er '.approval_reference | strings | select(length > 0)' "$approval_file" >/dev/null
+}
+
+verify_entra_p1_receipt() {
+  local receipt_file="$1"
+  [[ -f "$receipt_file" ]] || {
+    echo "Microsoft Entra ID P1 receipt does not exist" >&2
+    exit 10
+  }
+  jq -e '
+    .result == "passed" and
+    .detailCode == "entra_p1_verified"
+  ' "$receipt_file" >/dev/null || {
+    echo "Accepted Microsoft Entra ID P1 receipt is required" >&2
+    exit 12
+  }
+}
+
 case "$mode" in
   prepare)
     : "${CYCLECLOUD_SSH_PUBLIC_KEY_FILE:?CYCLECLOUD_SSH_PUBLIC_KEY_FILE is required}"
@@ -82,7 +116,6 @@ case "$mode" in
       --arg vm_size "$(jq -er '.vm_size' <<<"$values")" \
       --arg zone "$(jq -er '.zone' <<<"$values")" \
       --arg nic_resource_id "$(jq -er '.nic_resource_id' <<<"$values")" \
-      --arg user_assigned_identity_resource_id "$(jq -er '.user_assigned_identity_resource_id' <<<"$values")" \
       --arg custom_data "$(jq -er '.custom_data' <<<"$values")" \
       --arg chef_payload_base64 "$(jq -er '.chef_payload_base64' <<<"$values")" \
       --arg chef_manifest_base64 "$(jq -er '.chef_manifest_base64' <<<"$values")" \
@@ -110,7 +143,6 @@ case "$mode" in
           vmSize: {value: $vm_size},
           zone: {value: $zone},
           nicResourceId: {value: $nic_resource_id},
-          userAssignedIdentityResourceId: {value: $user_assigned_identity_resource_id},
           customData: {value: $custom_data},
           chefPayloadBase64: {value: $chef_payload_base64},
           chefManifestBase64: {value: $chef_manifest_base64},
@@ -185,13 +217,143 @@ case "$mode" in
       --description "Pinned CycleCloud Marketplace VM-only deployment" \
       --output json |
       jq -S . >"$CYCLECLOUD_EVIDENCE_DIR/deployment-stack.json"
-    az vm show \
+    vm_json="$(
+      az vm show \
       --subscription "$subscription_id" \
       --resource-group "$resource_group_name" \
       --name "${stack_name%-stack}" \
-      --output json |
-      jq -S 'del(.identity.principalId, .identity.tenantId)' \
-        >"$CYCLECLOUD_EVIDENCE_DIR/virtual-machine.json"
+      --output json
+    )"
+    jq -e '
+      .identity.type == "SystemAssigned" and
+      ((.identity.userAssignedIdentities // {}) | length) == 0 and
+      (.identity.principalId | strings | length) > 0
+    ' <<<"$vm_json" >/dev/null || {
+      echo "CycleCloud VM does not have the approved system-identity-only shape" >&2
+      exit 12
+    }
+    jq -S 'del(.identity.tenantId)' <<<"$vm_json" \
+      >"$CYCLECLOUD_EVIDENCE_DIR/virtual-machine.json"
+    ;;
+  rbac-apply|rbac-remove-apply)
+    : "${CYCLECLOUD_RBAC_PLAN_FILE:?CYCLECLOUD_RBAC_PLAN_FILE is required}"
+    : "${CYCLECLOUD_RBAC_APPROVAL_FILE:?CYCLECLOUD_RBAC_APPROVAL_FILE is required}"
+    if [[ "$mode" == "rbac-apply" ]]; then
+      : "${CYCLECLOUD_ENTRA_P1_RECEIPT_FILE:?CYCLECLOUD_ENTRA_P1_RECEIPT_FILE is required}"
+      verify_entra_p1_receipt "$CYCLECLOUD_ENTRA_P1_RECEIPT_FILE"
+      expected_phase=post-create-rbac
+    else
+      expected_phase=foundation
+    fi
+    verify_plan_approval \
+      "$CYCLECLOUD_RBAC_PLAN_FILE" \
+      "$CYCLECLOUD_RBAC_APPROVAL_FILE" \
+      "$expected_phase"
+    if [[ "$mode" == "rbac-apply" ]]; then
+      [[ "$(jq -er '.entra_p1_receipt_digest' "$CYCLECLOUD_RBAC_APPROVAL_FILE")" == \
+        "$(digest "$CYCLECLOUD_ENTRA_P1_RECEIPT_FILE")" ]] || {
+        echo "Approved Microsoft Entra ID P1 receipt digest does not match" >&2
+        exit 11
+      }
+    fi
+    terraform -chdir=terraform apply \
+      -input=false \
+      -no-color \
+      "$CYCLECLOUD_RBAC_PLAN_FILE"
+    actual_phase="$(
+      terraform -chdir=terraform output -json cyclecloud_identity_rbac |
+        jq -er '.phase'
+    )"
+    [[ "$actual_phase" == "$expected_phase" ]] || {
+      echo "Applied CycleCloud identity phase does not match approval" >&2
+      exit 12
+    }
+    ;;
+  identity-receipt)
+    : "${CYCLECLOUD_IDENTITY_RECEIPT_FILE:?CYCLECLOUD_IDENTITY_RECEIPT_FILE is required}"
+    : "${CYCLECLOUD_ENTRA_P1_RECEIPT_FILE:?CYCLECLOUD_ENTRA_P1_RECEIPT_FILE is required}"
+    verify_entra_p1_receipt "$CYCLECLOUD_ENTRA_P1_RECEIPT_FILE"
+    stack_coordinates
+    vm_json="$(
+      az vm show \
+        --subscription "$subscription_id" \
+        --resource-group "$resource_group_name" \
+        --name "${stack_name%-stack}" \
+        --output json
+    )"
+    rbac_json="$(terraform -chdir=terraform output -json cyclecloud_identity_rbac)"
+    deployment_json="$(deployment_values)"
+    capability_message="$(
+      # shellcheck disable=SC2016
+      az vm run-command invoke \
+        --subscription "$subscription_id" \
+        --resource-group "$resource_group_name" \
+        --name "${stack_name%-stack}" \
+        --command-id RunShellScript \
+        --scripts 'printf "IDENTITY_CAPABILITIES_BASE64=%s\n" "$(base64 -w0 /var/lib/cyclecloud-first-run/identity-capabilities.json)"' \
+        --query 'value[0].message' \
+        --output tsv
+    )"
+    capability_base64="$(
+      grep -Eo 'IDENTITY_CAPABILITIES_BASE64=[A-Za-z0-9+/=]+' <<<"$capability_message" |
+        tail -n 1 |
+        cut -d= -f2-
+    )"
+    [[ -n "$capability_base64" ]] || {
+      echo "CycleCloud identity capability receipt is missing" >&2
+      exit 12
+    }
+    capability_json="$(base64 --decode <<<"$capability_base64")"
+    jq -n \
+      --arg source_revision "$(jq -er '.source_revision' <<<"$deployment_json")" \
+      --arg vm_resource_id "$(jq -er '.id' <<<"$vm_json")" \
+      --arg principal_id "$(jq -er '.identity.principalId' <<<"$vm_json")" \
+      --arg identity_type "$(jq -er '.identity.type' <<<"$vm_json")" \
+      --argjson user_assigned_identity_count "$(jq '(.identity.userAssignedIdentities // {}) | length' <<<"$vm_json")" \
+      --arg custom_role_definition_id "$(jq -er '.custom_role_definition_id' <<<"$rbac_json")" \
+      --arg custom_role_definition_digest "$(jq -er '.custom_role_definition_digest' <<<"$rbac_json")" \
+      --arg custom_role_assignment_scope "$(jq -er '.custom_role_assignment_scope' <<<"$rbac_json")" \
+      --arg key_vault_role_assignment_scope "$(jq -er '.key_vault_assignment_scope' <<<"$rbac_json")" \
+      --arg locker_identity_resource_id "$(jq -er '.locker_identity_resource_id' <<<"$rbac_json")" \
+      --arg locker_role "$(jq -er '.locker_role' <<<"$rbac_json")" \
+      --arg locker_role_assignment_scope "$(jq -er '.locker_assignment_scope' <<<"$rbac_json")" \
+      --argjson capabilities "$capability_json" \
+      '{
+        schemaVersion: 1,
+        sourceRevision: $source_revision,
+        vmResourceId: $vm_resource_id,
+        principalId: $principal_id,
+        identityType: $identity_type,
+        userAssignedIdentityCount: $user_assigned_identity_count,
+        customRoleDefinitionId: $custom_role_definition_id,
+        customRoleDefinitionDigest: $custom_role_definition_digest,
+        customRoleAssignmentScope: $custom_role_assignment_scope,
+        keyVaultRoleAssignmentScope: $key_vault_role_assignment_scope,
+        lockerIdentityResourceId: $locker_identity_resource_id,
+        lockerRole: $locker_role,
+        lockerRoleAssignmentScope: $locker_role_assignment_scope,
+        entraP1Verified: true,
+        managementAccessVerified: $capabilities.managementAccessVerified,
+        userDelegationVerified: $capabilities.userDelegationVerified,
+        secretReadVerified: $capabilities.secretReadVerified,
+        checkedAt: $capabilities.checkedAt,
+        result: "passed",
+        detailCode: "cyclecloud_identity_rbac_ready"
+      }' >"$CYCLECLOUD_IDENTITY_RECEIPT_FILE"
+    python3 - "$CYCLECLOUD_IDENTITY_RECEIPT_FILE" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+root = Path.cwd()
+schema = json.loads(
+    (root / "specs/005-automated-chef-bootstrap/contracts/cyclecloud-identity-rbac.schema.json").read_text()
+)
+document = json.loads(Path(sys.argv[1]).read_text())
+Draft202012Validator(schema, format_checker=FormatChecker()).validate(document)
+PY
     ;;
   cleanup-plan)
     stack_coordinates
@@ -220,6 +382,46 @@ case "$mode" in
       exit 11
     }
     stack_coordinates
+    vm_identity="$(
+      az vm show \
+        --subscription "$subscription_id" \
+        --resource-group "$resource_group_name" \
+        --name "${stack_name%-stack}" \
+        --query identity \
+        --output json
+    )"
+    if [[ "$(jq -r '.type' <<<"$vm_identity")" == "SystemAssigned" ]]; then
+      rbac_json="$(terraform -chdir=terraform output -json cyclecloud_identity_rbac)"
+      jq -e '
+        .phase == "foundation" and
+        .post_create_rbac_enabled == false and
+        .system_principal_id == null
+      ' <<<"$rbac_json" >/dev/null || {
+        echo "CycleCloud system-principal assignments must be removed before stack cleanup" >&2
+        exit 12
+      }
+      principal_id="$(jq -er '.principalId' <<<"$vm_identity")"
+      custom_role_count="$(
+        az role assignment list \
+          --subscription "$subscription_id" \
+          --assignee-object-id "$principal_id" \
+          --scope "$(jq -er '.custom_role_assignment_scope' <<<"$rbac_json")" \
+          --query "[?roleDefinitionId=='$(jq -er '.custom_role_definition_id' <<<"$rbac_json")'] | length(@)" \
+          --output tsv
+      )"
+      vault_role_count="$(
+        az role assignment list \
+          --subscription "$subscription_id" \
+          --assignee-object-id "$principal_id" \
+          --scope "$(jq -er '.key_vault_assignment_scope' <<<"$rbac_json")" \
+          --query "[?roleDefinitionName=='Key Vault Secrets User'] | length(@)" \
+          --output tsv
+      )"
+      [[ "$custom_role_count" == "0" && "$vault_role_count" == "0" ]] || {
+        echo "CycleCloud system-principal role assignments still exist" >&2
+        exit 12
+      }
+    fi
     az stack group delete \
       --subscription "$subscription_id" \
       --resource-group "$resource_group_name" \

@@ -55,35 +55,52 @@ output "inventory" {
 output "cyclecloud_deployment" {
   description = "Secret-free inputs for the separately approved CycleCloud VM-only Bicep deployment stack."
   value = {
-    location                           = var.source_region
-    resource_group_name                = module.resource_group.name
-    vm_name                            = local.names.cyclecloud
-    vm_size                            = var.cyclecloud_vm_size
-    zone                               = "1"
-    nic_resource_id                    = module.cyclecloud_nic.resource_id
-    user_assigned_identity_resource_id = module.cyclecloud_control_identity.resource_id
-    user_assigned_identity_client_id   = module.cyclecloud_control_identity.client_id
-    locker_identity_resource_id        = module.cyclecloud_locker_identity.resource_id
-    locker_storage_account_name        = module.cyclecloud_locker_storage.name
-    compute_resource_group_name        = module.cyclecloud_compute_resource_group.name
-    subscription_id                    = var.subscription_id
-    tenant_id                          = var.tenant_id
-    burst_region                       = var.burst_region
-    key_vault_name                     = local.names.key_vault
-    private_name                       = "${local.names.cyclecloud}.${local.private_dns_zones.cyclecloud}"
-    cyclecloud_admin_username          = var.cyclecloud_admin_username
-    custom_data                        = local.cyclecloud_custom_data
-    chef_payload_base64                = local.chef_role_payloads.cyclecloud.policy_archive_base64
-    chef_manifest_base64               = local.cyclecloud_chef_manifest_base64
-    chef_node_specification_base64     = local.cyclecloud_chef_specification_base64
-    chef_policy_lock_base64            = local.cyclecloud_chef_lock_base64
-    chef_payload_sha256                = jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[index(jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[*].kind, "policy")].sha256
-    chef_manifest_sha256               = sha256(local.chef_role_payloads.cyclecloud.manifest_json)
-    chef_node_specification_sha256     = sha256(local.cyclecloud_chef_specification_json)
-    chef_policy_lock_sha256            = filesha256(local.cyclecloud_chef_lock_path)
-    chef_decoded_size_bytes            = local.cyclecloud_chef_decoded_size
-    image                              = var.cyclecloud_image
-    tags                               = local.common_tags
+    location                       = var.source_region
+    resource_group_name            = module.resource_group.name
+    vm_name                        = local.names.cyclecloud
+    vm_size                        = var.cyclecloud_vm_size
+    zone                           = "1"
+    nic_resource_id                = module.cyclecloud_nic.resource_id
+    vm_resource_id                 = local.cyclecloud_vm_resource_id
+    locker_identity_resource_id    = module.cyclecloud_locker_identity.resource_id
+    locker_storage_account_name    = module.cyclecloud_locker_storage.name
+    compute_resource_group_name    = module.cyclecloud_compute_resource_group.name
+    subscription_id                = var.subscription_id
+    tenant_id                      = var.tenant_id
+    source_revision                = jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).sourceRevision
+    burst_region                   = var.burst_region
+    key_vault_name                 = local.names.key_vault
+    private_name                   = "${local.names.cyclecloud}.${local.private_dns_zones.cyclecloud}"
+    cyclecloud_admin_username      = var.cyclecloud_admin_username
+    custom_data                    = local.cyclecloud_custom_data
+    chef_payload_base64            = local.chef_role_payloads.cyclecloud.policy_archive_base64
+    chef_manifest_base64           = local.cyclecloud_chef_manifest_base64
+    chef_node_specification_base64 = local.cyclecloud_chef_specification_base64
+    chef_policy_lock_base64        = local.cyclecloud_chef_lock_base64
+    chef_payload_sha256            = jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[index(jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[*].kind, "policy")].sha256
+    chef_manifest_sha256           = sha256(local.chef_role_payloads.cyclecloud.manifest_json)
+    chef_node_specification_sha256 = sha256(local.cyclecloud_chef_specification_json)
+    chef_policy_lock_sha256        = filesha256(local.cyclecloud_chef_lock_path)
+    chef_decoded_size_bytes        = local.cyclecloud_chef_decoded_size
+    image                          = var.cyclecloud_image
+    tags                           = local.common_tags
+  }
+}
+
+output "cyclecloud_identity_rbac" {
+  description = "Value-free CycleCloud system-identity lifecycle and approved RBAC contract."
+  value = {
+    phase                         = var.cyclecloud_identity_phase
+    vm_resource_id                = local.cyclecloud_vm_resource_id
+    system_principal_id           = local.cyclecloud_system_principal_id
+    custom_role_definition_id     = azurerm_role_definition.cyclecloud_orchestrator.role_definition_resource_id
+    custom_role_definition_digest = local.cyclecloud_custom_role_definition_digest
+    custom_role_assignment_scope  = local.cyclecloud_subscription_scope
+    key_vault_assignment_scope    = module.key_vault.resource_id
+    locker_identity_resource_id   = module.cyclecloud_locker_identity.resource_id
+    locker_role                   = "Storage Blob Data Reader"
+    locker_assignment_scope       = module.cyclecloud_locker_storage.resource_id
+    post_create_rbac_enabled      = local.cyclecloud_post_create_rbac
   }
 }
 

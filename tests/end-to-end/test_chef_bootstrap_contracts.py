@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import re
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
@@ -19,6 +20,73 @@ STATE_TOOL = ROOT / "chef" / "bin" / "convergence_state.py"
 BOOTSTRAP = ROOT / "chef" / "bootstrap" / "linux.sh"
 CYCLECLOUD_WRAPPER = ROOT / "chef" / "bin" / "converge-cyclecloud.sh"
 SCHEDULER_WRAPPER = ROOT / "chef" / "bin" / "converge-scheduler.sh"
+CYCLECLOUD_RECIPE = ROOT / "chef" / "cookbooks" / "cyclecloud_node" / "recipes" / "default.rb"
+CYCLECLOUD_TERRAFORM = ROOT / "terraform" / "cyclecloud-platform.tf"
+CYCLECLOUD_IDENTITY_TERRAFORM = ROOT / "terraform" / "cyclecloud-identity.tf"
+EXPECTED_CYCLECLOUD_ROLE_ACTIONS = [
+    "Microsoft.Authorization/*/read",
+    "Microsoft.Authorization/roleAssignments/*",
+    "Microsoft.Authorization/roleDefinitions/*",
+    "Microsoft.Commerce/RateCard/read",
+    "Microsoft.Compute/*/read",
+    "Microsoft.Compute/availabilitySets/*",
+    "Microsoft.Compute/disks/*",
+    "Microsoft.Compute/images/read",
+    "Microsoft.Compute/locations/usages/read",
+    "Microsoft.Compute/register/action",
+    "Microsoft.Compute/skus/read",
+    "Microsoft.Compute/virtualMachines/*",
+    "Microsoft.Compute/virtualMachineScaleSets/*",
+    "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/*",
+    "Microsoft.ManagedIdentity/userAssignedIdentities/*/read",
+    "Microsoft.ManagedIdentity/userAssignedIdentities/*/assign/action",
+    "Microsoft.MarketplaceOrdering/offertypes/publishers/offers/plans/agreements/read",
+    "Microsoft.MarketplaceOrdering/offertypes/publishers/offers/plans/agreements/write",
+    "Microsoft.Network/*/read",
+    "Microsoft.Network/locations/*/read",
+    "Microsoft.Network/networkInterfaces/read",
+    "Microsoft.Network/networkInterfaces/write",
+    "Microsoft.Network/networkInterfaces/delete",
+    "Microsoft.Network/networkInterfaces/join/action",
+    "Microsoft.Network/networkSecurityGroups/read",
+    "Microsoft.Network/networkSecurityGroups/write",
+    "Microsoft.Network/networkSecurityGroups/delete",
+    "Microsoft.Network/networkSecurityGroups/join/action",
+    "Microsoft.Network/publicIPAddresses/read",
+    "Microsoft.Network/publicIPAddresses/write",
+    "Microsoft.Network/publicIPAddresses/delete",
+    "Microsoft.Network/publicIPAddresses/join/action",
+    "Microsoft.Network/register/action",
+    "Microsoft.Network/virtualNetworks/read",
+    "Microsoft.Network/virtualNetworks/subnets/read",
+    "Microsoft.Network/virtualNetworks/subnets/join/action",
+    "Microsoft.Resources/deployments/read",
+    "Microsoft.Resources/subscriptions/resourceGroups/read",
+    "Microsoft.Resources/subscriptions/resourceGroups/write",
+    "Microsoft.Resources/subscriptions/resourceGroups/delete",
+    "Microsoft.Resources/subscriptions/resourceGroups/resources/read",
+    "Microsoft.Resources/subscriptions/operationresults/read",
+    "Microsoft.Storage/*/read",
+    "Microsoft.Storage/checknameavailability/read",
+    "Microsoft.Storage/register/action",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/delete",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/read",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/write",
+    "Microsoft.Storage/storageAccounts/blobServices/generateUserDelegationKey/action",
+    "Microsoft.Storage/storageAccounts/read",
+    "Microsoft.Storage/storageAccounts/listKeys/action",
+    "Microsoft.Storage/storageAccounts/write",
+]
+EXPECTED_CYCLECLOUD_ROLE_DATA_ACTIONS = [
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/delete",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/move/action",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/add/action",
+]
+EXPECTED_CYCLECLOUD_ROLE_DIGEST = (
+    "82e19eaa6ae79023086ed3bb07ffc8338dc3a648f165bb2f787269ff13d17fdd"
+)
 
 
 def _validator(name: str) -> Draft202012Validator:
@@ -47,6 +115,47 @@ def _attestation() -> dict[str, object]:
     }
 
 
+def _cyclecloud_identity_receipt() -> dict[str, object]:
+    subscription = "00000000-0000-4000-8000-000000000000"
+    resource_group = (
+        f"/subscriptions/{subscription}/resourceGroups/rg-slurm-demo"
+    )
+    return {
+        "schemaVersion": 1,
+        "sourceRevision": "a" * 40,
+        "vmResourceId": (
+            f"{resource_group}/providers/Microsoft.Compute/virtualMachines/cyclecloud"
+        ),
+        "principalId": "11111111-1111-4111-8111-111111111111",
+        "identityType": "SystemAssigned",
+        "userAssignedIdentityCount": 0,
+        "customRoleDefinitionId": (
+            f"/subscriptions/{subscription}/providers/Microsoft.Authorization/"
+            "roleDefinitions/22222222-2222-4222-8222-222222222222"
+        ),
+        "customRoleDefinitionDigest": "b" * 64,
+        "customRoleAssignmentScope": f"/subscriptions/{subscription}",
+        "keyVaultRoleAssignmentScope": (
+            f"{resource_group}/providers/Microsoft.KeyVault/vaults/demo"
+        ),
+        "lockerIdentityResourceId": (
+            f"{resource_group}/providers/Microsoft.ManagedIdentity/"
+            "userAssignedIdentities/locker"
+        ),
+        "lockerRole": "Storage Blob Data Reader",
+        "lockerRoleAssignmentScope": (
+            f"{resource_group}/providers/Microsoft.Storage/storageAccounts/demolocker"
+        ),
+        "entraP1Verified": True,
+        "managementAccessVerified": True,
+        "userDelegationVerified": True,
+        "secretReadVerified": True,
+        "checkedAt": "2026-10-27T21:00:00Z",
+        "result": "passed",
+        "detailCode": "cyclecloud_identity_rbac_ready",
+    }
+
+
 def test_all_json_contracts_are_valid_draft_2020_12_schemas() -> None:
     schemas = sorted(CONTRACTS.glob("*.schema.json"))
     assert schemas
@@ -56,6 +165,21 @@ def test_all_json_contracts_are_valid_draft_2020_12_schemas() -> None:
 
 def test_cyclecloud_user_attestation_accepts_the_governed_shape() -> None:
     assert list(_validator("cyclecloud-user-attestation.schema.json").iter_errors(_attestation())) == []
+
+
+def test_cyclecloud_identity_receipt_accepts_only_the_governed_shape() -> None:
+    validator = _validator("cyclecloud-identity-rbac.schema.json")
+    receipt = _cyclecloud_identity_receipt()
+    assert list(validator.iter_errors(receipt)) == []
+    for field, value in (
+        ("identityType", "UserAssigned"),
+        ("userAssignedIdentityCount", 1),
+        ("lockerRole", "Storage Blob Data Contributor"),
+        ("entraP1Verified", False),
+        ("userDelegationVerified", False),
+    ):
+        rejected = {**receipt, field: value}
+        assert list(validator.iter_errors(rejected))
 
 
 @pytest.mark.parametrize(
@@ -276,6 +400,87 @@ def test_convergence_wrappers_use_supported_chef_policy_configuration() -> None:
         assert '--config "$chef_config"' in script
         assert '--override-runlist "$chef_run_list"' in script
         assert "cookbook_path [" in script
+
+
+def test_cyclecloud_version_check_uses_appliance_version_command() -> None:
+    recipe = CYCLECLOUD_RECIPE.read_text(encoding="utf-8")
+    assert "/opt/cycle_server/cycle_server version" in recipe
+    assert "'^8\\\\.9\\\\.3-[0-9]+$'" in recipe
+    assert "rpm -q --qf '%{VERSION}' cyclecloud" not in recipe
+
+
+def test_cyclecloud_project_uses_tagged_source_and_supported_cli_contract() -> None:
+    recipe = CYCLECLOUD_RECIPE.read_text(encoding="utf-8")
+    assert "cyclecloud project upload" in recipe
+    assert "cyclecloud project upload '#{node['cyclecloud']['project_archive']}'" not in recipe
+    assert "cyclecloud project validate" not in recipe
+    assert '"-c Slurm -f ' in recipe
+    assert "slurm-cluster.properties" not in recipe
+
+
+def test_cyclecloud_system_identity_uses_exact_custom_role_capabilities() -> None:
+    terraform = CYCLECLOUD_IDENTITY_TERRAFORM.read_text(encoding="utf-8")
+    assert 'resource "azurerm_role_definition" "cyclecloud_orchestrator"' in terraform
+    assert (
+        '"Microsoft.Storage/storageAccounts/blobServices/'
+        'generateUserDelegationKey/action"' in terraform
+    )
+    assert (
+        '"Microsoft.ManagedIdentity/userAssignedIdentities/*/assign/action"'
+        in terraform
+    )
+    assert (
+        '"Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write"'
+        in terraform
+    )
+    assert "Azure/avm-res-authorization-roleassignment/azurerm" in terraform
+    assert 'version = "0.3.1"' in terraform
+    assert "module.cyclecloud_control_identity" not in terraform
+    actions_block = terraform.split(
+        "cyclecloud_custom_role_actions = [", maxsplit=1
+    )[1].split("]", maxsplit=1)[0]
+    data_actions_block = terraform.split(
+        "cyclecloud_custom_role_data_actions = [", maxsplit=1
+    )[1].split("]", maxsplit=1)[0]
+    actions = re.findall(r'"(Microsoft\.[^"]+)"', actions_block)
+    data_actions = re.findall(r'"(Microsoft\.[^"]+)"', data_actions_block)
+    assert actions == EXPECTED_CYCLECLOUD_ROLE_ACTIONS
+    assert data_actions == EXPECTED_CYCLECLOUD_ROLE_DATA_ACTIONS
+    role_contract = {
+        "actions": actions,
+        "data_actions": data_actions,
+        "not_actions": [],
+        "not_data_actions": [],
+    }
+    role_digest = hashlib.sha256(
+        json.dumps(role_contract, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert role_digest == EXPECTED_CYCLECLOUD_ROLE_DIGEST
+    assert "assignable_scopes = [local.cyclecloud_subscription_scope]" in terraform
+
+
+def test_cyclecloud_rbac_phase_derives_and_validates_the_vm_principal() -> None:
+    terraform = CYCLECLOUD_IDENTITY_TERRAFORM.read_text(encoding="utf-8")
+    assert 'var.cyclecloud_identity_phase == "post-create-rbac"' in terraform
+    assert 'data "azapi_resource" "cyclecloud_vm"' in terraform
+    assert "resource_id            = local.cyclecloud_vm_resource_id" in terraform
+    assert "output.identity.principalId" in terraform
+    assert 'output.identity.type == "SystemAssigned"' in terraform
+    assert "output.identity.userAssignedIdentities" in terraform
+    assert "role_assignments_azure_resource_manager" in terraform
+    assert "local.cyclecloud_post_create_rbac ? {" in terraform
+    assert terraform.count('principal_type') == 2
+    assert terraform.count('"ServicePrincipal"') == 2
+
+
+def test_cyclecloud_locker_identity_has_documented_read_only_access() -> None:
+    terraform = CYCLECLOUD_TERRAFORM.read_text(encoding="utf-8")
+    assignment = terraform.split("locker_blob_data_reader", maxsplit=1)[1]
+    assignment = assignment.split("private_endpoints", maxsplit=1)[0]
+    assert 'role_definition_id_or_name = "Storage Blob Data Reader"' in assignment
+    assert "principal_id               = module.cyclecloud_locker_identity.principal_id" in assignment
+    assert "Storage Blob Data Contributor" not in assignment
+    assert "cyclecloud_control_identity" not in terraform
 
 
 def _cyclecloud_wrapper_fixture(

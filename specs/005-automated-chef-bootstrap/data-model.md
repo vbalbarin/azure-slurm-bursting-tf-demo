@@ -69,6 +69,57 @@ A VM-local immutable release selected by verified digest.
 **Validation**: A release is selectable only after all files validate in a temporary directory.
 Existing release contents are never edited in place.
 
+## CycleCloud Identity and RBAC Receipt
+
+A value-free record binding one deployed CycleCloud VM system principal to the exact reviewed
+role definition, assignments, and propagated capabilities.
+
+| Field | Type | Rules |
+|---|---|---|
+| `schemaVersion` | integer | Exactly `1` |
+| `sourceRevision` | string | Full approved 40-character Git commit |
+| `vmResourceId` | Azure resource ID | Exact approved CycleCloud VM |
+| `principalId` | UUID | Derived from `vmResourceId`; caller-supplied substitution prohibited |
+| `identityType` | string | Exactly `SystemAssigned` |
+| `userAssignedIdentityCount` | integer | Exactly `0` |
+| `customRoleDefinitionId` | Azure resource ID | Terraform-owned CycleCloud role |
+| `customRoleDefinitionDigest` | string | SHA-256 of the canonical Microsoft permission set |
+| `customRoleAssignmentScope` | Azure resource ID | Exact approved burst subscription |
+| `keyVaultRoleAssignmentScope` | Azure resource ID | Exact bootstrap vault |
+| `lockerIdentityResourceId` | Azure resource ID | Independent Terraform-owned UAMI |
+| `lockerRole` | string | Exactly `Storage Blob Data Reader` |
+| `lockerRoleAssignmentScope` | Azure resource ID | Exact locker storage account |
+| `entraP1Verified` | boolean | Must be `true` for an accepted run |
+| `managementAccessVerified` | boolean | Must be `true` before first-run continues |
+| `userDelegationVerified` | boolean | Must be `true`; generated SAS is never recorded |
+| `secretReadVerified` | boolean | Must be `true`; secret value is never recorded |
+| `checkedAt` | timestamp | UTC RFC 3339 |
+| `result` | enum | `passed` or `failed` |
+| `detailCode` | string | Bounded, non-secret machine-readable code |
+
+**Relationships**: Foundation creates the custom role definition and independent locker identity.
+The Bicep stack then creates the VM and its system principal. Post-create Terraform reads that VM,
+creates the two orchestrator assignments, and supplies their expected identities to the bounded
+guest gate. The receipt is accepted only when live identity shape, assignments, and capabilities
+match the approved source and scopes.
+
+**Lifecycle**:
+
+```text
+foundation_ready
+  -> vm_principal_observed
+  -> assignments_applied
+  -> propagation_verified
+  -> first_run_authorized
+
+replacement_requested
+  -> assignments_removed
+  -> vm_stack_deleted
+```
+
+Any mismatch or timeout transitions to a failed receipt and blocks first-run. VM deletion is
+prohibited while assignments for its system principal remain in Terraform state.
+
 ## Dependency Gate
 
 | Field | Type | Rules |

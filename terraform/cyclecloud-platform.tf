@@ -23,15 +23,21 @@ locals {
     {
       bootstrap_script            = file("${path.module}/../infra/cyclecloud/bootstrap.sh")
       admin_username              = var.cyclecloud_admin_username
-      control_identity_client_id  = module.cyclecloud_control_identity.client_id
       subscription_id             = var.subscription_id
       tenant_id                   = var.tenant_id
+      vm_resource_id              = local.cyclecloud_vm_resource_id
       compute_resource_group_name = module.cyclecloud_compute_resource_group.name
       burst_region                = var.burst_region
       locker_storage_name         = module.cyclecloud_locker_storage.name
+      locker_storage_resource_id  = module.cyclecloud_locker_storage.resource_id
       locker_identity_resource_id = module.cyclecloud_locker_identity.resource_id
       key_vault_name              = local.names.key_vault
+      key_vault_resource_id       = module.key_vault.resource_id
       private_name                = "${local.names.cyclecloud}.${local.private_dns_zones.cyclecloud}"
+      source_revision             = jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).sourceRevision
+      custom_role_definition_id   = azurerm_role_definition.cyclecloud_orchestrator.role_definition_resource_id
+      custom_role_digest          = local.cyclecloud_custom_role_definition_digest
+      custom_role_scope           = local.cyclecloud_subscription_scope
       chef_payload_base64         = local.chef_role_payloads.cyclecloud.policy_archive_base64
       chef_manifest_base64        = local.cyclecloud_chef_manifest_base64
       chef_specification_base64   = local.cyclecloud_chef_specification_base64
@@ -48,32 +54,6 @@ check "cyclecloud_chef_payload_size" {
   assert {
     condition     = local.cyclecloud_chef_decoded_size <= 60000
     error_message = "The decoded aggregate CycleCloud Chef payload must not exceed 60000 bytes."
-  }
-}
-
-module "cyclecloud_control_identity" {
-  source  = "Azure/avm-res-managedidentity-userassignedidentity/azurerm"
-  version = "0.5.3"
-
-  location            = var.source_region
-  name                = local.names.cyclecloud_identity
-  resource_group_name = module.resource_group.name
-  enable_telemetry    = false
-  tags                = local.common_tags
-
-  role_assignments = {
-    subscription_reader = {
-      role_definition_id_or_name = "Reader"
-      scope                      = "/subscriptions/${var.subscription_id}"
-    }
-    locker_identity_operator = {
-      role_definition_id_or_name = "Managed Identity Operator"
-      scope                      = module.cyclecloud_locker_identity.resource_id
-    }
-    compute_resource_group_contributor = {
-      role_definition_id_or_name = "Contributor"
-      scope                      = module.cyclecloud_compute_resource_group.resource_id
-    }
   }
 }
 
@@ -118,8 +98,8 @@ module "cyclecloud_locker_storage" {
   }
 
   role_assignments = {
-    locker_blob_data_contributor = {
-      role_definition_id_or_name = "Storage Blob Data Contributor"
+    locker_blob_data_reader = {
+      role_definition_id_or_name = "Storage Blob Data Reader"
       principal_id               = module.cyclecloud_locker_identity.principal_id
       principal_type             = "ServicePrincipal"
     }

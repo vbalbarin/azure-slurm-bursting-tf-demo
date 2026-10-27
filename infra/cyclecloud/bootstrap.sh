@@ -13,6 +13,10 @@ source /etc/cyclecloud-first-run.env
 : "${CYCLECLOUD_CHEF_MANIFEST_SHA256:?CYCLECLOUD_CHEF_MANIFEST_SHA256 is required}"
 : "${CYCLECLOUD_CHEF_SPECIFICATION_SHA256:?CYCLECLOUD_CHEF_SPECIFICATION_SHA256 is required}"
 : "${CYCLECLOUD_CHEF_POLICY_LOCK_SHA256:?CYCLECLOUD_CHEF_POLICY_LOCK_SHA256 is required}"
+: "${CYCLECLOUD_VM_RESOURCE_ID:?CYCLECLOUD_VM_RESOURCE_ID is required}"
+: "${CYCLECLOUD_CUSTOM_ROLE_DEFINITION_ID:?CYCLECLOUD_CUSTOM_ROLE_DEFINITION_ID is required}"
+: "${CYCLECLOUD_CUSTOM_ROLE_DIGEST:?CYCLECLOUD_CUSTOM_ROLE_DIGEST is required}"
+: "${CYCLECLOUD_CUSTOM_ROLE_SCOPE:?CYCLECLOUD_CUSTOM_ROLE_SCOPE is required}"
 
 readonly cycle_root=/opt/cycle_server
 readonly state_dir=/var/lib/cyclecloud-first-run
@@ -80,8 +84,7 @@ dnf install -y \
   https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm
 dnf install -y azure-cli jq unzip
 
-az login --identity --client-id "$CYCLECLOUD_CONTROL_IDENTITY_CLIENT_ID" \
-  --allow-no-subscriptions --output none
+az login --identity --allow-no-subscriptions --output none
 account_name="$(
   az account show \
     --subscription "$AZURE_SUBSCRIPTION_ID" \
@@ -91,11 +94,56 @@ account_name="$(
 [[ -n "$account_name" ]]
 readonly account_name
 
+authorization_retry() {
+  local label="$1"
+  shift
+  local deadline=$((SECONDS + 1800))
+  local error_file="$secret_dir/${label}.stderr"
+  while ((SECONDS < deadline)); do
+    if "$@" 2>"$error_file"; then
+      rm -f "$error_file"
+      return 0
+    fi
+    if ! grep -Eqi \
+      'AuthorizationFailed|AuthorizationFailure|AuthorizationPermissionMismatch|Forbidden|ForbiddenByRbac|InsufficientAccountPermissions|403|TooManyRequests|429|InternalServerError|ServiceUnavailable|GatewayTimeout|ConnectionError|Connection reset|timed out|Temporary failure in name resolution|5[0-9]{2}' \
+      "$error_file"; then
+      rm -f "$error_file"
+      echo "CycleCloud authorization check failed with a non-retryable response: $label" >&2
+      return 1
+    fi
+    sleep 15
+  done
+  rm -f "$error_file"
+  echo "CycleCloud authorization propagation timed out after 1800 seconds: $label" >&2
+  return 1
+}
+
+authorization_retry management-access \
+  az group show \
+  --subscription "$AZURE_SUBSCRIPTION_ID" \
+  --name "$CYCLECLOUD_COMPUTE_RESOURCE_GROUP" \
+  --output none
+
+sas_file="$secret_dir/locker-user-delegation.sas"
+authorization_retry user-delegation \
+  az storage container generate-sas \
+  --account-name "$CYCLECLOUD_LOCKER_STORAGE" \
+  --name cyclecloud \
+  --permissions r \
+  --expiry "$(date -u -d '+10 minutes' '+%Y-%m-%dT%H:%MZ')" \
+  --auth-mode login \
+  --as-user \
+  --output tsv \
+  >"$sas_file"
+[[ -s "$sas_file" ]]
+rm -f "$sas_file"
+
 download_secret() {
   local secret_name="$1"
   local output_file="$2"
   local encoding="$3"
-  az keyvault secret download \
+  authorization_retry secret-read \
+    az keyvault secret download \
     --vault-name "$CYCLECLOUD_KEY_VAULT_NAME" \
     --name "$secret_name" \
     --file "$output_file" \
@@ -109,6 +157,24 @@ download_secret cyclecloud-admin-password "$secret_dir/admin-password" utf-8
 download_secret cyclecloud-tls-pfx "$secret_dir/cyclecloud.pfx" base64
 download_secret cyclecloud-tls-pfx-password "$secret_dir/pfx-password" utf-8
 download_secret chef-license-id "$secret_dir/chef-license-id" utf-8
+
+jq -n \
+  --arg vm_resource_id "$CYCLECLOUD_VM_RESOURCE_ID" \
+  --arg custom_role_definition_id "$CYCLECLOUD_CUSTOM_ROLE_DEFINITION_ID" \
+  --arg custom_role_definition_digest "$CYCLECLOUD_CUSTOM_ROLE_DIGEST" \
+  --arg custom_role_assignment_scope "$CYCLECLOUD_CUSTOM_ROLE_SCOPE" \
+  --arg checked_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+  '{
+    vmResourceId: $vm_resource_id,
+    customRoleDefinitionId: $custom_role_definition_id,
+    customRoleDefinitionDigest: $custom_role_definition_digest,
+    customRoleAssignmentScope: $custom_role_assignment_scope,
+    managementAccessVerified: true,
+    userDelegationVerified: true,
+    secretReadVerified: true,
+    checkedAt: $checked_at
+  }' >"$state_dir/identity-capabilities.json"
+chmod 0600 "$state_dir/identity-capabilities.json"
 
 admin_password="$(<"$secret_dir/admin-password")"
 chown cycle_server:cycle_server \
@@ -204,12 +270,10 @@ jq -n \
   --arg location "$CYCLECLOUD_BURST_REGION" \
   --arg storage_account "$CYCLECLOUD_LOCKER_STORAGE" \
   --arg locker_identity "$CYCLECLOUD_LOCKER_IDENTITY_RESOURCE_ID" \
-  --arg client_id "$CYCLECLOUD_CONTROL_IDENTITY_CLIENT_ID" \
   --arg account_name "$account_name" \
   '{
     AcceptMarketplaceTerms: true,
     AuthType: "ManagedIdentity",
-    AzureRMClientId: $client_id,
     AzureRMSubscriptionId: $subscription_id,
     AzureResourceGroup: $resource_group,
     DefaultAccount: true,

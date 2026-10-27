@@ -42,20 +42,19 @@ locals {
   }
 
   names = {
-    source_vnet         = "vnet-source"
-    burst_vnet          = "vnet-burst"
-    cyclecloud          = "${var.environment_name}-cyclecloud"
-    scheduler           = "${var.environment_name}-scheduler"
-    windows             = "${var.environment_name}-admin"
-    bastion             = "${var.environment_name}-bastion"
-    source_nat          = "${var.environment_name}-source-nat"
-    burst_nat           = "${var.environment_name}-burst-nat"
-    key_vault           = substr(replace("${var.environment_name}-slurm-kv", "-", ""), 0, 24)
-    log_analytics       = "${var.environment_name}-logs"
-    cyclecloud_identity = "${var.environment_name}-cyclecloud-control"
-    scheduler_identity  = "${var.environment_name}-scheduler-bootstrap"
-    locker_identity     = "${var.environment_name}-cyclecloud-locker"
-    locker_storage      = substr("st${replace(var.environment_name, "-", "")}cc${substr(md5(var.subscription_id), 0, 8)}", 0, 24)
+    source_vnet        = "vnet-source"
+    burst_vnet         = "vnet-burst"
+    cyclecloud         = "${var.environment_name}-cyclecloud"
+    scheduler          = "${var.environment_name}-scheduler"
+    windows            = "${var.environment_name}-admin"
+    bastion            = "${var.environment_name}-bastion"
+    source_nat         = "${var.environment_name}-source-nat"
+    burst_nat          = "${var.environment_name}-burst-nat"
+    key_vault          = substr(replace("${var.environment_name}-slurm-kv", "-", ""), 0, 24)
+    log_analytics      = "${var.environment_name}-logs"
+    scheduler_identity = "${var.environment_name}-scheduler-bootstrap"
+    locker_identity    = "${var.environment_name}-cyclecloud-locker"
+    locker_storage     = substr("st${replace(var.environment_name, "-", "")}cc${substr(md5(var.subscription_id), 0, 8)}", 0, 24)
   }
 
   source_subnets = {

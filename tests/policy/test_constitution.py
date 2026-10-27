@@ -14,7 +14,13 @@ def terraform_sources() -> str:
 
 def test_no_direct_azure_resources() -> None:
     source = terraform_sources()
-    assert not re.search(r'resource\s+"(?:azurerm|azapi)_', source)
+    direct_resources = re.findall(
+        r'resource\s+"((?:azurerm|azapi)_[^"]+)"\s+"([^"]+)"',
+        source,
+    )
+    assert direct_resources == [
+        ("azurerm_role_definition", "cyclecloud_orchestrator")
+    ]
 
 
 def test_modules_are_remote_pinned_avms() -> None:
@@ -59,21 +65,24 @@ def test_cyclecloud_bicep_exception_is_vm_only() -> None:
     assert "lun: 0" in source
     assert "createOption: 'FromImage'" in source
     assert "id: nicResourceId" in source
-    assert "type: 'UserAssigned'" in source
+    assert "type: 'SystemAssigned'" in source
+    assert "userAssignedIdentities" not in source
     assert "customData: customData" in source
     assert "azurecyclecloud" not in source
 
 
 def test_cyclecloud_first_run_is_identity_and_secret_driven() -> None:
     platform = (ROOT / "terraform" / "cyclecloud-platform.tf").read_text()
+    identity = (ROOT / "terraform" / "cyclecloud-identity.tf").read_text()
     bootstrap = (ROOT / "infra" / "cyclecloud" / "bootstrap.sh").read_text()
     for module in (
-        "cyclecloud_control_identity",
         "cyclecloud_locker_identity",
         "cyclecloud_compute_resource_group",
         "cyclecloud_locker_storage",
     ):
         assert f'module "{module}"' in platform
+    assert 'resource "azurerm_role_definition" "cyclecloud_orchestrator"' in identity
+    assert "cyclecloud_control_identity" not in platform
     assert re.search(r"public_network_access_enabled\s*=\s*false", platform)
     assert re.search(r"shared_access_key_enabled\s*=\s*false", platform)
     assert "az keyvault secret download" in bootstrap
@@ -90,7 +99,7 @@ def test_cyclecloud_first_run_is_identity_and_secret_driven() -> None:
     assert "account create -f" in bootstrap
     assert "grep -Fqx 'Account not found'" in bootstrap
     assert 'AuthType: "ManagedIdentity"' in bootstrap
-    assert "AzureRMClientId: $client_id" in bootstrap
+    assert "AzureRMClientId" not in bootstrap
     assert "AzureRMTenantId:" not in bootstrap
     assert "PredefinedCreds: true" in bootstrap
     assert "LockerIdentity: $locker_identity" in bootstrap

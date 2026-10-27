@@ -25,6 +25,21 @@
   operator configures the non-superuser CycleCloud user and cluster access through the supported
   UI, and automation blocks burst-node creation until the resulting node identity is verified.
 
+### Session 2026-10-27
+
+- Q: Which managed identities should the CycleCloud orchestrator and cluster nodes use? → A: The
+  CycleCloud VM uses only its system-assigned managed identity for orchestration. The locker
+  identity remains an independently created user-assigned managed identity because cluster VMs
+  and scale-set members must be able to attach it when they are created.
+- Q: Which permissions and scope should the CycleCloud orchestrator receive? → A: Construct the
+  custom CycleCloud role from the complete permission set published in the Microsoft Learn
+  "Create a custom role and managed identity for CycleCloud" example and assign it at the approved
+  burst subscription scope. Grant Key Vault secret-read access separately at the bootstrap vault
+  scope. Grant the locker identity only blob-read access at the locker storage-account scope.
+- Q: How should the workflow handle the fact that the system-assigned principal does not exist
+  until the VM is created? → A: Use a separately reviewed post-create role-assignment plan and make
+  first boot wait for those approved assignments through a bounded, fail-closed readiness gate.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Receive a Ready CycleCloud Appliance (Priority: P1)
@@ -52,6 +67,10 @@ provider configuration, policy convergence, and cluster import complete without 
    runs, **Then** it fails without running unapproved configuration content or reporting readiness.
 4. **Given** a first-run or Chef failure, **When** bootstrap exits, **Then** dependent scheduler
    convergence remains blocked and temporary secrets are absent.
+5. **Given** a newly created CycleCloud VM whose system principal does not yet have its approved
+   role assignments, **When** first boot begins, **Then** bootstrap waits for a bounded period,
+   proceeds only after the exact approved control-plane, storage, and secret-read checks succeed,
+   and otherwise fails without reporting readiness.
 
 ---
 
@@ -125,6 +144,14 @@ verify approved artifact identities, successful checks, secret-free logs, and ze
 - A policy update is approved for an existing VM without replacing that VM.
 - Temporary secret cleanup is required after both expected and unexpected failures.
 - A bootstrap or first-convergence failure recurs after the one permitted identical-input retry.
+- The CycleCloud VM exists but its system-assigned principal is not yet available to the
+  post-create role-assignment plan.
+- The approved role assignments exist but authorization has not propagated to the management,
+  storage, or Key Vault data planes before the bounded bootstrap deadline.
+- The independently created locker identity is missing, attached to the orchestrator VM, or has
+  permissions broader than blob read at the locker storage-account scope.
+- The tenant prerequisite for using the approved custom CycleCloud role cannot be positively
+  verified before deployment.
 
 ## Requirements *(mandatory)*
 
@@ -149,6 +176,22 @@ verify approved artifact identities, successful checks, secret-free logs, and ze
   state configuration MUST remain owned by Chef.
 - **FR-007**: The existing CycleCloud first-run exception MAY initialize the application account,
   private TLS, protected CLI, and managed-identity provider before CycleCloud Chef convergence.
+- **FR-007a**: The CycleCloud orchestrator VM MUST use only its system-assigned managed identity
+  for Azure orchestration. The locker identity MUST remain an independently created user-assigned
+  managed identity for attachment to CycleCloud-created cluster VMs and scale-set members, and
+  MUST NOT be attached to the orchestrator VM.
+- **FR-007b**: The orchestrator system identity MUST receive the complete custom-role permission
+  set published in the Microsoft Learn "Create a custom role and managed identity for CycleCloud"
+  example at the approved burst subscription scope. It MUST receive secret-read access separately
+  at the bootstrap Key Vault scope and MUST NOT receive standing secret-write permission. The
+  locker identity MUST receive only blob-read access at the locker storage-account scope.
+- **FR-007c**: Because the orchestrator principal is created with the VM, its role assignments MUST
+  be applied through a separate reviewed, digest-bound post-create infrastructure plan. First boot
+  MUST use bounded, fail-closed checks for the approved management, user-delegation, and secret-read
+  capabilities; timeout or mismatched identity evidence MUST block first-run and convergence.
+- **FR-007d**: The governed preflight MUST positively verify and record the tenant prerequisite
+  required by Microsoft for custom-role use before approving the role definition or a replacement
+  run; inability to verify that prerequisite MUST block deployment.
 - **FR-008**: CycleCloud initial Chef convergence MUST run automatically after successful
   first-run initialization.
 - **FR-009**: CycleCloud convergence MUST verify the pinned appliance version and release-matched
@@ -217,7 +260,9 @@ verify approved artifact identities, successful checks, secret-free logs, and ze
   workflow that stages the digest-bound artifact, reruns convergence, and records fresh evidence;
   VMs MUST NOT periodically discover or silently apply policy updates.
 - **FR-024**: Existing private networking, no-public-IP posture, private DNS, Key Vault hardening,
-  managed identities, and VM-only CycleCloud deployment ownership MUST be preserved.
+  and VM-only CycleCloud deployment ownership MUST be preserved. Terraform MUST continue to own
+  the independent locker identity, custom role definition, and all role assignments; the VM-only
+  CycleCloud deployment MUST own the orchestrator system identity as part of the VM.
 - **FR-025**: The runbook MUST document bootstrap states, dependency transitions, operator
   verification, safe reruns, failure recovery, and protected evidence transfer.
 - **FR-026**: After bootstrap or first convergence fails, the governed workflow MUST permit at most
@@ -270,6 +315,11 @@ verify approved artifact identities, successful checks, secret-free logs, and ze
   governed CycleCloud UI attestation, and observed burst-node account match on name, UID `11200`,
   public-key fingerprint, shared-home contract, and non-administrative `cross-region-demo` access;
   evidence records the observed primary GID and proves it causes no identity or ownership conflict.
+- **SC-012**: Every accepted CycleCloud replacement proves exactly one system-assigned
+  orchestrator identity, no orchestrator user-assigned identity, one independent locker identity
+  with blob-read access, the approved custom-role assignment at the burst subscription scope,
+  separate vault-scoped secret-read access, and successful bounded authorization checks before
+  first-run continues.
 
 ## Assumptions
 
@@ -279,6 +329,10 @@ verify approved artifact identities, successful checks, secret-free logs, and ze
   depends on the initialized application and provider.
 - CycleCloud initial convergence can complete during first boot because its approved inputs are
   available then.
+- The approved Azure tenant has the Microsoft Entra ID P1 prerequisite documented by Microsoft
+  for custom-role use; the governed preflight must verify rather than assume this condition.
+- The approved burst subscription is the intended assignment boundary for the published
+  CycleCloud custom role even when the source and burst regions share that subscription.
 - Scheduler convergence remains a separate dependency-gated phase because the CycleCloud cluster
   must exist before scheduler integration is initialized.
 - `hpcadmin` is not a scheduler job-submission identity; it is the CycleCloud administrator and

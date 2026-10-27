@@ -151,6 +151,10 @@ persist_run_context() {
     if test -n "${PREFLIGHT_RESULTS_FILE:-}"; then
       printf 'export PREFLIGHT_RESULTS_FILE=%q\n' "$PREFLIGHT_RESULTS_FILE"
     fi
+    if test -n "${CYCLECLOUD_ENTRA_P1_RECEIPT_FILE:-}"; then
+      printf 'export CYCLECLOUD_ENTRA_P1_RECEIPT_FILE=%q\n' \
+        "$CYCLECLOUD_ENTRA_P1_RECEIPT_FILE"
+    fi
     if test -n "${PROBE_TFVARS_FILE:-}"; then
       printf 'export PROBE_TFVARS_FILE=%q\n' "$PROBE_TFVARS_FILE"
     fi
@@ -3547,6 +3551,7 @@ Export and render static preflight evidence:
 
 ```bash
 export PREFLIGHT_RESULTS_FILE="$DEMO_EVIDENCE_DIR/preflight.json"
+export CYCLECLOUD_ENTRA_P1_RECEIPT_FILE="$DEMO_EVIDENCE_DIR/entra-p1-receipt.json"
 
 persist_run_context
 
@@ -3566,10 +3571,31 @@ fi
 
 test "$PREFLIGHT_STATUS" -eq 0
 test "$PREFLIGHT_SUMMARY_STATUS" -eq 0
+
+tee_output "$CYCLECLOUD_ENTRA_P1_RECEIPT_FILE" \
+  jq -eS '
+    .entraP1 |
+    select(
+      type == "object" and
+      (keys | sort) == (
+        ["checkedAt", "detailCode", "result", "schemaVersion", "tenantId"] |
+        sort
+      ) and
+      .schemaVersion == 1 and
+      (.tenantId | type == "string" and length > 0) and
+      (.checkedAt |
+        type == "string" and
+        test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
+      .result == "passed" and
+      .detailCode == "entra_p1_verified"
+    )
+  ' "$PREFLIGHT_RESULTS_FILE"
 ```
 
 Review the Markdown summary in VS Code, but treat the JSON as authoritative. Confirm:
 
+- `entraP1` proves the authenticated tenant has an enabled, successfully provisioned
+  `AAD_PREMIUM` service plan;
 - exact SKU and image eligibility in each role's region;
 - image-family and major-release compatibility;
 - source and burst regions are distinct;
@@ -3578,6 +3604,15 @@ Review the Markdown summary in VS Code, but treat the JSON as authoritative. Con
   applicable VM-family quota;
 - all ordered alternate placement assessments; and
 - zero blockers.
+
+The Entra gate queries Microsoft Graph `subscribedSkus` as the authenticated deployment identity
+and fails closed. A denied query, paginated or malformed response, unknown provisioning state, or
+absence of an enabled `AAD_PREMIUM` plan with `Success` provisioning blocks the run. Neither
+`preflight.json` nor `entra-p1-receipt.json` contains subscribed-SKU IDs, service-plan IDs, license
+counts, or the Graph response. The standalone receipt contains exactly `schemaVersion`, `tenantId`,
+`checkedAt`, `result`, and `detailCode`. On success, `result` is `passed` and `detailCode` is
+`entra_p1_verified`. On failure, preflight stdout is only the same bounded receipt shape with a
+failed result and bounded detail code; do not approve or extract it as an accepted receipt.
 
 An alternate assessment is advisory. To select it, edit the protected inputs and restart static
 preflight, capacity probe, main plan review, and approval. Never carry forward evidence from the
@@ -3718,6 +3753,7 @@ export TF_VAR_current_execution_context_digest="$(
     "$TF_VAR_backend_readiness_file"
 )"
 export TF_VAR_deployment_source_commit="$SOURCE_COMMIT"
+export TF_VAR_cyclecloud_identity_phase="foundation"
 export TF_VAR_deployment_principal_id="$(
   jq -er '.identity.principal_id' "$TF_VAR_backend_readiness_file"
 )"
@@ -3782,6 +3818,11 @@ therefore fails before Azure resources are changed. Final backend readiness must
 `ready/none` and no more than
 20 minutes old when the foundation apply begins, preserving headroom for the immediate
 post-foundation no-change plan.
+
+The foundation approval's `preflight_digest` binds the accepted Entra receipt because the receipt
+is embedded as `entraP1` in the digested `preflight.json`. Re-run preflight and create a new saved
+plan and approval if the tenant, check time, result, or detail code changes. Never substitute a
+receipt extracted from another preflight file.
 
 ## B5. Apply the exact reviewed Terraform foundation plan
 
@@ -3938,10 +3979,11 @@ from the VM-only actionable-change guard. Require every non-`Ignore` record to t
 `Microsoft.Compute/virtualMachines` resource named for CycleCloud. For an initial run require its
 create action; for controlled first-run remediation require only the approved replacement of that
 same VM. Confirm the matching pinned Marketplace plan and image, the Terraform-owned NIC ID, no
-public IP, the Terraform-owned control user-assigned identity, secure custom data, OS disk, and the
-required `FromImage` data disk at LUN 0. The dedicated compute resource group, locker storage and
-private endpoint, identities, RBAC, and Blob private DNS are Terraform-owned prerequisites and
-MUST NOT appear as stack actions. Then create the approval:
+public IP, a `SystemAssigned` identity with no user-assigned identities, secure custom data, OS
+disk, and the required `FromImage` data disk at LUN 0. The dedicated compute resource group,
+locker storage and private endpoint, custom role definition, independent locker identity, RBAC,
+and Blob private DNS are Terraform-owned prerequisites and MUST NOT appear as stack actions. Then
+create the approval:
 
 ```bash
 if read -r -p "Authorized CycleCloud stack reference: " CYCLECLOUD_APPROVAL_REFERENCE &&
@@ -3962,6 +4004,93 @@ fi
 test -f "$CYCLECLOUD_APPROVAL_FILE"
 tests/end-to-end/cyclecloud_stack.sh apply
 ```
+
+The apply command rejects any VM that is not system-identity-only. The VM principal does not exist
+until this apply completes, so do not create or approve its role assignments in the foundation
+plan. Immediately create a saved post-create plan under protected state:
+
+```bash
+export TF_VAR_cyclecloud_identity_phase="post-create-rbac"
+export CYCLECLOUD_RBAC_PLAN_FILE="$DEMO_STATE_DIR/cyclecloud-post-create-rbac.tfplan"
+export CYCLECLOUD_RBAC_APPROVAL_FILE="$DEMO_STATE_DIR/cyclecloud-post-create-rbac-approval.json"
+export CYCLECLOUD_IDENTITY_RECEIPT_FILE="$CYCLECLOUD_EVIDENCE_DIR/identity-rbac.json"
+
+terraform -chdir=terraform plan \
+  -input=false \
+  -var-file="$TFVARS_FILE" \
+  -out="$CYCLECLOUD_RBAC_PLAN_FILE"
+sha256sum "$CYCLECLOUD_RBAC_PLAN_FILE"
+terraform -chdir=terraform show -no-color "$CYCLECLOUD_RBAC_PLAN_FILE"
+```
+
+Review the saved plan. It must derive the principal from the deployed system-assigned VM identity
+and add only the approved custom role at burst-subscription scope and `Key Vault Secrets User` at
+the vault scope. It must not replace the VM, accept a caller-supplied principal, attach a
+user-assigned identity, or alter the independent locker identity. After approval, bind the exact
+plan and accepted Entra receipt:
+
+```bash
+if read -r -p "Authorized CycleCloud post-create RBAC reference: " \
+  CYCLECLOUD_RBAC_APPROVAL_REFERENCE &&
+  test -n "$CYCLECLOUD_RBAC_APPROVAL_REFERENCE"; then
+  jq -n \
+    --arg plan_digest "$(
+      sha256sum "$CYCLECLOUD_RBAC_PLAN_FILE" | awk '{print $1}'
+    )" \
+    --arg identity_phase "post-create-rbac" \
+    --arg entra_p1_receipt_digest "$(
+      sha256sum "$CYCLECLOUD_ENTRA_P1_RECEIPT_FILE" | awk '{print $1}'
+    )" \
+    --arg approval_reference "$CYCLECLOUD_RBAC_APPROVAL_REFERENCE" \
+    '{
+      plan_digest: $plan_digest,
+      identity_phase: $identity_phase,
+      entra_p1_receipt_digest: $entra_p1_receipt_digest,
+      approval_reference: $approval_reference
+    }' >"$CYCLECLOUD_RBAC_APPROVAL_FILE"
+  chmod 0600 "$CYCLECLOUD_RBAC_APPROVAL_FILE"
+fi
+
+test -f "$CYCLECLOUD_RBAC_APPROVAL_FILE"
+tests/end-to-end/cyclecloud_stack.sh rbac-apply
+```
+
+`rbac-apply` revalidates the saved-plan digest, requires identity phase `post-create-rbac`,
+revalidates the Entra P1 receipt and its approved digest, applies only the saved plan, and verifies
+the resulting Terraform output phase. Never put a raw plan, Terraform state, Graph response, guest
+command output, token, SAS, or secret value in `/evidence`.
+
+The guest's fail-closed authorization gate begins during first boot and allows at most 30 minutes
+for role propagation after the approved RBAC apply. It retries only classified authorization,
+throttling, transient service, network, and timeout responses. The gate must prove burst-scope
+management access, user-delegation SAS generation without exposing the SAS, and protected Key
+Vault secret read. A non-retryable response or the 1,800-second deadline blocks bootstrap; waiting
+does not turn a failed gate into accepted evidence.
+
+After the guest has produced all three successful capability results, capture and schema-validate
+the bounded identity/RBAC receipt:
+
+```bash
+tests/end-to-end/cyclecloud_stack.sh identity-receipt
+
+jq -e '
+  .schemaVersion == 1 and
+  .identityType == "SystemAssigned" and
+  .userAssignedIdentityCount == 0 and
+  .entraP1Verified == true and
+  .managementAccessVerified == true and
+  .userDelegationVerified == true and
+  .secretReadVerified == true and
+  .result == "passed" and
+  .detailCode == "cyclecloud_identity_rbac_ready"
+' "$CYCLECLOUD_IDENTITY_RECEIPT_FILE" >/dev/null
+```
+
+`identity-receipt` obtains the capability file through the governed VM command channel, writes only
+the schema-defined identifiers, digests, scopes, booleans, timestamp, result, and bounded detail
+code, and validates the result against
+`specs/005-automated-chef-bootstrap/contracts/cyclecloud-identity-rbac.schema.json`. If the guest
+receipt is absent or validation fails, stop; do not manufacture or manually edit evidence.
 
 Never reuse the approval after a template, parameter, source, state, or what-if change. A later
 reconciliation runs `cyclecloud_stack.sh reconcile` and requires a new approval if any change is
@@ -4484,6 +4613,7 @@ set +e
 terraform -chdir=terraform plan \
   -input=false \
   -detailed-exitcode \
+  -var='cyclecloud_identity_phase=post-create-rbac' \
   -var-file="$TFVARS_FILE" \
   -no-color 2>&1 |
   tee "$DEMO_STATE_DIR/final-no-change-plan.log"
@@ -4505,9 +4635,10 @@ After B10 passes, execute A9 before continuing.
 
 ## B11. Remove the main deployment and verify dependent states
 
-Return from A9 to the original operator shell. Re-establish the protected paths if necessary, then
-remove the Bicep-owned CycleCloud VM before creating a distinct Terraform main-destroy plan. Never
-use `terraform destroy -auto-approve`:
+Return from A9 to the original operator shell. Re-establish the protected paths if necessary. The
+inverse lifecycle is mandatory: first apply an approved Terraform `foundation` plan that removes
+the VM-principal assignments, then remove the Bicep-owned CycleCloud VM, and only then create the
+distinct Terraform main-destroy plan. Never use `terraform destroy -auto-approve`:
 
 For a successful T057 run, execute B11 after B10 and A9. If B3 through B10 fails after Azure
 resources may have been created, the acceptance run is permanently failed, but the operator may
@@ -4526,13 +4657,66 @@ export MAIN_DESTROY_INPUT_MANIFEST="$DEMO_STATE_DIR/main-destroy-inputs.json"
 export MAIN_DESTROY_APPROVAL="$DEMO_STATE_DIR/main-destroy-approval.json"
 export MAIN_DESTROY_APPROVAL_SCHEMA="$PWD/specs/003-terraform-backend-bootstrap/contracts/backend-plan-approval.schema.json"
 export MAIN_CLEANUP_EVIDENCE="$DEMO_EVIDENCE_DIR/main-cleanup.json"
+export CYCLECLOUD_TEMPLATE_FILE="$DEMO_STATE_DIR/cyclecloud.json"
+export CYCLECLOUD_PARAMETERS_FILE="$DEMO_STATE_DIR/cyclecloud.parameters.json"
+export CYCLECLOUD_WHAT_IF_FILE="$DEMO_STATE_DIR/cyclecloud.what-if.json"
+export CYCLECLOUD_APPROVAL_FILE="$DEMO_STATE_DIR/cyclecloud-approval.json"
+export CYCLECLOUD_EVIDENCE_DIR="$DEMO_EVIDENCE_DIR/cyclecloud-stack"
+export CYCLECLOUD_CLEANUP_PLAN_FILE="$DEMO_STATE_DIR/cyclecloud-cleanup-stack.json"
+export CYCLECLOUD_CLEANUP_APPROVAL_FILE="$DEMO_STATE_DIR/cyclecloud-cleanup-approval.json"
+export CYCLECLOUD_RBAC_PLAN_FILE="$DEMO_STATE_DIR/cyclecloud-rbac-removal.tfplan"
+export CYCLECLOUD_RBAC_APPROVAL_FILE="$DEMO_STATE_DIR/cyclecloud-rbac-removal-approval.json"
 
 test -f "$TFVARS_FILE"
 test "$SOURCE_COMMIT" = "$(git rev-parse HEAD)"
 ```
 
-Snapshot the deployment stack, review that it owns only the CycleCloud VM, and record a distinct
-cleanup approval:
+Create the inverse saved plan:
+
+```bash
+export TF_VAR_cyclecloud_identity_phase="foundation"
+
+terraform -chdir=terraform plan \
+  -input=false \
+  -var-file="$TFVARS_FILE" \
+  -out="$CYCLECLOUD_RBAC_PLAN_FILE"
+sha256sum "$CYCLECLOUD_RBAC_PLAN_FILE"
+terraform -chdir=terraform show -no-color "$CYCLECLOUD_RBAC_PLAN_FILE"
+```
+
+Review the plan and require removal of only the CycleCloud system principal's custom-role and Key
+Vault assignments. The custom role definition, independent locker identity and its
+`Storage Blob Data Reader` assignment, NIC, private IP, networks, storage, and every unrelated
+resource must remain. Record a distinct digest-bound approval and apply only that saved plan:
+
+```bash
+if read -r -p "Authorized CycleCloud RBAC removal reference: " \
+  CYCLECLOUD_RBAC_REMOVAL_APPROVAL_REFERENCE &&
+  test -n "$CYCLECLOUD_RBAC_REMOVAL_APPROVAL_REFERENCE"; then
+  jq -n \
+    --arg plan_digest "$(
+      sha256sum "$CYCLECLOUD_RBAC_PLAN_FILE" | awk '{print $1}'
+    )" \
+    --arg identity_phase "foundation" \
+    --arg approval_reference "$CYCLECLOUD_RBAC_REMOVAL_APPROVAL_REFERENCE" \
+    '{
+      plan_digest: $plan_digest,
+      identity_phase: $identity_phase,
+      approval_reference: $approval_reference
+    }' >"$CYCLECLOUD_RBAC_APPROVAL_FILE"
+  chmod 0600 "$CYCLECLOUD_RBAC_APPROVAL_FILE"
+fi
+
+test -f "$CYCLECLOUD_RBAC_APPROVAL_FILE"
+tests/end-to-end/cyclecloud_stack.sh rbac-remove-apply
+```
+
+`rbac-remove-apply` requires the approved phase to be `foundation`, applies only the digest-bound
+plan, and verifies the resulting output phase. Do not proceed on a partial removal or planning
+error.
+
+Only after that apply succeeds, snapshot the deployment stack, review that it owns only the
+CycleCloud VM, and record a distinct cleanup approval:
 
 ```bash
 tests/end-to-end/cyclecloud_stack.sh cleanup-plan
@@ -4556,8 +4740,11 @@ test -f "$CYCLECLOUD_CLEANUP_APPROVAL_FILE"
 tests/end-to-end/cyclecloud_stack.sh cleanup
 ```
 
-Stop if stack cleanup fails or if the CycleCloud VM remains. Only then capture Terraform state and
-plan destruction of the Terraform-owned NIC and surrounding resources:
+Before deleting the stack, `cleanup` independently requires Terraform output phase `foundation`,
+`post_create_rbac_enabled` false, no system principal in the Terraform output, and live absence of
+both VM-principal assignments. Stop if any check fails, if stack cleanup fails, or if the
+CycleCloud VM remains. Only then capture Terraform state and plan destruction of the
+Terraform-owned NIC and surrounding resources:
 
 ```bash
 

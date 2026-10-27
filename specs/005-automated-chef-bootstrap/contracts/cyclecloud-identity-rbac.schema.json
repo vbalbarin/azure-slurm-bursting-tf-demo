@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/slurm-demo/cyclecloud-identity-rbac.schema.json",
+  "title": "CycleCloud system identity and RBAC receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sourceRevision",
+    "vmResourceId",
+    "principalId",
+    "identityType",
+    "userAssignedIdentityCount",
+    "customRoleDefinitionId",
+    "customRoleDefinitionDigest",
+    "customRoleAssignmentScope",
+    "keyVaultRoleAssignmentScope",
+    "lockerIdentityResourceId",
+    "lockerRole",
+    "lockerRoleAssignmentScope",
+    "entraP1Verified",
+    "managementAccessVerified",
+    "userDelegationVerified",
+    "secretReadVerified",
+    "checkedAt",
+    "result",
+    "detailCode"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "sourceRevision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "vmResourceId": {
+      "$ref": "#/$defs/azureResourceId"
+    },
+    "principalId": {
+      "$ref": "#/$defs/uuid"
+    },
+    "identityType": {
+      "const": "SystemAssigned"
+    },
+    "userAssignedIdentityCount": {
+      "const": 0
+    },
+    "customRoleDefinitionId": {
+      "$ref": "#/$defs/azureResourceId"
+    },
+    "customRoleDefinitionDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "customRoleAssignmentScope": {
+      "type": "string",
+      "pattern": "^/subscriptions/[0-9a-fA-F-]{36}$"
+    },
+    "keyVaultRoleAssignmentScope": {
+      "$ref": "#/$defs/azureResourceId"
+    },
+    "lockerIdentityResourceId": {
+      "$ref": "#/$defs/azureResourceId"
+    },
+    "lockerRole": {
+      "const": "Storage Blob Data Reader"
+    },
+    "lockerRoleAssignmentScope": {
+      "$ref": "#/$defs/azureResourceId"
+    },
+    "entraP1Verified": {
+      "const": true
+    },
+    "managementAccessVerified": {
+      "const": true
+    },
+    "userDelegationVerified": {
+      "const": true
+    },
+    "secretReadVerified": {
+      "const": true
+    },
+    "checkedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result": {
+      "const": "passed"
+    },
+    "detailCode": {
+      "const": "cyclecloud_identity_rbac_ready"
+    }
+  },
+  "$defs": {
+    "azureResourceId": {
+      "type": "string",
+      "pattern": "^/subscriptions/[0-9a-fA-F-]{36}/.+$"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    }
+  }
+}

@@ -1,4 +1,16 @@
-mock_provider "azurerm" {}
+mock_provider "azurerm" {
+  mock_resource "azurerm_role_definition" {
+    defaults = {
+      role_definition_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/33333333-3333-4333-8333-333333333333"
+    }
+  }
+
+  mock_resource "azurerm_role_assignment" {
+    defaults = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleAssignments/44444444-4444-4444-8444-444444444444"
+    }
+  }
+}
 mock_provider "azapi" {}
 
 variables {
@@ -92,12 +104,12 @@ variables {
     cyclecloud = {
       policy_archive_base64 = base64encode("cyclecloud-policy-archive")
       manifest_json = jsonencode({
-        schemaVersion    = 1
-        role             = "cyclecloud"
-        sourceRevision   = "0000000000000000000000000000000000000000"
-        policyName       = "cyclecloud"
-        policyRevision   = "1111111111111111111111111111111111111111111111111111111111111111"
-        policyLockSha256 = "2222222222222222222222222222222222222222222222222222222222222222"
+        schemaVersion             = 1
+        role                      = "cyclecloud"
+        sourceRevision            = "0000000000000000000000000000000000000000"
+        policyName                = "cyclecloud"
+        policyRevision            = "1111111111111111111111111111111111111111111111111111111111111111"
+        policyLockSha256          = "2222222222222222222222222222222222222222222222222222222222222222"
         policyArchiveBase64Sha256 = sha256(base64encode("cyclecloud-policy-archive"))
         artifacts = [
           {
@@ -123,12 +135,12 @@ variables {
     scheduler = {
       policy_archive_base64 = base64encode("scheduler-policy-archive")
       manifest_json = jsonencode({
-        schemaVersion    = 1
-        role             = "scheduler"
-        sourceRevision   = "0000000000000000000000000000000000000000"
-        policyName       = "slurm"
-        policyRevision   = "5555555555555555555555555555555555555555555555555555555555555555"
-        policyLockSha256 = "6666666666666666666666666666666666666666666666666666666666666666"
+        schemaVersion             = 1
+        role                      = "scheduler"
+        sourceRevision            = "0000000000000000000000000000000000000000"
+        policyName                = "slurm"
+        policyRevision            = "5555555555555555555555555555555555555555555555555555555555555555"
+        policyLockSha256          = "6666666666666666666666666666666666666666666666666666666666666666"
         policyArchiveBase64Sha256 = sha256(base64encode("scheduler-policy-archive"))
         artifacts = [
           {
@@ -181,6 +193,209 @@ run "scheduler_stages_without_converging" {
     condition     = length(module.scheduler_vm.public_ips) == 0
     error_message = "The scheduler VM must retain its zero-public-IP posture."
   }
+}
+
+run "foundation_omits_cyclecloud_system_principal_assignments" {
+  command = plan
+
+  variables {
+    cyclecloud_identity_phase = "foundation"
+  }
+
+  assert {
+    condition = (
+      output.cyclecloud_identity_rbac.phase == "foundation" &&
+      output.cyclecloud_identity_rbac.post_create_rbac_enabled == false &&
+      output.cyclecloud_identity_rbac.system_principal_id == null
+    )
+    error_message = "Foundation must omit every CycleCloud system-principal assignment."
+  }
+
+  assert {
+    condition     = length(module.cyclecloud_post_create_role_assignments.role_assignments) == 0
+    error_message = "Foundation must pass no role assignments to the post-create AVM."
+  }
+}
+
+run "post_create_rbac_derives_system_principal_and_exact_assignments" {
+  command   = apply
+  state_key = "valid-post-create"
+
+  variables {
+    cyclecloud_identity_phase = "post-create-rbac"
+  }
+
+  plan_options {
+    target = [
+      data.azapi_resource.cyclecloud_vm[0],
+      azurerm_role_definition.cyclecloud_orchestrator,
+      check.cyclecloud_system_identity_shape,
+      module.cyclecloud_post_create_role_assignments,
+    ]
+  }
+
+  override_module {
+    target = module.resource_group
+    outputs = {
+      resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo-rg"
+    }
+  }
+
+  override_module {
+    target = module.key_vault
+    outputs = {
+      resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo-rg/providers/Microsoft.KeyVault/vaults/demo-vault"
+    }
+  }
+
+  override_data {
+    target          = data.azapi_resource.cyclecloud_vm[0]
+    override_during = plan
+    values = {
+      output = {
+        identity = {
+          type                   = "SystemAssigned"
+          principalId            = "22222222-2222-4222-8222-222222222222"
+          userAssignedIdentities = {}
+        }
+      }
+    }
+  }
+
+}
+
+run "foundation_removes_only_post_create_assignments" {
+  command   = apply
+  state_key = "valid-post-create"
+
+  variables {
+    cyclecloud_identity_phase = "foundation"
+  }
+
+  plan_options {
+    target = [
+      azurerm_role_definition.cyclecloud_orchestrator,
+      module.cyclecloud_post_create_role_assignments,
+    ]
+  }
+
+  override_module {
+    target = module.resource_group
+    outputs = {
+      resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo-rg"
+    }
+  }
+
+  override_module {
+    target = module.key_vault
+    outputs = {
+      resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo-rg/providers/Microsoft.KeyVault/vaults/demo-vault"
+    }
+  }
+
+  assert {
+    condition = (
+      length(azurerm_role_definition.cyclecloud_orchestrator.assignable_scopes) == 1 &&
+      contains(
+        azurerm_role_definition.cyclecloud_orchestrator.assignable_scopes,
+        "/subscriptions/00000000-0000-0000-0000-000000000000"
+      )
+    )
+    error_message = "Returning to foundation must remove the post-create assignments and retain the custom role."
+  }
+}
+
+run "foundation_assignment_removal_is_idempotent" {
+  command   = apply
+  state_key = "valid-post-create"
+
+  variables {
+    cyclecloud_identity_phase = "foundation"
+  }
+
+  plan_options {
+    target = [
+      azurerm_role_definition.cyclecloud_orchestrator,
+      module.cyclecloud_post_create_role_assignments,
+    ]
+  }
+
+  override_module {
+    target = module.resource_group
+    outputs = {
+      resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo-rg"
+    }
+  }
+
+  override_module {
+    target = module.key_vault
+    outputs = {
+      resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo-rg/providers/Microsoft.KeyVault/vaults/demo-vault"
+    }
+  }
+
+  assert {
+    condition = (
+      length(azurerm_role_definition.cyclecloud_orchestrator.assignable_scopes) == 1 &&
+      contains(
+        azurerm_role_definition.cyclecloud_orchestrator.assignable_scopes,
+        "/subscriptions/00000000-0000-0000-0000-000000000000"
+      )
+    )
+    error_message = "A repeated foundation apply must retain the approved custom role."
+  }
+}
+
+run "post_create_rbac_rejects_user_assigned_identity_shape" {
+  command   = plan
+  state_key = "invalid-uami-shape"
+
+  variables {
+    cyclecloud_identity_phase = "post-create-rbac"
+  }
+
+  override_data {
+    target          = data.azapi_resource.cyclecloud_vm[0]
+    override_during = plan
+    values = {
+      output = {
+        identity = {
+          type        = "SystemAssigned, UserAssigned"
+          principalId = "22222222-2222-4222-8222-222222222222"
+          userAssignedIdentities = {
+            "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/forbidden" = {}
+          }
+        }
+      }
+    }
+  }
+
+  expect_failures = [check.cyclecloud_system_identity_shape]
+}
+
+run "post_create_rbac_rejects_non_system_identity_shape" {
+  command   = plan
+  state_key = "invalid-system-shape"
+
+  variables {
+    cyclecloud_identity_phase = "post-create-rbac"
+  }
+
+  override_data {
+    target          = data.azapi_resource.cyclecloud_vm[0]
+    override_during = plan
+    values = {
+      output = {
+        identity = {
+          type                   = "None"
+          principalId            = "22222222-2222-4222-8222-222222222222"
+          userAssignedIdentities = {}
+        }
+      }
+    }
+  }
+
+  expect_failures = [check.cyclecloud_system_identity_shape]
 }
 
 run "reject_missing_role_payloads" {

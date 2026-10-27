@@ -34,5 +34,7 @@
 - Validation passed on the initial review.
 - Revalidated after the identity model, direct-delivery boundary, vendor credential-interface
   exception, and UID/GID `11200` were made explicit during planning.
+- Revalidated after the orchestrator system identity, independent locker identity, Microsoft
+  custom-role scope, post-create role-assignment gate, and tenant prerequisite were made explicit.
 - Chef and cloud-init are named because their ownership boundary is an explicit constitutional and
   feature requirement, not an incidental implementation choice.

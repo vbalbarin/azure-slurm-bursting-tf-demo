@@ -53,6 +53,20 @@ def test_cyclecloud_first_run_cleans_protected_material_and_is_reboot_safe() -> 
     assert "exec /opt/slurm-demo/current/chef/bin/converge-cyclecloud.sh" not in script
 
 
+def test_cyclecloud_first_run_waits_for_system_identity_authorization() -> None:
+    script = FIRST_RUN.read_text(encoding="utf-8")
+    assert "az login --identity --allow-no-subscriptions" in script
+    assert "--client-id" not in script
+    assert "SECONDS + 1800" in script
+    assert "generate-sas" in script
+    assert "--as-user" in script
+    assert "managementAccessVerified: true" in script
+    assert "userDelegationVerified: true" in script
+    assert "secretReadVerified: true" in script
+    assert "AzureRMClientId" not in script
+    assert "LockerIdentity" in script
+
+
 def test_cyclecloud_bicep_declares_payload_contract_without_more_resources() -> None:
     template = BICEP_TEMPLATE.read_text(encoding="utf-8")
     for parameter in (
@@ -70,6 +84,10 @@ def test_cyclecloud_bicep_declares_payload_contract_without_more_resources() -> 
     assert "@maxLength(87380)" in template
     assert "@maxValue(60000)" in template
     assert sum(line.startswith("resource ") for line in template.splitlines()) == 1
+    assert "type: 'SystemAssigned'" in template
+    assert "userAssignedIdentities" not in template
+    assert "userAssignedIdentityResourceId" not in template
+    assert "systemAssignedPrincipalId" in template
 
 
 def test_cyclecloud_stack_passes_terraform_payload_contract_to_bicep() -> None:
@@ -98,6 +116,24 @@ def test_cyclecloud_stack_passes_terraform_payload_contract_to_bicep() -> None:
         "chefDecodedSizeBytes",
     ):
         assert f"{parameter}: {{value:" in script
+    assert "userAssignedIdentityResourceId" not in script
+    assert "rbac-apply" in script
+    assert "rbac-remove-apply" in script
+    assert "identity-receipt" in script
+
+
+def test_cyclecloud_stack_governs_post_create_and_pre_delete_rbac() -> None:
+    script = STACK_SCRIPT.read_text(encoding="utf-8")
+    assert "verify_plan_approval" in script
+    assert "Approved CycleCloud RBAC plan digest does not match" in script
+    assert "expected_phase=post-create-rbac" in script
+    assert "expected_phase=foundation" in script
+    assert "entra_p1_receipt_digest" in script
+    assert 'terraform -chdir=terraform apply' in script
+    assert '.post_create_rbac_enabled == false' in script
+    assert "az role assignment list" in script
+    assert "role assignments still exist" in script
+    assert "cyclecloud-identity-rbac.schema.json" in script
 
 
 def test_cyclecloud_convergence_uses_immutable_current_release() -> None:
@@ -168,6 +204,231 @@ def test_stack_apply_rejects_changed_template_before_azure(tmp_path: Path) -> No
     assert result.returncode == 11
     assert "template digest" in result.stderr
     assert not Path(environment["FAKE_AZ_LOG"]).exists()
+
+
+def _rbac_environment(tmp_path: Path) -> dict[str, str]:
+    environment = _stack_environment(tmp_path)
+    fake_bin = Path(environment["PATH"].split(":", 1)[0])
+    terraform_log = tmp_path / "terraform.log"
+    _write_executable(
+        fake_bin / "terraform",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FAKE_TERRAFORM_LOG"
+exit 99
+""",
+    )
+    plan = tmp_path / "cyclecloud-rbac.tfplan"
+    plan.write_text("reviewed-rbac-plan")
+    receipt = tmp_path / "entra-p1.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "result": "passed",
+                "detailCode": "entra_p1_verified",
+            }
+        )
+    )
+    approval = tmp_path / "cyclecloud-rbac-approval.json"
+    approval.write_text(
+        json.dumps(
+            {
+                "plan_digest": hashlib.sha256(plan.read_bytes()).hexdigest(),
+                "identity_phase": "post-create-rbac",
+                "entra_p1_receipt_digest": hashlib.sha256(
+                    receipt.read_bytes()
+                ).hexdigest(),
+                "approval_reference": "rbac-review-123",
+            }
+        )
+    )
+    environment.update(
+        {
+            "FAKE_TERRAFORM_LOG": str(terraform_log),
+            "CYCLECLOUD_RBAC_PLAN_FILE": str(plan),
+            "CYCLECLOUD_RBAC_APPROVAL_FILE": str(approval),
+            "CYCLECLOUD_ENTRA_P1_RECEIPT_FILE": str(receipt),
+        }
+    )
+    return environment
+
+
+def test_rbac_apply_rejects_stale_plan_before_terraform(tmp_path: Path) -> None:
+    environment = _rbac_environment(tmp_path)
+    approval = Path(environment["CYCLECLOUD_RBAC_APPROVAL_FILE"])
+    document = json.loads(approval.read_text())
+    document["plan_digest"] = "0" * 64
+    approval.write_text(json.dumps(document))
+
+    result = subprocess.run(
+        [str(STACK_SCRIPT), "rbac-apply"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 11
+    assert "RBAC plan digest does not match" in result.stderr
+    assert not Path(environment["FAKE_TERRAFORM_LOG"]).exists()
+
+
+def test_rbac_apply_rejects_wrong_identity_phase_before_terraform(
+    tmp_path: Path,
+) -> None:
+    environment = _rbac_environment(tmp_path)
+    approval = Path(environment["CYCLECLOUD_RBAC_APPROVAL_FILE"])
+    document = json.loads(approval.read_text())
+    document["identity_phase"] = "foundation"
+    approval.write_text(json.dumps(document))
+
+    result = subprocess.run(
+        [str(STACK_SCRIPT), "rbac-apply"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 11
+    assert "identity phase does not match" in result.stderr
+    assert not Path(environment["FAKE_TERRAFORM_LOG"]).exists()
+
+
+def test_rbac_apply_rejects_changed_entra_receipt_before_terraform(
+    tmp_path: Path,
+) -> None:
+    environment = _rbac_environment(tmp_path)
+    approval = Path(environment["CYCLECLOUD_RBAC_APPROVAL_FILE"])
+    document = json.loads(approval.read_text())
+    document["entra_p1_receipt_digest"] = "0" * 64
+    approval.write_text(json.dumps(document))
+
+    result = subprocess.run(
+        [str(STACK_SCRIPT), "rbac-apply"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 11
+    assert "Entra ID P1 receipt digest does not match" in result.stderr
+    assert not Path(environment["FAKE_TERRAFORM_LOG"]).exists()
+
+
+def _cleanup_environment(
+    tmp_path: Path,
+    custom_role_count: int,
+    vault_role_count: int,
+) -> dict[str, str]:
+    environment = _stack_environment(tmp_path)
+    fake_bin = Path(environment["PATH"].split(":", 1)[0])
+    cleanup_plan = Path(environment["CYCLECLOUD_CLEANUP_PLAN_FILE"])
+    cleanup_plan.write_text('{"resources":["cyclecloud-vm"]}')
+    cleanup_approval = Path(environment["CYCLECLOUD_CLEANUP_APPROVAL_FILE"])
+    cleanup_approval.write_text(
+        json.dumps(
+            {
+                "stack_snapshot_digest": hashlib.sha256(
+                    cleanup_plan.read_bytes()
+                ).hexdigest(),
+                "approval_reference": "cleanup-review-123",
+            }
+        )
+    )
+    _write_executable(
+        fake_bin / "terraform",
+        """#!/usr/bin/env python3
+import json
+import sys
+
+args = sys.argv[1:]
+if args[-3:] == ["output", "-json", "cyclecloud_deployment"]:
+    print(json.dumps({
+        "resource_group_name": "demo-rg",
+        "vm_name": "demo-cyclecloud",
+    }))
+elif args[-3:] == ["output", "-json", "cyclecloud_identity_rbac"]:
+    print(json.dumps({
+        "phase": "foundation",
+        "post_create_rbac_enabled": False,
+        "system_principal_id": None,
+        "custom_role_assignment_scope": "/subscriptions/00000000-0000-0000-0000-000000000000",
+        "custom_role_definition_id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/33333333-3333-4333-8333-333333333333",
+        "key_vault_assignment_scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo-rg/providers/Microsoft.KeyVault/vaults/demo-vault",
+    }))
+else:
+    raise SystemExit(98)
+""",
+    )
+    _write_executable(
+        fake_bin / "az",
+        """#!/usr/bin/env python3
+import json
+import os
+from pathlib import Path
+import sys
+
+args = sys.argv[1:]
+with Path(os.environ["FAKE_AZ_LOG"]).open("a") as log:
+    log.write(json.dumps(args) + "\\n")
+if args[:2] == ["account", "show"]:
+    print("00000000-0000-0000-0000-000000000000")
+elif args[:2] == ["vm", "show"]:
+    print(json.dumps({
+        "type": "SystemAssigned",
+        "principalId": "22222222-2222-4222-8222-222222222222",
+    }))
+elif args[:3] == ["role", "assignment", "list"]:
+    query = args[args.index("--query") + 1]
+    if "roleDefinitionId" in query:
+        print(os.environ["FAKE_CUSTOM_ROLE_COUNT"])
+    else:
+        print(os.environ["FAKE_VAULT_ROLE_COUNT"])
+else:
+    raise SystemExit(97)
+""",
+    )
+    environment.update(
+        {
+            "FAKE_CUSTOM_ROLE_COUNT": str(custom_role_count),
+            "FAKE_VAULT_ROLE_COUNT": str(vault_role_count),
+        }
+    )
+    return environment
+
+
+@pytest.mark.parametrize(
+    ("custom_role_count", "vault_role_count"),
+    [(1, 0), (0, 1)],
+)
+def test_cleanup_rejects_each_live_system_principal_assignment(
+    tmp_path: Path,
+    custom_role_count: int,
+    vault_role_count: int,
+) -> None:
+    environment = _cleanup_environment(
+        tmp_path,
+        custom_role_count,
+        vault_role_count,
+    )
+
+    result = subprocess.run(
+        [str(STACK_SCRIPT), "cleanup"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 12
+    assert "role assignments still exist" in result.stderr
+    az_log = Path(environment["FAKE_AZ_LOG"]).read_text()
+    assert "stack group delete" not in az_log
 
 
 def _write_what_if_commands(

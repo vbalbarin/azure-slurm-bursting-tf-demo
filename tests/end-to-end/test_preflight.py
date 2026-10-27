@@ -22,7 +22,26 @@ args = sys.argv[1:]
 query = args[args.index("--query") + 1] if "--query" in args else ""
 
 if args[:2] == ["account", "show"]:
-    print("00000000-0000-0000-0000-000000000000")
+    print(json.dumps({
+        "subscriptionId": "00000000-0000-0000-0000-000000000000",
+        "tenantId": "11111111-1111-1111-1111-111111111111",
+    }))
+elif args[:1] == ["rest"]:
+    if os.environ.get("FAKE_GRAPH_DENIED"):
+        print("Graph request denied", file=sys.stderr)
+        sys.exit(1)
+    response = os.environ.get("FAKE_GRAPH_RESPONSE")
+    if response is None:
+        response = json.dumps({
+            "value": [{
+                "capabilityStatus": "Enabled",
+                "servicePlans": [{
+                    "servicePlanName": "AAD_PREMIUM",
+                    "provisioningStatus": "Success",
+                }],
+            }],
+        })
+    print(response)
 elif args[:2] == ["account", "list-locations"]:
     print("eastus")
     print("southcentralus")
@@ -182,6 +201,99 @@ def test_records_role_specific_image_compatibility(tmp_path: Path) -> None:
         "required"
     ] == 120
     assert evidence["capacity"]["alternate_placements"][0]["status"] == "eligible"
+
+
+def test_records_value_free_entra_p1_receipt(tmp_path: Path) -> None:
+    graph_response = json.dumps({
+        "value": [{
+            "capabilityStatus": "Enabled",
+            "skuId": "must-not-be-recorded",
+            "servicePlans": [{
+                "servicePlanId": "must-not-be-recorded",
+                "servicePlanName": "AAD_PREMIUM",
+                "provisioningStatus": "Success",
+            }],
+        }],
+    })
+
+    result = _run(tmp_path, FAKE_GRAPH_RESPONSE=graph_response)
+
+    assert result.returncode == 0, result.stderr
+    evidence = json.loads(result.stdout)
+    receipt = evidence["entraP1"]
+    assert set(receipt) == {
+        "schemaVersion",
+        "tenantId",
+        "checkedAt",
+        "result",
+        "detailCode",
+    }
+    assert receipt["schemaVersion"] == 1
+    assert receipt["tenantId"] == "11111111-1111-1111-1111-111111111111"
+    assert receipt["checkedAt"].endswith("Z")
+    assert receipt["result"] == "passed"
+    assert receipt["detailCode"] == "entra_p1_verified"
+    assert "must-not-be-recorded" not in result.stdout
+
+
+def test_rejects_denied_graph_query_with_value_free_receipt(
+    tmp_path: Path,
+) -> None:
+    result = _run(tmp_path, FAKE_GRAPH_DENIED="1")
+
+    assert result.returncode == 8
+    assert json.loads(result.stdout) == {
+        "schemaVersion": 1,
+        "tenantId": "11111111-1111-1111-1111-111111111111",
+        "checkedAt": json.loads(result.stdout)["checkedAt"],
+        "result": "failed",
+        "detailCode": "entra_p1_graph_query_denied",
+    }
+    assert "subscribedSkus query was denied or failed" in result.stderr
+
+
+def test_rejects_ambiguous_graph_response(tmp_path: Path) -> None:
+    ambiguous = json.dumps({
+        "value": [{
+            "capabilityStatus": "Enabled",
+            "servicePlans": [{
+                "servicePlanName": "AAD_PREMIUM",
+            }],
+        }],
+    })
+
+    result = _run(tmp_path, FAKE_GRAPH_RESPONSE=ambiguous)
+
+    assert result.returncode == 8
+    receipt = json.loads(result.stdout)
+    assert receipt["result"] == "failed"
+    assert receipt["detailCode"] == "entra_p1_response_ambiguous"
+    assert set(receipt) == {
+        "schemaVersion",
+        "tenantId",
+        "checkedAt",
+        "result",
+        "detailCode",
+    }
+
+
+def test_rejects_unavailable_entra_p1_plan(tmp_path: Path) -> None:
+    unavailable = json.dumps({
+        "value": [{
+            "capabilityStatus": "Enabled",
+            "servicePlans": [{
+                "servicePlanName": "AAD_PREMIUM",
+                "provisioningStatus": "Disabled",
+            }],
+        }],
+    })
+
+    result = _run(tmp_path, FAKE_GRAPH_RESPONSE=unavailable)
+
+    assert result.returncode == 8
+    receipt = json.loads(result.stdout)
+    assert receipt["result"] == "failed"
+    assert receipt["detailCode"] == "entra_p1_not_available"
 
 
 def test_rejects_unavailable_burst_image(tmp_path: Path) -> None:

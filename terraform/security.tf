@@ -108,11 +108,6 @@ module "key_vault" {
       principal_type             = "Group"
     }
     }, {
-    cyclecloud_secrets_user = {
-      role_definition_id_or_name = "Key Vault Secrets User"
-      principal_id               = module.cyclecloud_control_identity.principal_id
-      principal_type             = "ServicePrincipal"
-    }
     scheduler_secrets_user = {
       role_definition_id_or_name = local.scheduler_key_vault_role
       principal_id               = module.scheduler_identity.principal_id

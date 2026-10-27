@@ -2,10 +2,11 @@
 
 ## Entry point
 
-The governed deployment workflow is the only remote dispatcher for initial scheduler convergence,
-an identical-input retry, an approved update, or idempotency verification. It uses Azure VM Run
-Command and requires the operator's existing Azure authorization. It never sends secret values in
-the Run Command payload.
+The governed deployment workflow is the only dispatcher for CycleCloud foundation/post-create
+RBAC, initial scheduler convergence, an identical-input retry, an approved update, or idempotency
+verification. It invokes only exact reviewed Terraform plans, the constitution-authorized Bicep
+VM stack, and approved VM-local entry points. It uses Azure VM Run Command for guest dispatch and
+requires the operator's existing Azure authorization. It never sends secret values in a payload.
 
 ## Inputs
 
@@ -14,10 +15,57 @@ the Run Command payload.
 - CycleCloud and scheduler node-specification digests.
 - Expected VM resource IDs.
 - Expected private CycleCloud URL and cluster name.
+- Exact CycleCloud VM resource ID and expected system-identity shape.
+- Canonical Microsoft custom-role definition digest and approved burst subscription scope.
+- Independent locker UAMI and storage-account resource IDs.
+- Accepted Microsoft Entra ID P1 prerequisite receipt.
+- Infrastructure phase: `foundation`, `post-create-rbac`, or `remove-pre-delete-rbac`.
 - Operation: `initial`, `retry`, `update`, or `verify-idempotency`.
 - Protected evidence destination.
 
-## Ordered protocol
+## CycleCloud infrastructure identity protocol
+
+1. **Verify prerequisite and foundation**
+   - Require a current value-free receipt proving the authenticated tenant exposes an enabled,
+     successfully provisioned `AAD_PREMIUM` service plan.
+   - Require the canonical custom-role permission digest to match the source-controlled Microsoft
+     permission set.
+   - Plan foundation with post-create RBAC disabled.
+   - Require the exact plan to create or retain the custom role definition and independent locker
+     UAMI, grant the locker only `Storage Blob Data Reader` at the locker account, and remove the
+     former control UAMI and its assignments without unrelated changes.
+
+2. **Create the VM system principal**
+   - Build and review the exact Bicep deployment-stack what-if.
+   - Require the VM identity type to be `SystemAssigned` with no user-assigned identity map.
+   - Apply only the approved stack artifact and capture the VM resource ID and system principal ID.
+   - Do not treat VM provisioning as CycleCloud readiness; first boot remains at the bounded RBAC
+     gate.
+
+3. **Apply post-create RBAC**
+   - Plan the same Terraform root with post-create RBAC enabled.
+   - Read the approved VM resource directly, require its observed principal to match the captured
+     principal, and reject a caller-selected substitute.
+   - Require the exact plan to add only the AVM-managed custom-role assignment at the approved
+     burst subscription and `Key Vault Secrets User` at the bootstrap vault.
+   - Apply only that reviewed plan and record its digest.
+
+4. **Verify propagation**
+   - Permit first boot to wait no more than 30 minutes.
+   - Require system-identity management access in the approved burst scope, a successful
+     user-delegation SAS capability check against the locker, and bootstrap secret read.
+   - Suppress and discard generated SAS and secret values.
+   - Validate the value-free result against `cyclecloud-identity-rbac.schema.json` before
+     CycleCloud first-run or Chef convergence proceeds.
+
+5. **Remove assignments before replacement**
+   - Plan the same Terraform root with post-create RBAC disabled while the old VM still exists.
+   - Require the exact plan to remove only assignments bound to the old system principal.
+   - Apply the reviewed removal plan, verify the assignments are absent, and only then delete the
+     Bicep stack.
+   - Preserve the custom role definition, locker UAMI, NIC, and private IP for the replacement.
+
+## Guest convergence protocol
 
 1. **Inspect local receipts**
    - Read bounded state from both VMs.
@@ -85,7 +133,8 @@ the Run Command payload.
 ## Failure behavior
 
 Every failed gate or command returns nonzero, writes a bounded stage code, and leaves downstream
-actions unexecuted. Missing or malformed receipts, digest mismatches, unauthorized secret access,
-concurrent execution, a missing/rejected CycleCloud UI attestation, unexpected burst-node
-identity, and nonzero idempotency updates are hard failures. Success-shaped fallback output is
-prohibited.
+actions unexecuted. Missing or malformed prerequisite/RBAC receipts, identity-shape or principal
+mismatches, stale plan digests, propagation timeout, unauthorized secret access, concurrent
+execution, a missing/rejected CycleCloud UI attestation, unexpected burst-node identity, and
+nonzero idempotency updates are hard failures. VM deletion while old system-principal assignments
+remain is prohibited. Success-shaped fallback output is prohibited.

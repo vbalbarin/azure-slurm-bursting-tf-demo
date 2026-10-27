@@ -50,19 +50,97 @@ and makes a zero-update rerun comparable to the initial convergence.
 can change independently. Generating locks on the VM was rejected because it makes deployment
 depend on runtime resolution and mutable external state.
 
+## CycleCloud orchestrator and locker identities
+
+**Decision**: Configure the CycleCloud VM with only a system-assigned managed identity. Retain the
+locker as an independently created user-assigned managed identity because CycleCloud-created VMs
+and scale sets must attach it at creation time. Do not attach the locker UAMI to the orchestrator.
+
+Create one Terraform-owned custom role definition reproducing the complete permission set in
+Microsoft's "Create a custom role and managed identity for CycleCloud" example, with the approved
+burst subscription as its only assignable scope. Assign that role to the VM system principal at
+the same subscription scope. Assign `Key Vault Secrets User` separately at the bootstrap vault.
+Keep only `Storage Blob Data Reader` for the locker UAMI at the locker storage account. The custom
+role already includes storage blob data actions and
+`Microsoft.Storage/storageAccounts/blobServices/generateUserDelegationKey/action`, so a redundant
+storage Contributor assignment is prohibited.
+
+**Rationale**: This matches Microsoft's system-identity architecture while preserving the
+independent identity required by cluster nodes. Separate vault access prevents the all-features
+CycleCloud role from gaining secret write permission. Constitution v3.3.0 permits exactly the
+custom role definition as a direct Terraform resource because no AVM creates custom roles; every
+assignment remains owned by pinned
+`Azure/avm-res-authorization-roleassignment/azurerm` version `0.3.1`.
+
+**Alternatives considered**: The existing control UAMI was rejected because the selected
+architecture requires a system identity. Built-in Contributor plus Storage Blob Data Contributor
+was rejected as broader than Microsoft's custom role. Assigning roles from Bicep was rejected
+because the deployment-stack exception is VM-only. Manual role creation was rejected because it
+would not be declarative, reviewable, or Terraform-state-owned.
+
+## Post-create RBAC and propagation
+
+**Decision**: Use the existing Terraform root and state for two explicit phases. Foundation mode
+creates the exact custom role definition but omits resources that require the VM principal. After
+the approved Bicep stack creates the VM, post-create mode reads the expected VM resource, requires
+identity type `SystemAssigned`, rejects any attached UAMI, derives the principal directly from the
+VM, and plans only the AVM-managed custom-role and vault-role assignments.
+
+Before replacing a system-identity VM, return Terraform to foundation mode and apply the exact plan
+that removes the old principal's assignments. Delete the Bicep stack only after that apply
+succeeds. Never accept a caller-supplied principal without comparing it to the deployed VM.
+
+First boot logs in through IMDS without a client ID and waits at most 30 minutes for three
+capabilities: approved management access in the burst scope, locker user-delegation SAS
+generation, and bootstrap secret read. Retry only expected propagation/throttling/transient service
+responses, keep generated SAS and secret values out of output, and fail with a bounded stage code
+when the deadline expires. Provider configuration omits `AzureRMClientId` and continues to set the
+independent locker identity resource ID.
+
+**Rationale**: A system principal does not exist until VM creation, while custom data begins as the
+VM boots. A same-state phase flag keeps ownership and drift detection in one state. The bounded
+guest gate closes the unavoidable role-propagation race without moving role assignment ownership
+to Bicep or workflow scripts.
+
+**Alternatives considered**: A separate Terraform state was rejected because it splits ownership
+and complicates teardown. An unbounded cloud-init wait was rejected because it hides missing
+approval or failed role assignment. Stopping and deallocating the VM before bootstrap was rejected
+because custom data starts during provisioning and would still require a resumable gate.
+
+## Custom-role tenant prerequisite
+
+**Decision**: Before approving foundation or replacement plans, query Microsoft Graph
+`subscribedSkus` under the authenticated deployment identity and require an enabled, successfully
+provisioned `AAD_PREMIUM` service plan. Record only tenant identity, check timestamp, result, and a
+bounded detail code. A denied Graph query, missing service plan, or ambiguous result blocks the
+run.
+
+**Rationale**: Microsoft explicitly documents Microsoft Entra ID P1 as a prerequisite for this
+custom-role workflow. Positive preflight evidence is stronger than an operator assumption and
+keeps license inventory details out of routine evidence.
+
+**Alternatives considered**: Treating the prerequisite as an undocumented manual assertion was
+rejected as unauditable. Recording the full subscribed-SKU response was rejected as unnecessary
+tenant inventory disclosure.
+
 ## CycleCloud Slurm release inputs
 
-**Decision**: Pin CycleCloud Slurm `4.0.11`. Use
+**Decision**: Pin CycleCloud Slurm `4.0.11`. Stage the project source at commit
+`096cd7423f75b2043b6263fd66feb55c7d5192f2` from its archive with SHA-256
+`185b8959b38339c3f27a80e5d9409df5ed2f25d0c76976eb5f6e20e7a4e78df7`. Place
 `azure-slurm-pkg-4.0.11.tar.gz` with SHA-256
 `f85a1d016eca3786eb9845fcbffcefaf674bfcd4b59738597e90877047a23e36`
-for the CycleCloud project and `azure-slurm-install-pkg-4.0.11.tar.gz` with SHA-256
+and the release-matched exporter in the project's `blobs/` directory. Use
+`azure-slurm-install-pkg-4.0.11.tar.gz` with SHA-256
 `a489f4c5ec2404dc02a09792af5f32f4683e164327d89c4c2dfc8d9a30402482`
 for the external scheduler. Download only the exact release URLs and verify before extraction.
 Use the repository's tested headless transformer to create a separate validated external-scheduler
 template; never edit the vendor template in place.
 
-**Rationale**: The release publishes distinct, digest-identified project and external-scheduler
-artifacts. One release identity across both roles prevents package/template skew.
+**Rationale**: The runtime tarball is a project blob, not a CycleCloud project source tree. The
+tagged source supplies `project.ini`, specs, and templates, while all release-matched blobs must be
+present before project upload. One release identity across both roles prevents package/template
+skew.
 
 **Alternatives considered**: Discovering an arbitrary installed project was rejected because a new
 Marketplace appliance does not guarantee the required external-scheduler artifact. Tracking the
@@ -183,6 +261,8 @@ because they destroy provenance and silently change guest steady state.
 
 ## References
 
+- [Using Managed Identities - Azure CycleCloud](https://learn.microsoft.com/azure/cyclecloud/how-to/managed-identities?view=cyclecloud-8)
+- [Azure AVM role-assignment module](https://registry.terraform.io/modules/Azure/avm-res-authorization-roleassignment/azurerm/0.3.1)
 - [Automated deployment of CycleCloud and Slurm using CLI](https://techcommunity.microsoft.com/blog/azurehighperformancecomputingblog/automated-deployment-of-cyclecloud-and-slurm-using-cli/3943666)
 - [CycleCloud user management](https://learn.microsoft.com/azure/cyclecloud/concepts/user-management)
 - [CycleCloud CLI reference](https://learn.microsoft.com/azure/cyclecloud/cli)

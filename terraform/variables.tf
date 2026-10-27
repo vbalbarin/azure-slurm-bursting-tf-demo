@@ -82,6 +82,17 @@ variable "tenant_id" {
   }
 }
 
+variable "cyclecloud_identity_phase" {
+  description = "CycleCloud identity lifecycle phase. Foundation omits VM-principal assignments; post-create-rbac derives the deployed VM principal and creates them."
+  type        = string
+  default     = "foundation"
+
+  validation {
+    condition     = contains(["foundation", "post-create-rbac"], var.cyclecloud_identity_phase)
+    error_message = "cyclecloud_identity_phase must be foundation or post-create-rbac."
+  }
+}
+
 variable "environment_name" {
   description = "Azure-safe lowercase naming prefix."
   type        = string

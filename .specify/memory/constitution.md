@@ -1,8 +1,10 @@
 <!--
 Sync Impact Report
-- Version change: 3.1.0 -> 3.2.0
+- Version change: 3.2.0 -> 3.3.0
 - Modified principles:
-  - II. Declarative Infrastructure and Managed Node Configuration
+  - III. Azure Verified Modules and CycleCloud Appliance Exception
+- Modified sections:
+  - Infrastructure Delivery Workflow
 - Added sections: none
 - Removed sections: none
 - Follow-up TODOs: none
@@ -70,6 +72,17 @@ only current amendment is the CycleCloud VM-only Bicep deployment-stack exceptio
 it does not relax the AVM requirement for the NIC, networking, security, monitoring, identity role
 assignments, other VMs, or any other Azure resource.
 
+One additional narrow exception permits exactly one direct Terraform `azurerm_role_definition`
+resource for the source-controlled CycleCloud custom role published in Microsoft's "Using Managed
+Identities - Azure CycleCloud" guidance because no AVM currently creates custom role definitions.
+The definition MUST reproduce the reviewed Microsoft permission set exactly, use only the approved
+burst subscription as its assignable scope, remain Terraform-state-owned, and receive native
+Terraform validation and exact plan review. This exception MUST NOT create role assignments,
+identities, or any other Azure resource. Every assignment of this custom role and every other role
+assignment MUST continue to use an explicitly pinned AVM role-assignment module. Availability of a
+suitable AVM role-definition module in the future MUST trigger migration back to AVM ownership
+before another material change to the role definition.
+
 ### IV. Security Without Exception
 Every design, change, and deployment MUST apply Azure and Terraform security best practices.
 Configurations MUST enforce least privilege, secure defaults, encryption where supported,
@@ -115,7 +128,8 @@ introducing unrequired high-availability, disaster-recovery, or scaling architec
 ## Infrastructure Delivery Workflow
 
 1. Define every Azure control-plane infrastructure change in Terraform using pinned AVM module
-   versions, except for the single CycleCloud VM-only Bicep stack authorized by Principle II.
+   versions, except for the CycleCloud VM-only Bicep stack authorized by Principle II and the
+   single Terraform custom-role-definition resource authorized by Principle III.
 2. Define node configuration in a supported configuration-management platform. When an allowed
    Python or Bash configuration-processing exception is necessary, record why the platform cannot
    perform the task and verify that the exception satisfies Principle II.
@@ -160,4 +174,4 @@ MUST rule. Compliance MUST be re-evaluated whenever Terraform, provider, AVM,
 configuration-management tool, or permitted script-runtime versions change and before every
 deployment.
 
-**Version**: 3.2.0 | **Ratified**: 2026-10-07 | **Last Amended**: 2026-10-24
+**Version**: 3.3.0 | **Ratified**: 2026-10-07 | **Last Amended**: 2026-10-27
