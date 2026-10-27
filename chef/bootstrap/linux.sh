@@ -6,6 +6,16 @@ umask 077
 : "${CHEF_MANIFEST_PATH:?CHEF_MANIFEST_PATH is required}"
 : "${CHEF_NODE_SPECIFICATION_PATH:?CHEF_NODE_SPECIFICATION_PATH is required}"
 : "${CHEF_POLICY_ARCHIVE_PATH:?CHEF_POLICY_ARCHIVE_PATH is required}"
+: "${CHEF_LICENSE_ID_FILE:?CHEF_LICENSE_ID_FILE is required}"
+
+[[ -s "$CHEF_LICENSE_ID_FILE" ]] || {
+  echo "Chef license ID file is missing or empty" >&2
+  exit 2
+}
+[[ "$(stat -c '%a' "$CHEF_LICENSE_ID_FILE")" == "600" ]] || {
+  echo "Chef license ID file must have mode 0600" >&2
+  exit 2
+}
 
 case "$CHEF_POLICY_NAME" in
   cyclecloud|slurm) ;;
@@ -14,7 +24,6 @@ esac
 
 chef_version=18.11.11
 chef_rpm_sha256=d68c339bc85ded67b793de4e20f35886c5fbd9b5a9e95dabbe5ede6211b01365
-chef_rpm_uri=https://packages.chef.io/files/stable/chef/18.11.11/el/9/chef-18.11.11-1.el9.x86_64.rpm
 release_root=/opt/slurm-demo/releases
 state_root=/var/lib/slurm-demo
 install -d -m 0700 "$release_root" "$state_root"
@@ -108,18 +117,45 @@ fi
 if ! command -v chef-client >/dev/null 2>&1 ||
    [[ "$(chef-client --version 2>/dev/null | awk '{print $2}')" != "$chef_version" ]]; then
   rpm_path="$(mktemp /var/tmp/chef.XXXXXX.rpm)"
+  curl_config="$(mktemp /var/tmp/chef-curl.XXXXXX)"
   cleanup_rpm() {
-    rm -f "$rpm_path"
+    rm -f "$rpm_path" "$curl_config"
   }
   trap cleanup_rpm EXIT
+  python3 - "$CHEF_LICENSE_ID_FILE" "$curl_config" <<'PY'
+from pathlib import Path
+from urllib.parse import urlencode
+import sys
+
+license_id = Path(sys.argv[1]).read_text().strip()
+if not license_id or any(
+    ord(character) < 33 or character in '"\\' for character in license_id
+):
+    raise SystemExit("Invalid Chef license ID format")
+query = urlencode(
+    {
+        "p": "el",
+        "pv": "9",
+        "m": "x86_64",
+        "v": "18.11.11",
+        "license_id": license_id,
+    }
+)
+Path(sys.argv[2]).write_text(
+    'url = "https://chefdownload-commercial.chef.io/stable/chef/download?'
+    + query
+    + '"\n'
+)
+Path(sys.argv[2]).chmod(0o600)
+PY
   curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
-    "$chef_rpm_uri" --output "$rpm_path"
+    --location --config "$curl_config" --output "$rpm_path"
   [[ "$(sha256sum "$rpm_path" | awk '{print $1}')" == "$chef_rpm_sha256" ]] || {
     echo "Chef RPM digest mismatch" >&2
     exit 1
   }
   rpm --upgrade --replacepkgs "$rpm_path"
-  rm -f "$rpm_path"
+  rm -f "$rpm_path" "$curl_config"
   trap - EXIT
 fi
 

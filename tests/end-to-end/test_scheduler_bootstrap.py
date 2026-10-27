@@ -12,6 +12,20 @@ def test_scheduler_bootstrap_stages_without_autonomous_convergence() -> None:
     assert "while " not in bootstrap
 
 
+def test_chef_download_uses_protected_commercial_license() -> None:
+    bootstrap = (ROOT / "chef/bootstrap/linux.sh").read_text()
+    scheduler = (ROOT / "terraform/compute.tf").read_text()
+    cyclecloud = (ROOT / "infra/cyclecloud/bootstrap.sh").read_text()
+
+    assert "https://packages.chef.io/" not in bootstrap
+    assert "chefdownload-commercial.chef.io/stable/chef/download" in bootstrap
+    assert '--config "$curl_config"' in bootstrap
+    assert "license_id" not in scheduler
+    assert "--name, chef-license-id" in scheduler
+    assert "CHEF_LICENSE_ID_FILE=/run/chef-license-id" in scheduler
+    assert 'download_secret chef-license-id "$secret_dir/chef-license-id"' in cyclecloud
+
+
 def test_scheduler_convergence_is_explicit_and_reboot_safe() -> None:
     wrapper = (ROOT / "chef/bin/converge-scheduler.sh").read_text()
     workflow = (ROOT / "tests/end-to-end/converge_linux_roles.sh").read_text()

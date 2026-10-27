@@ -42,7 +42,7 @@ jq -e '
 
 jq -e '
   .status == "stored" and
-  (.secret_references | length) == 7
+  (.secret_references | length) == 8
 ' "$admin_secret_evidence" >/dev/null
 
 deployment="$(terraform -chdir=terraform output -json cyclecloud_deployment)"

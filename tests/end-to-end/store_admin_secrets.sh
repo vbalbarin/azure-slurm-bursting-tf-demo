@@ -16,6 +16,7 @@ done
 : "${CYCLECLOUD_TLS_PFX_FILE:?CYCLECLOUD_TLS_PFX_FILE is required}"
 : "${CYCLECLOUD_TLS_PFX_PASSWORD_FILE:?CYCLECLOUD_TLS_PFX_PASSWORD_FILE is required}"
 : "${CYCLECLOUD_TLS_CA_FILE:?CYCLECLOUD_TLS_CA_FILE is required}"
+: "${CHEF_LICENSE_ID_FILE:?CHEF_LICENSE_ID_FILE is required}"
 : "${ADMIN_PASSWORD_EVIDENCE_FILE:?ADMIN_PASSWORD_EVIDENCE_FILE is required}"
 : "${ADMIN_SECRET_EVIDENCE_FILE:?ADMIN_SECRET_EVIDENCE_FILE is required}"
 
@@ -68,7 +69,8 @@ for file in \
   "$CYCLECLOUD_ADMIN_PASSWORD_FILE" \
   "$CYCLECLOUD_TLS_PFX_FILE" \
   "$CYCLECLOUD_TLS_PFX_PASSWORD_FILE" \
-  "$CYCLECLOUD_TLS_CA_FILE"; do
+  "$CYCLECLOUD_TLS_CA_FILE" \
+  "$CHEF_LICENSE_ID_FILE"; do
   [[ -f "$file" ]] || {
     printf 'Protected credential file does not exist: %s\n' "$file" >&2
     exit 2
@@ -88,6 +90,7 @@ cyclecloud_admin_name="cyclecloud-admin-password"
 cyclecloud_tls_name="cyclecloud-tls-pfx"
 cyclecloud_tls_password_name="cyclecloud-tls-pfx-password"
 cyclecloud_ca_name="cyclecloud-tls-ca"
+chef_license_name="chef-license-id"
 
 write_secret() {
   local name="$1"
@@ -120,6 +123,8 @@ mkdir -p "$(dirname "$ADMIN_SECRET_EVIDENCE_FILE")"
     "text/plain"
   write_secret "$cyclecloud_ca_name" "$CYCLECLOUD_TLS_CA_FILE" \
     "application/x-pem-file"
+  write_secret "$chef_license_name" "$CHEF_LICENSE_ID_FILE" \
+    "text/plain"
 } | jq -s '{
   status: "stored",
   secret_references: map({id, name})
@@ -127,6 +132,6 @@ mkdir -p "$(dirname "$ADMIN_SECRET_EVIDENCE_FILE")"
 
 jq -e '
   .status == "stored" and
-  (.secret_references | length) == 7 and
+  (.secret_references | length) == 8 and
   all(.secret_references[]; (.id | type == "string") and (.name | type == "string"))
 ' "$ADMIN_SECRET_EVIDENCE_FILE" >/dev/null

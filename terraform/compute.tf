@@ -27,7 +27,13 @@ locals {
         content: ${base64encode(jsonencode(local.chef_node_specifications.scheduler))}
     runcmd:
       - [ install, -d, -m, '0700', /var/lib/slurm-demo/bootstrap ]
-      - [ env, CHEF_POLICY_NAME=slurm, CHEF_MANIFEST_PATH=/var/lib/slurm-demo/bootstrap/scheduler.manifest.json, CHEF_NODE_SPECIFICATION_PATH=/var/lib/slurm-demo/bootstrap/scheduler.node-specification.json, CHEF_POLICY_ARCHIVE_PATH=/var/lib/slurm-demo/bootstrap/scheduler.tgz, /usr/local/sbin/chef-policy-bootstrap ]
+      - [ dnf, install, -y, 'https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm' ]
+      - [ dnf, install, -y, azure-cli ]
+      - [ az, login, --identity, --allow-no-subscriptions, --output, none ]
+      - [ az, keyvault, secret, download, --vault-name, '${local.names.key_vault}', --name, chef-license-id, --file, /run/chef-license-id, --encoding, utf-8, --overwrite, --output, none ]
+      - [ chmod, '0600', /run/chef-license-id ]
+      - [ env, CHEF_POLICY_NAME=slurm, CHEF_MANIFEST_PATH=/var/lib/slurm-demo/bootstrap/scheduler.manifest.json, CHEF_NODE_SPECIFICATION_PATH=/var/lib/slurm-demo/bootstrap/scheduler.node-specification.json, CHEF_POLICY_ARCHIVE_PATH=/var/lib/slurm-demo/bootstrap/scheduler.tgz, CHEF_LICENSE_ID_FILE=/run/chef-license-id, /usr/local/sbin/chef-policy-bootstrap ]
+      - [ rm, -f, /run/chef-license-id ]
   CLOUD_INIT
   )
 }

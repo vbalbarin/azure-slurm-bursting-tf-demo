@@ -3893,9 +3893,10 @@ tests/end-to-end/generate_cyclecloud_bootstrap_secrets.sh
 The TLS generator requires the pre-generated CycleCloud administrator password, verifies its
 owner-only permissions, verifies the private-name SAN and certificate lifetime, and writes every
 new private artifact with owner-only permissions. Write the three existing administrative secrets
-plus the generated CycleCloud administrator password, PFX, PFX password, and public CA certificate
+plus the generated CycleCloud administrator password, PFX, PFX password, public CA certificate,
+and protected Chef license ID
 through the Key Vault data plane during this bounded window. The script validates the accepted
-password receipt, passes file paths rather than values to Azure CLI, and records only seven secret
+password receipt, passes file paths rather than values to Azure CLI, and records only eight secret
 IDs and names:
 
 CycleCloud first boot imports the PFX through a protected wrapper that reads the password file as

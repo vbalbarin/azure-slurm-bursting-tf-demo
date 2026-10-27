@@ -108,6 +108,7 @@ download_secret() {
 download_secret cyclecloud-admin-password "$secret_dir/admin-password" utf-8
 download_secret cyclecloud-tls-pfx "$secret_dir/cyclecloud.pfx" base64
 download_secret cyclecloud-tls-pfx-password "$secret_dir/pfx-password" utf-8
+download_secret chef-license-id "$secret_dir/chef-license-id" utf-8
 
 admin_password="$(<"$secret_dir/admin-password")"
 chown cycle_server:cycle_server \
@@ -241,6 +242,7 @@ CHEF_POLICY_NAME=cyclecloud \
 CHEF_POLICY_ARCHIVE_PATH="$chef_input_dir/cyclecloud.tgz" \
 CHEF_MANIFEST_PATH="$chef_input_dir/manifest.json" \
 CHEF_NODE_SPECIFICATION_PATH="$chef_input_dir/node-specification.json" \
+CHEF_LICENSE_ID_FILE="$secret_dir/chef-license-id" \
   "$chef_input_dir/bootstrap-linux.sh"
 
 /opt/slurm-demo/current/chef/bin/converge-cyclecloud.sh

@@ -335,6 +335,7 @@ print(json.dumps({"id": f"https://demo-vault.vault.azure.net/secrets/{name}/vers
         "cyclecloud-pfx",
         "cyclecloud-pfx-password",
         "cyclecloud-ca",
+        "chef-license",
     ):
         path = tmp_path / name
         path.write_text(f"secret-{name}")
@@ -356,6 +357,7 @@ print(json.dumps({"id": f"https://demo-vault.vault.azure.net/secrets/{name}/vers
         "CYCLECLOUD_TLS_PFX_FILE": str(protected_files[4]),
         "CYCLECLOUD_TLS_PFX_PASSWORD_FILE": str(protected_files[5]),
         "CYCLECLOUD_TLS_CA_FILE": str(protected_files[6]),
+        "CHEF_LICENSE_ID_FILE": str(protected_files[7]),
         "ADMIN_PASSWORD_EVIDENCE_FILE": str(password_evidence_path),
         "ADMIN_SECRET_EVIDENCE_FILE": str(evidence),
     }
@@ -383,7 +385,7 @@ def test_secret_writer_records_references_without_values(tmp_path: Path) -> None
         json.loads(line)
         for line in Path(environment["FAKE_AZ_LOG"]).read_text().splitlines()
     ]
-    assert len(calls) == 7
+    assert len(calls) == 8
     assert all("--file" in call and "--value" not in call for call in calls)
 
 
