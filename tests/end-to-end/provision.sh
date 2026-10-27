@@ -30,7 +30,6 @@ plan_digest="$(sha256sum "$PLAN_FILE" | awk '{print $1}')"
 preflight_digest="$(sha256sum "$PREFLIGHT_RESULTS_FILE" | awk '{print $1}')"
 capacity_probe_digest="$(sha256sum "$CAPACITY_PROBE_RESULTS_FILE" | awk '{print $1}')"
 printf '%s\n' "$plan_digest" >"$EVIDENCE_DIR/plan.sha256"
-terraform -chdir=terraform show -json "$PLAN_FILE" >"$EVIDENCE_DIR/plan.json"
 
 approved_digest="$(jq -er '.plan_digest' "$APPROVAL_FILE")"
 approved_preflight_digest="$(jq -er '.preflight_digest' "$APPROVAL_FILE")"
@@ -90,9 +89,9 @@ backend_readiness_assessed_at="$(
     .assessed_at
   ' "$TF_VAR_backend_readiness_file"
 )"
-backend_readiness_age="$(
-  echo "$(($(date -u +%s) - $(date -u -d "$backend_readiness_assessed_at" +%s)))"
-)"
+backend_readiness_age="$((
+  $(date -u +%s) - $(date -u -d "$backend_readiness_assessed_at" +%s)
+))"
 (( backend_readiness_age >= 0 &&
   backend_readiness_age <= ${FOUNDATION_READINESS_MAX_AGE_SECONDS:-1200} )) || {
   echo "Backend readiness lacks the required foundation-apply freshness headroom" >&2

@@ -33,7 +33,7 @@ elif command == "plan":
     output = next(arg.split("=", 1)[1] for arg in args if arg.startswith("-out="))
     Path(output).write_bytes(b"fake-plan")
 elif command == "show":
-    print("{}")
+    print(os.environ.get("FAKE_PLAN_SECRET", "{}"))
 elif command == "apply":
     if os.environ.get("FAKE_APPLY_SLEEP"):
         time.sleep(float(os.environ["FAKE_APPLY_SLEEP"]))
@@ -120,6 +120,7 @@ def test_probe_configuration_includes_burst_image_marketplace_plan() -> None:
 
 def test_probe_success_and_verified_cleanup(tmp_path: Path) -> None:
     environment = _environment(tmp_path)
+    environment["FAKE_PLAN_SECRET"] = "-----BEGIN PRIVATE KEY-----"
     assert _run(environment, "plan").returncode == 0
     _approve(
         Path(environment["PROBE_PLAN_FILE"]),
@@ -139,6 +140,17 @@ def test_probe_success_and_verified_cleanup(tmp_path: Path) -> None:
     assert evidence["allocation_state"] == "allocated"
     assert evidence["cleanup_state"] == "verified"
     assert evidence["guarantee"] == "point_in_time_only"
+    assert not (
+        Path(environment["PROBE_EVIDENCE_DIR"]) / "probe-plan.json"
+    ).exists()
+    assert not (
+        Path(environment["PROBE_EVIDENCE_DIR"]) / "probe-destroy-plan.json"
+    ).exists()
+    assert all(
+        environment["FAKE_PLAN_SECRET"] not in path.read_text()
+        for path in Path(environment["PROBE_EVIDENCE_DIR"]).iterdir()
+        if path.is_file()
+    )
 
 
 def test_probe_classifies_allocation_failure(tmp_path: Path) -> None:

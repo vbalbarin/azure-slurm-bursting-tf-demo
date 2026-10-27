@@ -61,7 +61,7 @@ case "$action" in
     terraform -chdir="$root" validate
     terraform -chdir="$root" plan -input=false -var-file="$PROBE_TFVARS_FILE" -out="$PROBE_PLAN_FILE"
     sha256sum "$PROBE_PLAN_FILE" | tee "$PROBE_EVIDENCE_DIR/probe-plan.sha256"
-    terraform -chdir="$root" show -json "$PROBE_PLAN_FILE" >"$PROBE_EVIDENCE_DIR/probe-plan.json"
+    terraform -chdir="$root" show -no-color "$PROBE_PLAN_FILE"
     ;;
   apply)
     verify_approval "$PROBE_PLAN_FILE" "$PROBE_APPROVAL_FILE"
@@ -94,8 +94,7 @@ case "$action" in
     terraform -chdir="$root" plan -destroy -input=false \
       -var-file="$PROBE_TFVARS_FILE" -out="$PROBE_DESTROY_PLAN_FILE"
     sha256sum "$PROBE_DESTROY_PLAN_FILE" | tee "$PROBE_EVIDENCE_DIR/probe-destroy-plan.sha256"
-    terraform -chdir="$root" show -json "$PROBE_DESTROY_PLAN_FILE" \
-      >"$PROBE_EVIDENCE_DIR/probe-destroy-plan.json"
+    terraform -chdir="$root" show -no-color "$PROBE_DESTROY_PLAN_FILE"
     ;;
   cleanup)
     verify_approval "$PROBE_DESTROY_PLAN_FILE" "$PROBE_CLEANUP_APPROVAL_FILE"

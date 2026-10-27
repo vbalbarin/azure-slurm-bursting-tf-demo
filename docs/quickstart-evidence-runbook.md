@@ -3651,6 +3651,10 @@ Explicitly acknowledge temporary Azure cost in each approval record. Then:
 tests/end-to-end/capacity_probe.sh plan
 ```
 
+The helper prints Terraform's redacted human-readable rendering for review and writes only the
+plan digest under `/evidence`; it never writes raw plan JSON there. Keep the binary plan and any
+machine-readable rendering under the protected run-state directory.
+
 Review the exact saved plan, calculate the already emitted digest, and create
 `$PROBE_APPROVAL_FILE` with:
 

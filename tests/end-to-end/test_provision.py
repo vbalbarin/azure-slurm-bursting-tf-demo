@@ -36,6 +36,7 @@ elif command == "show":
     public_access = os.environ.get("FAKE_KEY_VAULT_PUBLIC_ACCESS", "true") == "true"
     action = os.environ.get("FAKE_KEY_VAULT_ACTION", "create")
     print(json.dumps({{
+        "sensitive_value": os.environ.get("FAKE_PLAN_SECRET", "not-set"),
         "resource_changes": [{{
             "address": "module.key_vault.azurerm_key_vault.this",
             "change": {{
@@ -164,6 +165,7 @@ def _environment(tmp_path: Path) -> dict[str, str]:
 
 def test_applies_reviewed_plan_then_requires_no_change(tmp_path: Path) -> None:
     environment = _environment(tmp_path)
+    environment["FAKE_PLAN_SECRET"] = "must-remain-in-protected-state"
     result = subprocess.run(
         [str(SCRIPT)],
         cwd=REPOSITORY_ROOT,
@@ -181,6 +183,12 @@ def test_applies_reviewed_plan_then_requires_no_change(tmp_path: Path) -> None:
     assert any("apply" in invocation for invocation in invocations)
     assert any("plan" in invocation for invocation in invocations)
     assert (Path(environment["EVIDENCE_DIR"]) / "foundation-no-change.json").exists()
+    assert not (Path(environment["EVIDENCE_DIR"]) / "plan.json").exists()
+    assert all(
+        environment["FAKE_PLAN_SECRET"] not in path.read_text()
+        for path in Path(environment["EVIDENCE_DIR"]).iterdir()
+        if path.is_file()
+    )
 
 
 def test_applies_reviewed_plan_with_key_vault_update(tmp_path: Path) -> None:
