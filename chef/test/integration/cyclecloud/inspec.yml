@@ -1,0 +1,9 @@
+name: cyclecloud
+title: CycleCloud appliance acceptance
+maintainer: Azure Slurm Bursting Demo
+copyright: Azure Slurm Bursting Demo
+license: MIT
+summary: Validates the private CycleCloud appliance and bootstrap contracts.
+version: 1.0.0
+supports:
+  - platform-family: linux

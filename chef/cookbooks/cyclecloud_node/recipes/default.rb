@@ -46,7 +46,7 @@ package %w(python3 jq)
 
 ruby_block 'require-cyclecloud-8.9.3' do
   block { raise 'CycleCloud version skew: expected exactly 8.9.3' }
-  not_if "rpm -q --qf '%{VERSION}' cyclecloud | grep -Fqx '8.9.3'"
+  not_if "/opt/cycle_server/cycle_server version | grep -Eq '^8\\.9\\.3-[0-9]+$'"
 end
 
 directory '/var/cache/slurm-demo' do
@@ -55,80 +55,171 @@ directory '/var/cache/slurm-demo' do
   mode '0700'
 end
 
-remote_file node['cyclecloud']['project_archive'] do
-  source node['cyclecloud']['slurm_project_uri']
-  checksum node['cyclecloud']['slurm_project_sha256']
+directory '/var/lib/slurm-demo/projects' do
+  owner 'root'
+  group 'root'
+  mode '0700'
+  recursive true
+end
+
+remote_file node['cyclecloud']['project_source_archive'] do
+  source node['cyclecloud']['slurm_project_source_uri']
+  checksum node['cyclecloud']['slurm_project_source_sha256']
   owner 'root'
   group 'root'
   mode '0600'
   sensitive true
 end
 
-execute 'install-cyclecloud-slurm-project-4.0.11' do
+execute 'stage-cyclecloud-slurm-project-4.0.11' do
   command lazy {
-    "cyclecloud project upload '#{node['cyclecloud']['project_archive']}' " \
-      "--name '#{node['cyclecloud']['project_name']}'"
+    project_root = node['cyclecloud']['project_root']
+    project_parent = ::File.dirname(project_root)
+    source_commit = node['cyclecloud']['slurm_project_commit']
+    <<~COMMAND
+      set -eu
+      staging="$(mktemp -d '#{project_parent}/.cyclecloud-slurm.XXXXXX')"
+      trap 'rm -rf "$staging"' EXIT
+      tar --extract --gzip --file '#{node['cyclecloud']['project_source_archive']}' \
+        --strip-components 1 --directory "$staging"
+      grep -Eq '^version[[:space:]]*=[[:space:]]*4\\.0\\.11[[:space:]]*$' "$staging/project.ini"
+      printf '%s\n' '#{source_commit}' >"$staging/.source-commit"
+      chmod 0600 "$staging/.source-commit"
+      rm -rf '#{project_root}'
+      mv "$staging" '#{project_root}'
+      trap - EXIT
+    COMMAND
   }
-  not_if "test -f '#{node['cyclecloud']['project_root']}/version' && " \
-         "grep -Fqx '4.0.11' '#{node['cyclecloud']['project_root']}/version'"
+  not_if "grep -Fqx '#{node['cyclecloud']['slurm_project_commit']}' " \
+         "'#{node['cyclecloud']['project_root']}/.source-commit' 2>/dev/null && " \
+         "grep -Eq '^version[[:space:]]*=[[:space:]]*4\\.0\\.11[[:space:]]*$' " \
+         "'#{node['cyclecloud']['project_root']}/project.ini'"
 end
 
-ruby_block 'reject-cyclecloud-slurm-project-version-skew' do
-  block do
-    version_file = ::File.join(node['cyclecloud']['project_root'], 'version')
-    raise 'CycleCloud Slurm project version file is missing' unless ::File.file?(version_file)
-    raise 'CycleCloud Slurm project version skew' unless ::File.read(version_file).strip == '4.0.11'
+directory "#{node['cyclecloud']['project_root']}/blobs" do
+  owner 'root'
+  group 'root'
+  mode '0700'
+end
+
+slurm_project_blobs = {
+  'azure-slurm-pkg-4.0.11.tar.gz' => [
+    node['cyclecloud']['slurm_runtime_uri'],
+    node['cyclecloud']['slurm_runtime_sha256'],
+  ],
+  'azure-slurm-install-pkg-4.0.11.tar.gz' => [
+    node['cyclecloud']['slurm_install_uri'],
+    node['cyclecloud']['slurm_install_sha256'],
+  ],
+  'azure_slurm_exporter-0.3.0.tar.gz' => [
+    node['cyclecloud']['slurm_exporter_uri'],
+    node['cyclecloud']['slurm_exporter_sha256'],
+  ],
+}
+
+slurm_project_blobs.each do |name, (uri, checksum)|
+  remote_file "#{node['cyclecloud']['project_root']}/blobs/#{name}" do
+    source uri
+    checksum checksum
+    owner 'root'
+    group 'root'
+    mode '0600'
+    sensitive true
   end
 end
 
-execute 'verify-staged-headless-template-tool' do
-  command "PYTHONPATH='#{node['cyclecloud']['processor_root']}' python3 -m headless_template --help >/dev/null"
+execute 'upload-cyclecloud-slurm-project-4.0.11' do
+  command lazy {
+    marker = "#{node['cyclecloud']['project_root']}/.uploaded-version"
+    <<~COMMAND
+      set -eu
+      locker_count="$(cyclecloud locker list | awk 'NF { count++ } END { print count + 0 }')"
+      test "$locker_count" -eq 1
+      locker="$(cyclecloud locker list | awk 'NF { print $1 }')"
+      cd '#{node['cyclecloud']['project_root']}'
+      cyclecloud project upload "$locker"
+      temporary='#{marker}.tmp'
+      printf '%s\n' '4.0.11' >"$temporary"
+      chmod 0600 "$temporary"
+      mv -f "$temporary" '#{marker}'
+    COMMAND
+  }
+  not_if "grep -Fqx '4.0.11' '#{node['cyclecloud']['project_root']}/.uploaded-version' 2>/dev/null"
 end
 
-template "#{node['cyclecloud']['headless_template']}.overrides" do
-  source 'slurm-headless-overrides.txt.erb'
-  owner 'cyclecloud'
-  group 'cyclecloud'
-  mode '0640'
+execute 'require-staged-headless-template-tool' do
+  command "echo 'Headless template tool is unavailable' >&2; exit 1"
+  not_if "PYTHONPATH='#{node['cyclecloud']['processor_root']}' " \
+         'python3 -m headless_template --help >/dev/null 2>&1'
 end
+
+template node['cyclecloud']['headless_overrides'] do
+  source 'slurm-headless-overrides.txt.erb'
+  owner 'root'
+  group 'root'
+  mode '0600'
+end
+
+execute 'compose-headless-template-input' do
+  command lazy {
+    temporary = "#{node['cyclecloud']['headless_input']}.tmp"
+    <<~COMMAND
+      set -eu
+      trap 'rm -f "#{temporary}"' EXIT
+      cat '#{node['cyclecloud']['source_template']}' '#{node['cyclecloud']['headless_overrides']}' >'#{temporary}'
+      chmod 0600 '#{temporary}'
+      mv -f '#{temporary}' '#{node['cyclecloud']['headless_input']}'
+      trap - EXIT
+    COMMAND
+  }
+  not_if "test -f '#{node['cyclecloud']['headless_input']}' && " \
+         "cat '#{node['cyclecloud']['source_template']}' '#{node['cyclecloud']['headless_overrides']}' | " \
+         "cmp -s - '#{node['cyclecloud']['headless_input']}'"
+end
+
+headless_validator = '/usr/bin/env ' \
+                     "PYTHONPATH=#{node['cyclecloud']['processor_root']} " \
+                     'python3 -m headless_template validate {candidate}'
+headless_check = <<~COMMAND
+  set -eu
+  temporary="$(mktemp '#{::File.dirname(node['cyclecloud']['headless_template'])}/.slurm-headless-check.XXXXXX')"
+  trap 'rm -f "$temporary"' EXIT
+  PYTHONPATH='#{node['cyclecloud']['processor_root']}' python3 -m headless_template transform \
+    --source '#{node['cyclecloud']['headless_input']}' \
+    --destination "$temporary" \
+    --validator '#{headless_validator}' >/dev/null
+  cmp -s "$temporary" '#{node['cyclecloud']['headless_template']}'
+COMMAND
 
 execute 'generate-validated-headless-template' do
   command lazy {
-    candidate = "#{node['cyclecloud']['headless_template']}.candidate"
-    "rm -f '#{candidate}' && " \
-      "PYTHONPATH='#{node['cyclecloud']['processor_root']}' python3 -m headless_template transform " \
-      "--source '#{node['cyclecloud']['source_template']}' " \
-      "--destination '#{candidate}' " \
-      "--validator 'cyclecloud project validate {candidate}'"
+    "PYTHONPATH='#{node['cyclecloud']['processor_root']}' python3 -m headless_template transform " \
+      "--source '#{node['cyclecloud']['headless_input']}' " \
+      "--destination '#{node['cyclecloud']['headless_template']}' " \
+      "--validator '#{headless_validator}'"
   }
+  not_if headless_check
 end
 
-execute 'activate-validated-headless-template' do
-  command lazy {
-    candidate = "#{node['cyclecloud']['headless_template']}.candidate"
-    "cat '#{node['cyclecloud']['headless_template']}.overrides' >>'#{candidate}' && " \
-      "cyclecloud project validate '#{candidate}' && " \
-      "chown cyclecloud:cyclecloud '#{candidate}' && chmod 0640 '#{candidate}' && " \
-      "mv -f '#{candidate}' '#{node['cyclecloud']['headless_template']}'"
-  }
-  only_if "test -f '#{node['cyclecloud']['headless_template']}.candidate'"
+directory ::File.dirname(node['cyclecloud']['inventory_path']) do
+  owner 'root'
+  group 'root'
+  mode '0700'
+  recursive true
 end
 
 file node['cyclecloud']['inventory_path'] do
   content JSON.pretty_generate(
     cyclecloud: '8.9.3',
     project: '4.0.11',
-    projectSha256: node['cyclecloud']['slurm_project_sha256']
+    projectCommit: node['cyclecloud']['slurm_project_commit'],
+    projectSourceSha256: node['cyclecloud']['slurm_project_source_sha256'],
+    runtimeSha256: node['cyclecloud']['slurm_runtime_sha256'],
+    installSha256: node['cyclecloud']['slurm_install_sha256'],
+    exporterSha256: node['cyclecloud']['slurm_exporter_sha256']
   ) + "\n"
-  owner 'cyclecloud'
-  group 'cyclecloud'
-  mode '0600'
-end
-
-template '/etc/cyclecloud/slurm-cluster.properties' do
-  source 'cluster.properties.erb'
-  owner 'cyclecloud'
-  group 'cyclecloud'
+  owner 'root'
+  group 'root'
   mode '0600'
 end
 
@@ -144,14 +235,12 @@ end
 execute 'import-headless-slurm-cluster' do
   command lazy {
     "cyclecloud import_cluster '#{node['cyclecloud']['cluster_name']}' " \
-      "-f '#{node['cyclecloud']['headless_template']}' -c /etc/cyclecloud/slurm-cluster.properties"
+      "-c Slurm -f '#{node['cyclecloud']['headless_template']}'"
   }
   not_if "cyclecloud show_cluster '#{node['cyclecloud']['cluster_name']}' >/dev/null 2>&1"
 end
 
 execute 'verify-exactly-one-headless-slurm-cluster' do
-  command lazy {
-    'test "$(cyclecloud cluster list --output json | ' \
-      "jq '[.[] | select(.Name == \"#{node['cyclecloud']['cluster_name']}\")] | length')\" -eq 1"
-  }
+  command "echo 'Headless Slurm cluster is unavailable' >&2; exit 1"
+  not_if "cyclecloud show_cluster '#{node['cyclecloud']['cluster_name']}' >/dev/null 2>&1"
 end

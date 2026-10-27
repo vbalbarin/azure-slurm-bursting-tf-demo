@@ -3,9 +3,9 @@
 ## Purpose and exception justification
 
 The processor transforms only a CycleCloud Slurm cluster configuration file. CycleCloud provides
-supported commands to fetch, validate, and import templates but no supported public parser library
-for structural edits to its nested-bracket DSL. This documented gap permits the Python exception
-under constitution v2.0.0.
+supported commands to fetch, build, upload, and import projects and templates but no standalone
+template-validation command or supported public parser library for structural edits to its
+nested-bracket DSL. This documented gap permits the Python exception under constitution v2.0.0.
 
 ## Command contract
 
@@ -13,8 +13,12 @@ under constitution v2.0.0.
 headless-template transform \
   --source <slurm.txt> \
   --destination <slurm-headless.txt> \
-  --validator <approved-cyclecloud-validation-command>
+  --validator <approved-headless-structural-validation-command>
 ```
+
+The validator MUST reject a candidate that is not structurally complete and already transformed.
+The subsequent `cyclecloud import_cluster` command is the authoritative CycleCloud parse and
+import gate.
 
 Exit codes:
 

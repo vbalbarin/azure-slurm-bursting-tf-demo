@@ -1,0 +1,9 @@
+name: windows-admin
+title: Windows administration acceptance
+maintainer: Azure Slurm Bursting Demo
+copyright: Azure Slurm Bursting Demo
+license: MIT
+summary: Validates private CycleCloud administration from the Windows jump host.
+version: 1.0.0
+supports:
+  - platform-family: windows

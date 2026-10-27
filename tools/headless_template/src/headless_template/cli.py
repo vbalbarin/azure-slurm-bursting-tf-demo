@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 from .transform import TransformError, transform_template
-from .writer import SafeWriteFailure, ValidationFailure, write_validated
+from .writer import SafeWriteFailure, ValidationFailure, digest, write_validated
 
 
 def parser() -> argparse.ArgumentParser:
@@ -16,6 +16,8 @@ def parser() -> argparse.ArgumentParser:
     transform.add_argument("--source", type=Path, required=True)
     transform.add_argument("--destination", type=Path, required=True)
     transform.add_argument("--validator", required=True)
+    validate = commands.add_parser("validate")
+    validate.add_argument("candidate", type=Path)
     return root
 
 
@@ -32,6 +34,25 @@ def _safe_paths(source: Path, destination: Path) -> tuple[Path, Path]:
 def run(arguments: list[str] | None = None) -> int:
     try:
         namespace = parser().parse_args(arguments)
+        if namespace.command == "validate":
+            candidate = namespace.candidate.resolve(strict=True)
+            candidate_bytes = candidate.read_bytes()
+            result = transform_template(candidate_bytes.decode("utf-8"))
+            if result.removed_sections or result.content.encode("utf-8") != candidate_bytes:
+                raise TransformError(
+                    "Candidate is not an already-transformed headless template", 4
+                )
+            print(
+                json.dumps(
+                    {
+                        "status": "valid",
+                        "candidate_digest": digest(candidate_bytes),
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
+
         source, destination = _safe_paths(namespace.source, namespace.destination)
         result = transform_template(source.read_bytes().decode("utf-8"))
         write_result = write_validated(
