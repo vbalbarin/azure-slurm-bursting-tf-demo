@@ -44,6 +44,11 @@ def test_cyclecloud_first_run_stages_verified_payload_before_convergence() -> No
 def test_cyclecloud_first_run_cleans_protected_material_and_is_reboot_safe() -> None:
     script = FIRST_RUN.read_text(encoding="utf-8")
     assert 'rm -rf "$secret_dir"' in script
+    license_download = script.index(
+        'download_secret chef-license-id "$secret_dir/chef-license-id"'
+    )
+    chef_bootstrap = script.index('"$chef_input_dir/bootstrap-linux.sh"')
+    assert 'rm -rf "$secret_dir"' not in script[license_download:chef_bootstrap]
     assert 'if [[ -f "$state_dir/converged" ]]' in script
     assert "exec /opt/slurm-demo/current/chef/bin/converge-cyclecloud.sh" not in script
 

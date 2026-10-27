@@ -235,7 +235,7 @@ if grep -Fqx 'Account not found' <<<"$account_details"; then
   exit 1
 fi
 
-rm -rf "$secret_dir" /tmp/cyclecloud-cli-installer
+rm -rf /tmp/cyclecloud-cli-installer
 touch "$state_dir/complete"
 
 CHEF_POLICY_NAME=cyclecloud \
