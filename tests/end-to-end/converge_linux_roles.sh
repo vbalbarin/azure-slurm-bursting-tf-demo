@@ -229,17 +229,20 @@ inspect_state cyclecloud "$CYCLECLOUD_VM_NAME" "$cyclecloud_state"
 inspect_state scheduler "$SCHEDULER_VM_NAME" "$scheduler_state"
 
 verify_state_identity() {
-  local state_file="$1" manifest_digest="$2" specification_digest="$3"
+  local role="$1" state_file="$2" manifest_digest="$3" specification_digest="$4"
   jq -e --arg source "$SOURCE_REVISION" --arg manifest "$manifest_digest" \
     --arg specification "$specification_digest" '
       .sourceRevision == $source and .manifestDigest == $manifest and
       .specificationDigest == $specification
-    ' "$state_file" >/dev/null
+    ' "$state_file" >/dev/null || {
+      echo "$role state identity does not match the governed run context" >&2
+      return 1
+    }
 }
 if [[ "$operation" != update ]]; then
-  verify_state_identity "$cyclecloud_state" "$CYCLECLOUD_MANIFEST_DIGEST" \
+  verify_state_identity cyclecloud "$cyclecloud_state" "$CYCLECLOUD_MANIFEST_DIGEST" \
     "$CYCLECLOUD_SPECIFICATION_DIGEST"
-  verify_state_identity "$scheduler_state" "$SCHEDULER_MANIFEST_DIGEST" \
+  verify_state_identity scheduler "$scheduler_state" "$SCHEDULER_MANIFEST_DIGEST" \
     "$SCHEDULER_SPECIFICATION_DIGEST"
 fi
 

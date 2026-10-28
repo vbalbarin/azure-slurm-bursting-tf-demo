@@ -4242,6 +4242,17 @@ Create a mode-`0600` run context containing only the names and immutable identif
 `tests/end-to-end/converge_linux_roles.sh`:
 
 ```bash
+CYCLECLOUD_DEPLOYMENT="$(terraform -chdir=terraform output -json cyclecloud_deployment)"
+SCHEDULER_BOOTSTRAP="$(terraform -chdir=terraform output -json scheduler_bootstrap)"
+CYCLECLOUD_MANIFEST_DIGEST="$(jq -er '.chef_manifest_digest' <<<"$CYCLECLOUD_DEPLOYMENT")"
+CYCLECLOUD_SPECIFICATION_DIGEST="$(
+  jq -er '.chef_node_specification_digest' <<<"$CYCLECLOUD_DEPLOYMENT"
+)"
+SCHEDULER_MANIFEST_DIGEST="$(jq -er '.manifest_digest' <<<"$SCHEDULER_BOOTSTRAP")"
+SCHEDULER_SPECIFICATION_DIGEST="$(
+  jq -er '.specification_digest' <<<"$SCHEDULER_BOOTSTRAP"
+)"
+
 cat >"$DEMO_STATE_DIR/linux-role-context.env" <<EOF
 AZURE_SUBSCRIPTION_ID=$AZURE_SUBSCRIPTION_ID
 RESOURCE_GROUP=$RESOURCE_GROUP

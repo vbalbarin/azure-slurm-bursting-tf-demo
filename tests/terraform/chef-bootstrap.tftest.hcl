@@ -190,6 +190,16 @@ run "scheduler_stages_without_converging" {
   }
 
   assert {
+    condition     = output.cyclecloud_deployment.chef_manifest_digest == jsondecode(base64decode(output.cyclecloud_deployment.chef_manifest_base64)).manifestDigest
+    error_message = "The CycleCloud handoff must expose the canonical manifest digest separately from its transport hash."
+  }
+
+  assert {
+    condition     = output.cyclecloud_deployment.chef_node_specification_digest == jsondecode(base64decode(output.cyclecloud_deployment.chef_node_specification_base64)).specificationDigest
+    error_message = "The CycleCloud handoff must expose the canonical specification digest separately from its transport hash."
+  }
+
+  assert {
     condition     = length(module.scheduler_vm.public_ips) == 0
     error_message = "The scheduler VM must retain its zero-public-IP posture."
   }

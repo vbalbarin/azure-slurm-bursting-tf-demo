@@ -79,7 +79,9 @@ output "cyclecloud_deployment" {
     chef_policy_lock_base64        = local.cyclecloud_chef_lock_base64
     chef_payload_sha256            = jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[index(jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).artifacts[*].kind, "policy")].sha256
     chef_manifest_sha256           = sha256(local.chef_role_payloads.cyclecloud.manifest_json)
+    chef_manifest_digest           = jsondecode(local.chef_role_payloads.cyclecloud.manifest_json).manifestDigest
     chef_node_specification_sha256 = sha256(local.cyclecloud_chef_specification_json)
+    chef_node_specification_digest = local.chef_node_specifications.cyclecloud.specificationDigest
     chef_policy_lock_sha256        = filesha256(local.cyclecloud_chef_lock_path)
     chef_decoded_size_bytes        = local.cyclecloud_chef_decoded_size
     image                          = var.cyclecloud_image
