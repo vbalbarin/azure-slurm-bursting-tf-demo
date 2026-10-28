@@ -31,12 +31,13 @@ install -d -m 0700 "$runtime_dir"
 secret_file="$runtime_dir/cyclecloud-password.$$"
 attributes_file="$runtime_dir/chef-attributes.$$"
 chef_log="$runtime_dir/chef-output.$$"
+chef_report="$runtime_dir/chef-report.$$"
 chef_config="$runtime_dir/chef-client.$$.rb"
 chef_cache="$runtime_dir/chef-cache.$$"
 autoscale_candidate="$runtime_dir/autoscale.$$"
 partitions_candidate="$runtime_dir/azure.conf.$$"
 cleanup() {
-  rm -f "$secret_file" "$attributes_file" "$chef_log" "$autoscale_candidate" \
+  rm -f "$secret_file" "$attributes_file" "$chef_log" "$chef_report" "$autoscale_candidate" \
     "$partitions_candidate" "$authorization_receipt" "$chef_config"
   rm -rf "$chef_cache"
 }
@@ -236,12 +237,27 @@ printf '%s\n' \
   "chef_repo_path \"$release_root\"" \
   "cookbook_path [\"$release_root/chef/cookbooks\"]" \
   "file_cache_path \"$chef_cache\"" >"$chef_config"
+cat >>"$chef_config" <<'RUBY'
+require "chef/handler"
+
+class SlurmDemoUpdatedResourcesHandler < Chef::Handler
+  def report
+    File.open(
+      ENV.fetch("SLURM_DEMO_CHEF_REPORT"),
+      File::WRONLY | File::CREAT | File::APPEND,
+      0o600
+    ) { |file| file.puts(run_status.updated_resources.length) }
+  end
+end
+
+Chef::Config.report_handlers << SlurmDemoUpdatedResourcesHandler.new
+RUBY
 chmod 0600 "$chef_config"
 
 failure_stage=chef_installation
 (
   cd "$release_root"
-  CHEF_LICENSE=accept-no-persist chef-client --local-mode \
+  SLURM_DEMO_CHEF_REPORT="$chef_report" CHEF_LICENSE=accept-no-persist chef-client --local-mode \
     --config "$chef_config" \
     --override-runlist "$chef_run_list" \
     --json-attributes "$attributes_file" --log_level info
@@ -300,7 +316,7 @@ failure_stage=chef_convergence
 set +e
 (
   cd "$release_root"
-  CHEF_LICENSE=accept-no-persist chef-client --local-mode \
+  SLURM_DEMO_CHEF_REPORT="$chef_report" CHEF_LICENSE=accept-no-persist chef-client --local-mode \
     --config "$chef_config" \
     --override-runlist "$chef_run_list" \
     --json-attributes "$attributes_file" --log_level info
@@ -310,18 +326,14 @@ set -e
 updated_resources=
 if [[ "$chef_status" -eq 0 ]]; then
   updated_resources="$(
-    python3 - "$chef_log" <<'PY'
+    python3 - "$chef_report" <<'PY'
 from pathlib import Path
-import re
 import sys
 
-matches = re.findall(
-    r"Chef Infra Client finished, (\d+)/\d+ resources updated",
-    Path(sys.argv[1]).read_text(),
-)
-if len(matches) != 2:
+counts = Path(sys.argv[1]).read_text().splitlines()
+if len(counts) != 2 or not all(count.isdigit() for count in counts):
     raise SystemExit("Chef completion counts are missing")
-print(sum(map(int, matches)))
+print(sum(map(int, counts)))
 PY
   )"
 fi

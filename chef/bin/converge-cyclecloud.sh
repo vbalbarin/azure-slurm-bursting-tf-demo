@@ -185,14 +185,30 @@ started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 readonly started_at
 readonly chef_log="$runtime_dir/chef.log"
 readonly chef_config="$runtime_dir/client.rb"
+readonly chef_report="$runtime_dir/updated-resources"
 install -d -m 0700 "$runtime_dir/cache"
 printf '%s\n' \
   "chef_repo_path \"$release_root\"" \
   "cookbook_path [\"$release_root/chef/cookbooks\"]" \
   "file_cache_path \"$runtime_dir/cache\"" >"$chef_config"
+cat >>"$chef_config" <<'RUBY'
+require "chef/handler"
+
+class SlurmDemoUpdatedResourcesHandler < Chef::Handler
+  def report
+    File.open(
+      ENV.fetch("SLURM_DEMO_CHEF_REPORT"),
+      File::WRONLY | File::CREAT | File::APPEND,
+      0o600
+    ) { |file| file.puts(run_status.updated_resources.length) }
+  end
+end
+
+Chef::Config.report_handlers << SlurmDemoUpdatedResourcesHandler.new
+RUBY
 chmod 0600 "$chef_config"
 set +e
-CHEF_LICENSE=accept-no-persist chef-client --local-mode \
+SLURM_DEMO_CHEF_REPORT="$chef_report" CHEF_LICENSE=accept-no-persist chef-client --local-mode \
   --config "$chef_config" \
   --override-runlist "$chef_run_list" \
   --json-attributes "$specification" \
@@ -204,15 +220,14 @@ failure_stage=chef
 if [[ "$chef_status" -eq 0 ]]; then
   set +e
   updated_resources="$(
-    python3 - "$chef_log" <<'PY'
+    python3 - "$chef_report" <<'PY'
 from pathlib import Path
-import re
 import sys
 
-matches = re.findall(r"Chef Infra Client finished, (\d+)/\d+ resources updated", Path(sys.argv[1]).read_text())
-if len(matches) != 1:
+counts = Path(sys.argv[1]).read_text().splitlines()
+if len(counts) != 1 or not counts[0].isdigit():
     raise SystemExit("Chef completion count is missing")
-print(matches[0])
+print(counts[0])
 PY
   )"
   completion_status=$?

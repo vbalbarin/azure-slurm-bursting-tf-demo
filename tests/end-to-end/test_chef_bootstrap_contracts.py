@@ -536,7 +536,7 @@ def _cyclecloud_wrapper_fixture(
     chef.write_text(
         "#!/usr/bin/env bash\n"
         + (
-            "echo 'Chef Infra Client finished, 2/9 resources updated in 1 seconds'\n"
+            "printf '2\\n' >> \"$SLURM_DEMO_CHEF_REPORT\"\n"
             if chef_exit == 0
             else "echo 'protected-test-value' >&2\n"
         )
@@ -584,7 +584,7 @@ def test_cyclecloud_wrapper_classifies_missing_completion_count(
 ) -> None:
     environment, state_root = _cyclecloud_wrapper_fixture(tmp_path)
     chef = Path(environment["PATH"].split(":", 1)[0]) / "chef-client"
-    chef.write_text("#!/usr/bin/env bash\necho 'completed without summary'\n")
+    chef.write_text("#!/usr/bin/env bash\nexit 0\n")
     chef.chmod(0o755)
 
     result = subprocess.run(
