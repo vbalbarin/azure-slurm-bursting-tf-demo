@@ -244,7 +244,7 @@ failure_stage=chef_installation
   CHEF_LICENSE=accept-no-persist chef-client --local-mode \
     --config "$chef_config" \
     --override-runlist "$chef_run_list" \
-    --json-attributes "$attributes_file" --log_level warn
+    --json-attributes "$attributes_file" --log_level info
 ) >"$chef_log" 2>&1
 
 failure_stage=protected_process_visibility
@@ -303,7 +303,7 @@ set +e
   CHEF_LICENSE=accept-no-persist chef-client --local-mode \
     --config "$chef_config" \
     --override-runlist "$chef_run_list" \
-    --json-attributes "$attributes_file" --log_level warn
+    --json-attributes "$attributes_file" --log_level info
 ) >>"$chef_log" 2>&1
 chef_status=$?
 set -e

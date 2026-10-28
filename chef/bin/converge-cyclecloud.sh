@@ -191,12 +191,18 @@ printf '%s\n' \
   "cookbook_path [\"$release_root/chef/cookbooks\"]" \
   "file_cache_path \"$runtime_dir/cache\"" >"$chef_config"
 chmod 0600 "$chef_config"
-if CHEF_LICENSE=accept-no-persist chef-client --local-mode \
+set +e
+CHEF_LICENSE=accept-no-persist chef-client --local-mode \
   --config "$chef_config" \
   --override-runlist "$chef_run_list" \
   --json-attributes "$specification" \
-  --log_level warn >"$chef_log" 2>&1; then
-  finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  --log_level info >"$chef_log" 2>&1
+chef_status=$?
+set -e
+updated_resources=
+failure_stage=chef
+if [[ "$chef_status" -eq 0 ]]; then
+  set +e
   updated_resources="$(
     python3 - "$chef_log" <<'PY'
 from pathlib import Path
@@ -209,6 +215,15 @@ if len(matches) != 1:
 print(matches[0])
 PY
   )"
+  completion_status=$?
+  set -e
+  if [[ "$completion_status" -ne 0 ]]; then
+    chef_status=1
+    failure_stage=completion_count
+  fi
+fi
+finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+if [[ "$chef_status" -eq 0 ]]; then
   rm -rf "$runtime_dir"
   if [[ "$operation" == verify-idempotency && "$updated_resources" -ne 0 ]]; then
     python3 "$state_tool" --state-dir "$state_root" transition \
@@ -280,7 +295,7 @@ python3 "$state_tool" --state-dir "$state_root" record-evidence \
   --state "$evidence_state" \
   --started-at "$started_at" \
   --finished-at "$finished_at" \
-  --failure-stage chef \
+  --failure-stage "$failure_stage" \
   --cleanup-verified
 restore_previous_release
 trap - EXIT

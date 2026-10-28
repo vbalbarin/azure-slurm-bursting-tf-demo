@@ -579,6 +579,39 @@ def test_cyclecloud_wrapper_records_lock_bound_converged_evidence(
     assert evidence["cleanupVerified"] is True
 
 
+def test_cyclecloud_wrapper_classifies_missing_completion_count(
+    tmp_path: Path,
+) -> None:
+    environment, state_root = _cyclecloud_wrapper_fixture(tmp_path)
+    chef = Path(environment["PATH"].split(":", 1)[0]) / "chef-client"
+    chef.write_text("#!/usr/bin/env bash\necho 'completed without summary'\n")
+    chef.chmod(0o755)
+
+    result = subprocess.run(
+        [str(CYCLECLOUD_WRAPPER)],
+        cwd=ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    state = json.loads((state_root / "cyclecloud/state.json").read_text())
+    assert state["state"] == "failed_retryable"
+    evidence = json.loads(
+        (state_root / "cyclecloud/evidence/attempt-1-failed_retryable.json").read_text()
+    )
+    assert evidence["failureStage"] == "completion_count"
+
+
+def test_convergence_wrappers_request_completion_summaries() -> None:
+    for wrapper in (CYCLECLOUD_WRAPPER, SCHEDULER_WRAPPER):
+        content = wrapper.read_text()
+        assert "--log_level info" in content
+        assert "--log_level warn" not in content
+
+
 def test_cyclecloud_wrapper_allows_one_retry_then_requires_replacement(
     tmp_path: Path,
 ) -> None:
