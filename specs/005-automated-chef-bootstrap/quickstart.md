@@ -37,9 +37,9 @@ Expected:
 
 Static implementation checkpoint:
 
-- Combined ChefSpec suite: 29 examples, 0 failures.
-- Registered end-to-end Python suite: 140 passed, including 15 Entra preflight, 22 CycleCloud
-  stack, and 32 Chef-bootstrap contract tests.
+- Combined ChefSpec suite: 48 examples, 0 failures.
+- Registered end-to-end Python suite: 142 passed, including 15 Entra preflight, 22 CycleCloud
+  stack, and 34 Chef-bootstrap contract tests.
 - Policy suite: 28 passed, including six backend secret-hygiene tests.
 - Backend contract and evidence suites: 31 passed and two environment-dependent tests skipped.
 - Terraform Chef-bootstrap identity lifecycle tests: 17 passed.
@@ -104,6 +104,9 @@ Expected plan scope:
 - Scheduler identity gains only Key Vault secret-read access.
 - Scheduler custom data changes to the verified scheduler bootstrap payload.
 - CycleCloud rendered custom data changes to the verified CycleCloud payload.
+- Scheduler-to-CycleCloud API traffic is restricted to private TCP 443, burst-to-CycleCloud
+  cluster traffic is restricted to private TCP 9443, and the scheduler private-DNS A record is
+  visible from both VNets.
 - No VM receives a public IP.
 - No artifact storage account, Terraform provisioner, or Chef Server is created.
 
@@ -166,8 +169,12 @@ Expected:
 - The identity/RBAC receipt remains schema-valid and bound to the observed VM principal.
 - State validates against `contracts/bootstrap-state.schema.json`.
 - State is `converged`.
-- CycleCloud first-run, provider validation, Slurm 4.0.11 project installation, transformed
-  template validation, and exactly one `cross-region-demo` import succeeded.
+- CycleCloud first-run, provider validation, Slurm 4.0.11 project upload, transformed template
+  validation, registered project `4.0.9` cluster-init pinning, and exactly one
+  `cross-region-demo` import from the transformed template succeeded.
+- The imported vendor `hpc` nodearray uses the approved burst region, zone, subnet, locker
+  identity, AlmaLinux image, VM size, external `/sched` and `/shared` NFS endpoints, and maximum
+  one node. No built-in scheduler or login node exists.
 - Temporary protected files are absent.
 
 Measure the same remote state-inspection command for each persistent VM and require schema-valid
@@ -195,7 +202,12 @@ tests/end-to-end/converge_linux_roles.sh \
 Expected:
 
 - CycleCloud, scheduler, and Key Vault gates pass before dispatch.
-- Scheduler convergence configures Slurm, Munge, NFS, and release-matched `azslurm`.
+- Scheduler convergence installs Microsoft Slurm `26.05.4-1.el9` RPMs directly and installs
+  `azure-slurm-pkg-4.0.11` separately with Python 3.11 and `--no-jetpack`.
+- The restricted `/sched` and `/shared` exports use `no_root_squash`; the shared cluster
+  `slurm.conf` is client-readable and resolves the scheduler through private DNS.
+- Release-matched `azslurm` runs through absolute paths, and autoscale configuration is mode
+  `0600` and owned by `slurm:slurm`.
 - `hpcuser01` exists with UID/GID `11200`, home `/shared/home/hpcuser01`, and a preserved Ed25519
   key pair.
 - A value-free scheduler public-identity receipt records UID/GID and the public-key fingerprint.

@@ -21,3 +21,6 @@ default['cyclecloud']['project_source_archive'] = '/var/cache/slurm-demo/cyclecl
 default['cyclecloud']['inventory_path'] = '/var/lib/cyclecloud/slurm-versions.json'
 default['cyclecloud']['cli_config'] = '/etc/cyclecloud/cli.ini'
 default['cyclecloud']['idle_timeout_minutes'] = 10
+default['cyclecloud']['registered_slurm_project_version'] = '4.0.9'
+default['cyclecloud']['slurm_version'] = '26.05.4'
+default['cyclecloud']['burst_image_name'] = 'almalinux9'

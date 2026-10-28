@@ -5,20 +5,41 @@
         DefaultValue = <%= node['cyclecloud']['scheduler_private_address'] %>
     [[[parameter IdleTimeout]]]
         DefaultValue = <%= node['cyclecloud']['idle_timeout_minutes'] %>
-
-[[nodearray burst]]
-    MaxCoreCount = 1
-    ReturnProxy = false
-    [[[configuration]]]
-        slurm.user.name = slurm
-        slurm.user.uid = 11100
-        slurm.user.gid = 11100
-        munge.user.name = munge
-        munge.user.uid = 11101
-        munge.user.gid = 11101
-        shared.sched = <%= node['cyclecloud']['scheduler_private_address'] %>:/sched
-        shared.data = <%= node['cyclecloud']['scheduler_private_address'] %>:/shared
-        hpc.user.name = <%= node['cyclecloud']['hpc_user_name'] %>
-        hpc.user.uid = <%= node['cyclecloud']['hpc_user_uid'] %>
-        hpc.user.gid = <%= node['cyclecloud']['hpc_user_gid'] %>
-        hpc.user.home = <%= node['cyclecloud']['hpc_user_home'] %>
+    [[[parameter configuration_slurm_version]]]
+        DefaultValue = <%= node['cyclecloud']['slurm_version'] %>
+    [[[parameter SubnetId]]]
+        DefaultValue = <%= node['cyclecloud']['burst_subnet_id'] %>
+    [[[parameter ManagedIdentity]]]
+        DefaultValue = <%= node['cyclecloud']['locker_identity_resource_id'] %>
+    [[[parameter UseBuiltinSched]]]
+        DefaultValue = false
+    [[[parameter NFSSchedType]]]
+        DefaultValue = nfs
+    [[[parameter NFSSchedAddress]]]
+        DefaultValue = <%= node['cyclecloud']['scheduler_private_address'] %>
+    [[[parameter NFSSchedExportPath]]]
+        DefaultValue = /sched
+    [[[parameter UseBuiltinShared]]]
+        DefaultValue = false
+    [[[parameter NFSType]]]
+        DefaultValue = nfs
+    [[[parameter NFSAddress]]]
+        DefaultValue = <%= node['cyclecloud']['scheduler_private_address'] %>
+    [[[parameter NFSSharedExportPath]]]
+        DefaultValue = /shared
+    [[[parameter DefineNodesAvailabilityZone]]]
+        DefaultValue = true
+    [[[parameter HPCAvailabilityZone]]]
+        DefaultValue = <%= node['cyclecloud']['burst_zone'] %>
+    [[[parameter HPCMachineType]]]
+        DefaultValue = <%= node['cyclecloud']['burst_vm_size'] %>
+    [[[parameter HPCImageName]]]
+        DefaultValue = <%= node['cyclecloud']['burst_image_name'] %>
+    [[[parameter MaxHPCExecuteNodeCount]]]
+        DefaultValue = 1
+    [[[parameter MaxDynamicExecuteCoreCount]]]
+        DefaultValue = 0
+    [[[parameter MaxGPUExecuteNodeCount]]]
+        DefaultValue = 0
+    [[[parameter MaxHTCExecuteNodeCount]]]
+        DefaultValue = 0

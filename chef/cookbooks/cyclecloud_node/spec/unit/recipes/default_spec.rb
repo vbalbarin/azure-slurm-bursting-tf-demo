@@ -8,7 +8,11 @@ describe 'cyclecloud_node::default' do
     'burst_region' => 'westus3',
     'burst_zone' => '1',
     'burst_vm_size' => 'Standard_HB120rs_v3',
-    'burst_image_urn' => 'almalinux:almalinux-hpc:9-hpc-gen2:9.8.202608110',
+    'burst_image_name' => 'almalinux9',
+    'burst_subnet_id' => 'rg-demo-slurm/vnet-burst/snet-compute',
+    'locker_identity_resource_id' => '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-demo-slurm/providers/Microsoft.ManagedIdentity/userAssignedIdentities/demo-cyclecloud-locker',
+    'registered_slurm_project_version' => '4.0.9',
+    'slurm_version' => '26.05.4',
     'scheduler_private_address' => '10.10.0.4',
     'burst_cidr' => '10.20.0.0/24',
     'slurm_uid' => 11100,
@@ -34,6 +38,9 @@ describe 'cyclecloud_node::default' do
     stub_command(
       "cyclecloud show_cluster 'cross-region-demo' >/dev/null 2>&1"
     ).and_return(false)
+    stub_command(
+      "cyclecloud show_cluster 'cross-region-demo' | grep -Fq ': started'"
+    ).and_return(false)
   end
 
   it { is_expected.not_to run_ruby_block('require-cyclecloud-8.9.3') }
@@ -57,20 +64,40 @@ describe 'cyclecloud_node::default' do
   it { is_expected.to run_execute('upload-cyclecloud-slurm-project-4.0.11') }
   it do
     is_expected.to run_execute('generate-validated-headless-template').with(
-      command: /--destination '.*slurm-headless\.txt'.*headless_template validate \{candidate\}/
+      command: /--destination '.*slurm-headless\.txt'.*headless_template validate .* \{candidate\}/
     )
   end
   it do
     is_expected.to render_file(
       '/var/lib/slurm-demo/projects/cyclecloud-slurm-4.0.11/templates/slurm-headless.overrides'
-    ).with_content('hpc.user.uid = 11200')
+    ).with_content('DefaultValue = Standard_HB120rs_v3')
+  end
+  it do
+    is_expected.to render_file(
+      '/var/lib/slurm-demo/projects/cyclecloud-slurm-4.0.11/templates/slurm-headless.overrides'
+    ).with_content('DefaultValue = 10.10.0.4')
+  end
+  it do
+    is_expected.to render_file(
+      '/var/lib/slurm-demo/projects/cyclecloud-slurm-4.0.11/templates/slurm-headless.overrides'
+    ).with_content('DefaultValue = false')
+  end
+  it do
+    is_expected.to render_file(
+      '/var/lib/slurm-demo/projects/cyclecloud-slurm-4.0.11/templates/slurm-headless.overrides'
+    ).with_content('DefaultValue = 1')
   end
   it { is_expected.to create_directory('/var/lib/cyclecloud').with(mode: '0700') }
   it { is_expected.not_to run_ruby_block('require-cyclecloud-bootstrap') }
   it { is_expected.to run_execute('import-headless-slurm-cluster') }
   it do
     is_expected.to run_execute('import-headless-slurm-cluster').with(
-      command: /cross-region-demo.*-c Slurm/
+      command: /cross-region-demo.*-c Slurm.*slurm-headless\.txt.*-P Credentials/m
+    )
+  end
+  it do
+    is_expected.to run_execute('generate-validated-headless-template').with(
+      command: /--slurm-project-version '4\.0\.9'/
     )
   end
 end

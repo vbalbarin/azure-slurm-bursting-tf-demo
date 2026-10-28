@@ -108,15 +108,24 @@ locals {
   ])
 
   chef_node_specification_common = {
-    schemaVersion           = 1
-    sourceRevision          = try(jsondecode(local.chef_role_payloads.scheduler.manifest_json).sourceRevision, "")
-    environment             = var.environment_name
-    clusterName             = var.cluster_name
-    cyclecloudUrl           = "https://${local.names.cyclecloud}.${local.private_dns_zones.cyclecloud}"
-    sourceRegion            = var.source_region
-    burstRegion             = var.burst_region
-    schedulerPrivateAddress = local.scheduler_private_address
-    burstCidr               = local.burst_subnets.compute
+    schemaVersion                 = 1
+    sourceRevision                = try(jsondecode(local.chef_role_payloads.scheduler.manifest_json).sourceRevision, "")
+    environment                   = var.environment_name
+    clusterName                   = var.cluster_name
+    cyclecloudUrl                 = "https://${local.names.cyclecloud}.${local.private_dns_zones.cyclecloud}"
+    sourceRegion                  = var.source_region
+    burstRegion                   = var.burst_region
+    schedulerPrivateAddress       = local.scheduler_private_address
+    schedulerPrivateName          = "${local.names.scheduler}.${local.private_dns_zones.cyclecloud}"
+    burstCidr                     = local.burst_subnets.compute
+    burstSubnetId                 = "${local.resource_group_name}/${local.names.burst_vnet}/snet-compute"
+    burstZone                     = var.burst_zone
+    burstVmSize                   = var.burst_vm_size
+    burstImageName                = "almalinux9"
+    lockerIdentityResourceId      = "/subscriptions/${var.subscription_id}/resourceGroups/${local.resource_group_name}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/${local.names.locker_identity}"
+    slurmVersion                  = "26.05.4-1.el9"
+    slurmTemplateVersion          = "26.05.4"
+    registeredSlurmProjectVersion = "4.0.9"
     slurmIdentity = {
       uid = var.slurm_uid_gid
       gid = var.slurm_uid_gid

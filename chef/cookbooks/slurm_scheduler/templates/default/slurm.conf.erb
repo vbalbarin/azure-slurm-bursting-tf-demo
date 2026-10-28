@@ -1,6 +1,7 @@
 ClusterName=<%= node['slurm']['cluster_name'] %>
-SlurmctldHost=<%= node['slurm']['scheduler_private_address'] %>
-StateSaveLocation=/sched/slurmctld
+SlurmctldHost=<%= node['slurm']['scheduler_private_name'] %>
+SlurmctldAddr=<%= node['slurm']['scheduler_private_address'] %>
+StateSaveLocation=/var/spool/slurmctld
 SlurmdSpoolDir=/var/spool/slurmd
 SlurmctldPort=6817
 SlurmdPort=6818
@@ -8,7 +9,6 @@ SlurmUser=slurm
 ReturnToService=2
 SchedulerType=sched/backfill
 SelectType=select/cons_tres
-PartitionName=<%= node['slurm']['partition'] %> Nodes=burst-[1] Default=YES MaxTime=INFINITE State=UP
 ResumeProgram=/opt/azurehpc/slurm/resume_program.sh
 ResumeFailProgram=/opt/azurehpc/slurm/resume_fail_program.sh
 SuspendProgram=/opt/azurehpc/slurm/suspend_program.sh
@@ -16,3 +16,6 @@ ResumeTimeout=1800
 SuspendTimeout=600
 SuspendTime=300
 Include /sched/azure.conf
+SlurmctldLogFile=/var/log/slurmctld/slurmctld.log
+SlurmdLogFile=/var/log/slurmd/slurmd.log
+MailProg=/bin/true

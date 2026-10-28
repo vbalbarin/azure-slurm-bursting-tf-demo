@@ -7,6 +7,13 @@ specification_values = {
   end,
   'cluster_name' => node['clusterName'],
   'burst_region' => node['burstRegion'],
+  'burst_zone' => node['burstZone'],
+  'burst_vm_size' => node['burstVmSize'],
+  'burst_image_name' => node['burstImageName'],
+  'burst_subnet_id' => node['burstSubnetId'],
+  'locker_identity_resource_id' => node['lockerIdentityResourceId'],
+  'registered_slurm_project_version' => node['registeredSlurmProjectVersion'],
+  'slurm_version' => node['slurmTemplateVersion'],
   'scheduler_private_address' => node['schedulerPrivateAddress'],
   'burst_cidr' => node['burstCidr'],
   'slurm_uid' => node.dig('slurmIdentity', 'uid'),
@@ -23,7 +30,9 @@ specification_values.each do |key, value|
 end
 
 required = %w(
-  private_name cluster_name burst_region scheduler_private_address burst_cidr
+  private_name cluster_name burst_region burst_zone burst_vm_size burst_image_name
+  burst_subnet_id locker_identity_resource_id registered_slurm_project_version
+  slurm_version scheduler_private_address burst_cidr
   slurm_uid slurm_gid munge_uid munge_gid hpc_user_name hpc_user_uid hpc_user_gid
   hpc_user_home
 )
@@ -31,6 +40,8 @@ missing = required.select { |key| node['cyclecloud'][key].nil? || node['cycleclo
 raise "Missing required CycleCloud specification values: #{missing.join(', ')}" unless missing.empty?
 
 raise 'CycleCloud cluster name must be cross-region-demo' unless node['cyclecloud']['cluster_name'] == 'cross-region-demo'
+raise 'Registered Slurm project compatibility must be exactly 4.0.9' unless node['cyclecloud']['registered_slurm_project_version'] == '4.0.9'
+raise 'Slurm template version must be exactly 26.05.4' unless node['cyclecloud']['slurm_version'] == '26.05.4'
 raise 'Invalid Slurm identity' unless [node['cyclecloud']['slurm_uid'], node['cyclecloud']['slurm_gid']] == [11100, 11100]
 raise 'Invalid Munge identity' unless [node['cyclecloud']['munge_uid'], node['cyclecloud']['munge_gid']] == [11101, 11101]
 unless [
@@ -179,7 +190,9 @@ end
 
 headless_validator = '/usr/bin/env ' \
                      "PYTHONPATH=#{node['cyclecloud']['processor_root']} " \
-                     'python3 -m headless_template validate {candidate}'
+                     'python3 -m headless_template validate ' \
+                     "--slurm-project-version #{node['cyclecloud']['registered_slurm_project_version']} " \
+                     '{candidate}'
 headless_check = <<~COMMAND
   set -eu
   temporary="$(mktemp '#{::File.dirname(node['cyclecloud']['headless_template'])}/.slurm-headless-check.XXXXXX')"
@@ -187,6 +200,7 @@ headless_check = <<~COMMAND
   PYTHONPATH='#{node['cyclecloud']['processor_root']}' python3 -m headless_template transform \
     --source '#{node['cyclecloud']['headless_input']}' \
     --destination "$temporary" \
+    --slurm-project-version '#{node['cyclecloud']['registered_slurm_project_version']}' \
     --validator '#{headless_validator}' >/dev/null
   cmp -s "$temporary" '#{node['cyclecloud']['headless_template']}'
 COMMAND
@@ -196,6 +210,7 @@ execute 'generate-validated-headless-template' do
     "PYTHONPATH='#{node['cyclecloud']['processor_root']}' python3 -m headless_template transform " \
       "--source '#{node['cyclecloud']['headless_input']}' " \
       "--destination '#{node['cyclecloud']['headless_template']}' " \
+      "--slurm-project-version '#{node['cyclecloud']['registered_slurm_project_version']}' " \
       "--validator '#{headless_validator}'"
   }
   not_if headless_check
@@ -234,10 +249,22 @@ end
 
 execute 'import-headless-slurm-cluster' do
   command lazy {
-    "cyclecloud import_cluster '#{node['cyclecloud']['cluster_name']}' " \
-      "-c Slurm -f '#{node['cyclecloud']['headless_template']}'"
+    <<~COMMAND
+      set -eu
+      credential_count="$(cyclecloud account list | awk 'NF { count++ } END { print count + 0 }')"
+      test "$credential_count" -eq 1
+      credentials="$(cyclecloud account list | awk 'NF { print $1 }')"
+      cyclecloud import_cluster '#{node['cyclecloud']['cluster_name']}' \
+        -c Slurm -f '#{node['cyclecloud']['headless_template']}' \
+        -P Credentials="$credentials"
+    COMMAND
   }
   not_if "cyclecloud show_cluster '#{node['cyclecloud']['cluster_name']}' >/dev/null 2>&1"
+end
+
+execute 'start-headless-slurm-cluster' do
+  command "cyclecloud start_cluster '#{node['cyclecloud']['cluster_name']}'"
+  not_if "cyclecloud show_cluster '#{node['cyclecloud']['cluster_name']}' | grep -Fq ': started'"
 end
 
 execute 'verify-exactly-one-headless-slurm-cluster' do

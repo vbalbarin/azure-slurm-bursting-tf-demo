@@ -34,7 +34,11 @@ module "cyclecloud_private_dns" {
       ttl          = 300
       ip_addresses = [module.cyclecloud_nic.resource.private_ip_address]
     }
-
+    scheduler = {
+      name         = local.names.scheduler
+      ttl          = 300
+      ip_addresses = [local.scheduler_private_address]
+    }
   }
 
   virtual_network_links = {

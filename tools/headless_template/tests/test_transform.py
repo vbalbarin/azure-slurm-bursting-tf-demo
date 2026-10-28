@@ -27,6 +27,8 @@ def source_template() -> str:
         "[parameters]\n"
         f"{parameter_sections}"
         "[[nodearray compute]]\n"
+        "[[[cluster-init cyclecloud/slurm:default]]]\n"
+        "[[[cluster-init cyclecloud/slurm:execute]]]\n"
         "[[[configuration]]]\n"
         "keep = yes\n"
     )
@@ -41,6 +43,8 @@ class TransformTests(unittest.TestCase):
             self.assertNotIn(name, result.content)
         self.assertIn("existing.value = preserved", result.content)
         self.assertIn("nodearray compute", result.content)
+        self.assertIn("cyclecloud/slurm:default:4.0.9", result.content)
+        self.assertIn("cyclecloud/slurm:execute:4.0.9", result.content)
 
     def test_already_transformed_source(self) -> None:
         first = transform_template(source_template())

@@ -69,12 +69,14 @@ control 'external-slurm-scheduler-configuration' do
   describe file('/etc/exports.d/slurm.exports') do
     its('content') { should match(%r{^/sched\s+}) }
     its('content') { should match(%r{^/shared\s+}) }
-    its('content') { should match(/root_squash/) }
+    its('content') { should match(/no_root_squash/) }
   end
   describe file('/etc/slurm/slurm.conf') do
     its('owner') { should eq 'slurm' }
-    its('mode') { should cmp '0640' }
-    its('content') { should match(/Nodes=burst-\[1\]/) }
+    its('mode') { should cmp '0644' }
+    its('content') { should match(/^SlurmctldHost=.*\.cyclecloud\.internal$/) }
+    its('content') { should match(/^SlurmctldAddr=\d+\.\d+\.\d+\.\d+$/) }
+    its('content') { should_not match(/Nodes=burst-\[1\]/) }
     its('content') { should match(%r{/opt/azurehpc/slurm/resume_program\.sh}) }
   end
   describe file('/etc/azslurm.conf') do
@@ -84,9 +86,14 @@ control 'external-slurm-scheduler-configuration' do
     its('content') { should match(/MaxNodes=1/) }
     its('content') { should match(%r{CycleCloudUrl=https://[^/]+\.cyclecloud\.internal/?}) }
   end
-  describe file('/etc/slurm/autoscale.json') do
-    its('owner') { should eq 'root' }
+  describe file('/opt/azurehpc/slurm/autoscale.json') do
+    its('owner') { should eq 'slurm' }
     its('mode') { should cmp '0600' }
+  end
+  describe file('/sched/cross-region-demo/slurm.conf') do
+    it { should be_file }
+    its('owner') { should eq 'slurm' }
+    its('mode') { should cmp '0644' }
   end
 end
 

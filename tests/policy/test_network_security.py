@@ -60,6 +60,8 @@ def test_cyclecloud_private_dns_has_managed_a_record() -> None:
         "ip_addresses = [module.cyclecloud_nic.resource.private_ip_address]"
         in block
     )
+    assert "name         = local.names.scheduler" in block
+    assert "ip_addresses = [local.scheduler_private_address]" in block
 
 
 def test_infrastructure_verifier_uses_control_plane_dns_records() -> None:
@@ -138,7 +140,12 @@ def test_windows_vm_is_the_only_bastion_jump_host() -> None:
     scheduler_api = rule("scheduler_cyclecloud_api")
     assert "source_address_prefix      = local.source_subnets.management" in scheduler_api
     assert "destination_address_prefix = local.source_subnets.management" in scheduler_api
-    assert 'destination_port_range     = "9443"' in scheduler_api
+    assert 'destination_port_range     = "443"' in scheduler_api
+
+    burst_cyclecloud = rule("burst_cyclecloud_cluster")
+    assert "source_address_prefix      = local.burst_subnets.compute" in burst_cyclecloud
+    assert "destination_address_prefix = local.source_subnets.management" in burst_cyclecloud
+    assert 'destination_port_range     = "9443"' in burst_cyclecloud
 
     bastion_sourced_rules = [
         match.group(1)

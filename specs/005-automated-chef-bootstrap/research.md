@@ -131,16 +131,22 @@ tenant inventory disclosure.
 `azure-slurm-pkg-4.0.11.tar.gz` with SHA-256
 `f85a1d016eca3786eb9845fcbffcefaf674bfcd4b59738597e90877047a23e36`
 and the release-matched exporter in the project's `blobs/` directory. Use
-`azure-slurm-install-pkg-4.0.11.tar.gz` with SHA-256
-`a489f4c5ec2404dc02a09792af5f32f4683e164327d89c4c2dfc8d9a30402482`
-for the external scheduler. Download only the exact release URLs and verify before extraction.
+Microsoft Slurm `26.05.4-1.el9` RPMs from the pinned `slurm-el9-insiders` repository provide the
+external scheduler binaries. Install the separate `azure-slurm-pkg-4.0.11.tar.gz` integration
+runtime with Python 3.11 and its supported `install.sh --no-jetpack` interface. Jetpack is not an
+external-scheduler prerequisite, and the installer-package scheduler mode is not used. Download
+only the exact release URLs and verify before extraction.
 Use the repository's tested headless transformer to create a separate validated external-scheduler
 template; never edit the vendor template in place.
 
 **Rationale**: The runtime tarball is a project blob, not a CycleCloud project source tree. The
 tagged source supplies `project.ini`, specs, and templates, while all release-matched blobs must be
-present before project upload. One release identity across both roles prevents package/template
-skew.
+present before project upload. The template Slurm version is pinned to `26.05.4`, matching the RPM package release. The appliance
+project registry currently exposes Slurm project `4.0.9`; transformed compute cluster-init
+references are therefore pinned explicitly to registered compatibility version `4.0.9` until a
+supported registration workflow for `4.0.11` is proven. This compatibility pin is distinct from
+the verified `4.0.11` source and integration artifact identities and must remain an explicit
+preflight.
 
 **Alternatives considered**: Discovering an arbitrary installed project was rejected because a new
 Marketplace appliance does not guarantee the required external-scheduler artifact. Tracking the

@@ -212,9 +212,12 @@ specification = json.loads(Path(sys.argv[1]).read_text())
 integration_ready = sys.argv[3] == "true"
 attributes = {
     "slurm": {
-        "version": "24.11.5",
+        "version": specification["slurmVersion"],
         "project_version": "4.0.11",
+        "integration_uri": "https://github.com/Azure/cyclecloud-slurm/releases/download/4.0.11/azure-slurm-pkg-4.0.11.tar.gz",
+        "integration_sha256": "f85a1d016eca3786eb9845fcbffcefaf674bfcd4b59738597e90877047a23e36",
         "cluster_name": specification["clusterName"],
+        "scheduler_private_name": specification["schedulerPrivateName"],
         "scheduler_private_address": specification["schedulerPrivateAddress"],
         "burst_cidr": specification["burstCidr"],
         "cyclecloud_url": specification["cyclecloudUrl"],
@@ -280,11 +283,16 @@ fi
 
 failure_stage=azslurm_initialization
 autoscale_config=/opt/azurehpc/slurm/autoscale.json
+azslurm_bin=/opt/azurehpc/slurm/venv/bin/azslurm
+[[ -x "$azslurm_bin" ]] || {
+  echo "azslurm integration executable is unavailable" >&2
+  false
+}
 if [[ ! -f "$autoscale_config" ]]; then
   (
     set +x
     umask 077
-    azslurm initconfig \
+    "$azslurm_bin" initconfig \
       --url "$cyclecloud_url" --cluster-name "$cluster_name" \
       --username hpcadmin --password "$(cat "$secret_file")" \
       --config-dir "/sched/$cluster_name" \
@@ -293,12 +301,14 @@ if [[ ! -f "$autoscale_config" ]]; then
       --cost-cache-root /opt/azurehpc/slurm/.cache \
       >"$autoscale_candidate"
   )
-  install -o root -g slurm -m 0600 "$autoscale_candidate" "$autoscale_config"
+  install -o slurm -g slurm -m 0600 "$autoscale_candidate" "$autoscale_config"
   rm -f "$autoscale_candidate"
 fi
-azslurm partitions >"$partitions_candidate"
-install -o root -g slurm -m 0640 "$partitions_candidate" /sched/azure.conf
+"$azslurm_bin" connect --config "$autoscale_config"
+"$azslurm_bin" partitions --config "$autoscale_config" >"$partitions_candidate"
+install -o slurm -g slurm -m 0644 "$partitions_candidate" /sched/azure.conf
 rm -f "$partitions_candidate"
+"$azslurm_bin" scale --config "$autoscale_config" --no-restart
 rm -f "$secret_file"
 
 python3 - "$attributes_file" <<'PY'

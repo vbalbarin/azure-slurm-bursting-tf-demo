@@ -1,0 +1,157 @@
+<mxfile host="65bd71144e">
+    <diagram id="slurm-bursting-architecture" name="Azure Slurm Bursting">
+        <mxGraphModel dx="1708" dy="1542" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#1F2937;" value="Cross-Region Azure Slurm Bursting Demonstration" vertex="1">
+                    <mxGeometry height="40" width="1000" x="350" y="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="subtitle" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=13;fontColor=#4B5563;" value="External Slurm scheduler + CycleCloud control plane | private networking | one burst node maximum" vertex="1">
+                    <mxGeometry height="28" width="1000" x="350" y="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="operator" parent="1" style="shape=mxgraph.azure2.users;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#6B7280;fontSize=12;fontStyle=1;" value="Customer / Operator&#xa;Azure portal + native RDP" vertex="1">
+                    <mxGeometry height="70" width="190" x="25" y="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="subscription" parent="1" style="swimlane;html=1;rounded=1;startSize=32;horizontal=1;fillColor=#F8FAFC;strokeColor=#475569;strokeWidth=2;fontSize=15;fontStyle=1;collapsible=0;" value="Azure subscription" vertex="1">
+                    <mxGeometry height="810" width="1640" x="20" y="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="source-region" parent="subscription" style="swimlane;html=1;rounded=1;startSize=30;horizontal=1;fillColor=#EAF3FF;strokeColor=#0078D4;strokeWidth=2;fontSize=14;fontStyle=1;collapsible=0;" value="Source region: East US" vertex="1">
+                    <mxGeometry height="695" width="985" x="25" y="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="source-vnet" parent="source-region" style="swimlane;html=1;rounded=1;startSize=28;horizontal=1;fillColor=#FFFFFF;strokeColor=#4C8BF5;strokeWidth=2;fontSize=13;fontStyle=1;collapsible=0;" value="vnet-source  10.10.0.0/16" vertex="1">
+                    <mxGeometry height="560" width="665" x="20" y="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="bastion-subnet" parent="source-vnet" style="swimlane;html=1;rounded=1;startSize=24;horizontal=1;fillColor=#F3F8FF;strokeColor=#60A5FA;fontSize=11;fontStyle=1;collapsible=0;" value="AzureBastionSubnet  10.10.48.0/20" vertex="1">
+                    <mxGeometry height="135" width="205" x="20" y="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="bastion" parent="bastion-subnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEBFF;strokeColor=#0078D4;fontSize=11;fontStyle=1;" value="Azure Bastion Standard&#xa;slurmdemo-bastion&#xa;Public entry; no VM public IPs" vertex="1">
+                    <mxGeometry height="72" width="165" x="20" y="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="access-subnet" parent="source-vnet" style="swimlane;html=1;rounded=1;startSize=24;horizontal=1;fillColor=#F3F8FF;strokeColor=#60A5FA;fontSize=11;fontStyle=1;collapsible=0;" value="snet-access  10.10.16.0/20" vertex="1">
+                    <mxGeometry height="165" width="205" x="20" y="205" as="geometry"/>
+                </mxCell>
+                <mxCell id="windows-admin" parent="access-subnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEBFF;strokeColor=#0078D4;fontSize=11;fontStyle=1;" value="Windows admin VM&#xa;slurmdemo-admin&#xa;windowsadmin&#xa;System-assigned identity" vertex="1">
+                    <mxGeometry height="100" width="165" x="20" y="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="management-subnet" parent="source-vnet" style="swimlane;html=1;rounded=1;startSize=24;horizontal=1;fillColor=#F3F8FF;strokeColor=#60A5FA;fontSize=11;fontStyle=1;collapsible=0;" value="snet-management  10.10.0.0/20  |  source NSG" vertex="1">
+                    <mxGeometry height="405" width="390" x="250" y="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="cyclecloud" parent="management-subnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEBFF;strokeColor=#0078D4;fontSize=11;fontStyle=1;" value="Azure CycleCloud 8.9.3&#xa;slurmdemo-cyclecloud&#xa;System-assigned identity&#xa;Cluster: cross-region-demo&#xa;HTTPS 443 / clusterlink 9443" vertex="1">
+                    <mxGeometry height="120" width="160" x="25" y="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="scheduler" parent="management-subnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEBFF;strokeColor=#0078D4;fontSize=11;fontStyle=1;" value="External Slurm scheduler&#xa;slurmdemo-scheduler&#xa;10.10.0.10&#xa;Slurm 26.05.4 | scheduleradmin&#xa;UAMI: scheduler-bootstrap" vertex="1">
+                    <mxGeometry height="120" width="160" x="205" y="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="nfs" parent="management-subnet" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#FFF4CE;strokeColor=#D97706;fontSize=11;fontStyle=1;" value="Scheduler-hosted NFSv4&#xa;/sched  +  /shared&#xa;restricted burst CIDR&#xa;no_root_squash" vertex="1">
+                    <mxGeometry height="105" width="160" x="205" y="210" as="geometry"/>
+                </mxCell>
+                <mxCell id="slurm-config" parent="management-subnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E7;strokeColor=#D97706;fontSize=10;" value="Shared control files&#xa;/sched/cross-region-demo/slurm.conf&#xa;/sched/azure.conf&#xa;autoscale.json owned slurm:slurm" vertex="1">
+                    <mxGeometry height="105" width="160" x="25" y="210" as="geometry"/>
+                </mxCell>
+                <mxCell id="logical-node" parent="management-subnet" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#F9FAFB;strokeColor=#6B7280;fontSize=10;fontStyle=1;" value="Slurm logical node&#xa;cross-region-demo-hpc-1&#xa;idle~ = powered down" vertex="1">
+                    <mxGeometry height="55" width="160" x="115" y="335" as="geometry"/>
+                </mxCell>
+                <mxCell id="pe-subnet" parent="source-vnet" style="swimlane;html=1;rounded=1;startSize=24;horizontal=1;fillColor=#F3F8FF;strokeColor=#60A5FA;fontSize=11;fontStyle=1;collapsible=0;" value="snet-private-endpoint  10.10.32.0/20" vertex="1">
+                    <mxGeometry height="65" width="390" x="250" y="475" as="geometry"/>
+                </mxCell>
+                <mxCell id="private-endpoints" parent="pe-subnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F1FB;strokeColor=#0078D4;fontSize=10;" value="Private endpoints: Key Vault + CycleCloud locker Blob" vertex="1">
+                    <mxGeometry height="25" width="340" x="25" y="31" as="geometry"/>
+                </mxCell>
+                <mxCell id="source-nat" parent="source-region" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5E7EB;strokeColor=#64748B;fontSize=11;fontStyle=1;" value="Source NAT Gateway&#xa;regional outbound only" vertex="1">
+                    <mxGeometry height="60" width="225" x="720" y="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="key-vault" parent="source-region" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E8FF;strokeColor=#7C3AED;fontSize=11;fontStyle=1;" value="Private Key Vault&#xa;slurmdemoslurmkv&#xa;Admin passwords, SSH keys, TLS, Chef license&#xa;RBAC + audit logs" vertex="1">
+                    <mxGeometry height="100" width="225" x="720" y="165" as="geometry"/>
+                </mxCell>
+                <mxCell id="locker" parent="source-region" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#E0F2FE;strokeColor=#0284C7;fontSize=11;fontStyle=1;" value="CycleCloud locker storage&#xa;Private Blob endpoint&#xa;Slurm project 4.0.11 artifacts&#xa;Locker UAMI: Blob Data Reader" vertex="1">
+                    <mxGeometry height="115" width="225" x="720" y="305" as="geometry"/>
+                </mxCell>
+                <mxCell id="monitoring" parent="source-region" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#64748B;fontSize=11;" value="Log Analytics&#xa;Key Vault diagnostics + infrastructure telemetry" vertex="1">
+                    <mxGeometry height="70" width="225" x="720" y="460" as="geometry"/>
+                </mxCell>
+                <mxCell id="burst-region" parent="subscription" style="swimlane;html=1;rounded=1;startSize=30;horizontal=1;fillColor=#ECFDF5;strokeColor=#059669;strokeWidth=2;fontSize=14;fontStyle=1;collapsible=0;" value="Burst region: South Central US" vertex="1">
+                    <mxGeometry height="695" width="580" x="1030" y="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="burst-vnet" parent="burst-region" style="swimlane;html=1;rounded=1;startSize=28;horizontal=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=2;fontSize=13;fontStyle=1;collapsible=0;" value="vnet-burst  10.20.0.0/16" vertex="1">
+                    <mxGeometry height="405" width="530" x="25" y="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="compute-subnet" parent="burst-vnet" style="swimlane;html=1;rounded=1;startSize=24;horizontal=1;fillColor=#F0FDF4;strokeColor=#34D399;fontSize=11;fontStyle=1;collapsible=0;" value="snet-compute  10.20.0.0/20  |  burst NSG" vertex="1">
+                    <mxGeometry height="260" width="480" x="25" y="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="vmss" parent="compute-subnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;fontSize=12;fontStyle=1;" value="CycleCloud-managed VMSS&#xa;Vendor hpc nodearray&#xa;Capacity 0 ↔ 1&#xa;Zone 1 | Standard_HB120rs_v3&#xa;AlmaLinux 9 | no public IP" vertex="1">
+                    <mxGeometry height="130" width="185" x="40" y="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="compute-node" parent="compute-subnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#16A34A;fontSize=11;fontStyle=1;" value="Execute node when running&#xa;cross-region-demo-hpc-1&#xa;slurmd + munge + shared home&#xa;UID/GID 11200" vertex="1">
+                    <mxGeometry height="130" width="185" x="260" y="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="lifecycle" parent="burst-vnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor=#059669;fontSize=10;fontStyle=1;" value="Burst lifecycle&#xa;sbatch → power up → configure → run → idle 300s → delete&#xa;CycleCloud portal shows no node while Slurm reports idle~" vertex="1">
+                    <mxGeometry height="50" width="480" x="25" y="335" as="geometry"/>
+                </mxCell>
+                <mxCell id="burst-nat" parent="burst-region" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5E7EB;strokeColor=#64748B;fontSize=11;fontStyle=1;" value="Burst NAT Gateway&#xa;regional outbound only" vertex="1">
+                    <mxGeometry height="60" width="245" x="25" y="490" as="geometry"/>
+                </mxCell>
+                <mxCell id="compute-rg" parent="burst-region" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#059669;fontSize=11;" value="CycleCloud compute resource group&#xa;rg-slurmdemo-cyclecloud-compute&#xa;VMSS resources are ephemeral" vertex="1">
+                    <mxGeometry height="60" width="260" x="295" y="490" as="geometry"/>
+                </mxCell>
+                <mxCell id="dns" parent="subscription" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=11;fontStyle=1;" value="Shared private DNS linked to both VNets&#xa;cyclecloud.internal: slurmdemo-cyclecloud + slurmdemo-scheduler&#xa;privatelink.vaultcore.azure.net | privatelink.blob.core.windows.net" vertex="1">
+                    <mxGeometry height="45" width="720" x="300" y="755" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend" parent="subscription" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontSize=10;fontColor=#475569;" value="Legend: solid arrows = allowed application/data flow | dashed arrows = control or lifecycle | all VM ingress is private except Bastion public entry" vertex="1">
+                    <mxGeometry height="45" width="570" x="1040" y="755" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-operator-bastion" edge="1" parent="1" source="operator" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0078D4;strokeWidth=2;fontSize=10;" target="bastion" value="Azure Bastion service">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-bastion-windows" edge="1" parent="1" source="bastion" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0078D4;strokeWidth=2;fontSize=10;" target="windows-admin" value="RDP 3389">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-windows-scheduler" edge="1" parent="1" source="windows-admin" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#2563EB;strokeWidth=2;fontSize=10;" target="scheduler" value="SSH 22">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-windows-cyclecloud" edge="1" parent="1" source="windows-admin" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#2563EB;strokeWidth=2;fontSize=10;" target="cyclecloud" value="HTTPS 443">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-scheduler-cyclecloud" edge="1" parent="1" source="scheduler" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;strokeWidth=2;fontSize=10;" target="cyclecloud" value="CycleCloud API 443">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-scheduler-kv" edge="1" parent="1" source="scheduler" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;strokeWidth=2;fontSize=10;" target="key-vault" value="Secrets 443 via PE">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-cyclecloud-locker" edge="1" parent="1" source="cyclecloud" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0284C7;strokeWidth=2;fontSize=10;" target="locker" value="Project artifacts 443">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-cyclecloud-vmss" edge="1" parent="1" source="cyclecloud" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=block;endFill=1;strokeColor=#7C3AED;strokeWidth=2;fontSize=10;" target="vmss" value="Provision / terminate&#xa;system identity + custom role">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-node-cyclecloud" edge="1" parent="1" source="compute-node" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7C3AED;strokeWidth=2;fontSize=10;" target="cyclecloud" value="clusterlink 9443">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-node-nfs" edge="1" parent="1" source="compute-node" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#D97706;strokeWidth=2;fontSize=10;" target="nfs" value="NFSv4 2049&#xa;/sched + /shared">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-node-scheduler" edge="1" parent="1" source="compute-node" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;startArrow=block;startFill=1;endArrow=block;endFill=1;strokeColor=#059669;strokeWidth=2;fontSize=10;" target="scheduler" value="Slurm 6817/6818">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-logical-vmss" edge="1" parent="1" source="logical-node" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;startArrow=block;startFill=1;endArrow=block;endFill=1;strokeColor=#6B7280;strokeWidth=2;fontSize=10;" target="vmss" value="ResumeProgram / SuspendProgram">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-vnet-peering" edge="1" parent="1" source="source-vnet" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;startArrow=block;startFill=1;endArrow=block;endFill=1;strokeColor=#475569;strokeWidth=3;fontSize=11;fontStyle=1;" target="burst-vnet" value="Bidirectional VNet peering&#xa;private routed traffic">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-source-nat" edge="1" parent="1" source="source-vnet" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#64748B;fontSize=9;" target="source-nat" value="outbound">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-burst-nat" edge="1" parent="1" source="burst-vnet" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#64748B;fontSize=9;" target="burst-nat" value="outbound">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-dns-source" edge="1" parent="1" source="dns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;strokeColor=#D97706;fontSize=9;" target="source-vnet" value="zone links">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge-dns-burst" edge="1" parent="1" source="dns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;strokeColor=#D97706;fontSize=9;" target="burst-vnet" value="zone links">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

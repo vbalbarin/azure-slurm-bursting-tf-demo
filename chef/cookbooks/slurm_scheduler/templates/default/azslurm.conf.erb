@@ -1,8 +1,8 @@
 CycleCloudUrl=<%= node['slurm']['cyclecloud_url'] %>
 ClusterName=<%= node['slurm']['cluster_name'] %>
-SchedulerConfigDir=/etc/slurm
+SchedulerConfigDir=/sched/<%= node['slurm']['cluster_name'] %>
 ReturnProxyEnabled=false
 SharedSched=<%= node['slurm']['scheduler_private_address'] %>:/sched
 SharedData=<%= node['slurm']['scheduler_private_address'] %>:/shared
 MaxNodes=<%= node['slurm']['max_acceptance_nodes'] %>
-GeneratedConfig=/etc/slurm/autoscale.json
+GeneratedConfig=/opt/azurehpc/slurm/autoscale.json

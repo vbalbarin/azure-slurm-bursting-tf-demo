@@ -13,6 +13,7 @@ nested-bracket DSL. This documented gap permits the Python exception under const
 headless-template transform \
   --source <slurm.txt> \
   --destination <slurm-headless.txt> \
+  --slurm-project-version <registered-project-version> \
   --validator <approved-headless-structural-validation-command>
 ```
 
@@ -63,19 +64,25 @@ Remove exactly:
 - `[[[parameter SchedulerZone]]]`
 - `[[[parameter SchedulerHAZone]]]`
 
+Require exactly one `cyclecloud/slurm:default` and one `cyclecloud/slurm:execute` cluster-init
+reference and pin both to `--slurm-project-version`. Missing, duplicate, or differently pinned
+references fail validation.
+
 ## Safety invariants
 
 1. Source and destination must differ; the source is read-only.
 2. Section boundaries are determined structurally by bracket depth, not by unbounded text matching.
 3. Missing, duplicate, nested-incorrect, or malformed target sections fail closed.
 4. Existing required identity values must match exactly or fail as a conflict.
-5. Untargeted content and ordering are preserved.
-6. Candidate validation occurs before destination replacement.
-7. Equal candidate and destination content produces no write.
-8. A temporary file is created in the destination directory, flushed, permissioned, and atomically
+5. Slurm cluster-init references must resolve to the explicitly selected registered project
+   version.
+6. Untargeted content and ordering are preserved.
+7. Candidate validation occurs before destination replacement.
+8. Equal candidate and destination content produces no write.
+9. A temporary file is created in the destination directory, flushed, permissioned, and atomically
    replaced only after validation.
-9. Every failure preserves the last valid destination and removes temporary files.
-10. The package has no Azure SDK, Terraform, deployment, or general command-execution capability
+10. Every failure preserves the last valid destination and removes temporary files.
+11. The package has no Azure SDK, Terraform, deployment, or general command-execution capability
     beyond the explicit validator command supplied by Chef.
 
 ## Required tests
@@ -84,6 +91,7 @@ Remove exactly:
 - Already transformed source
 - Repeated execution with unchanged inputs
 - Existing matching and conflicting identity values
+- Missing, duplicate, conflicting, and already-correct cluster-init project versions
 - Every removable section independently absent
 - Duplicate and malformed section headers
 - Candidate validator rejection

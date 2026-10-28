@@ -1,6 +1,6 @@
 {
   "name": "slurm",
-  "revision_id": "37151b004a5baf870d6991c112b29c4b785a4068b6c8a4683157386812f3a04c",
+  "revision_id": "93c784332fa2ac7d8dbb76f3334b40f9038709b59c81675a59fd61776d94e17e",
   "run_list": [
     "recipe[slurm_scheduler::default]"
   ],

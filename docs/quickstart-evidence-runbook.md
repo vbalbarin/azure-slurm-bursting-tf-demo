@@ -3438,6 +3438,26 @@ Part B assumes the combined-run path in A11 retained the managed backend, produc
 readiness, and initialized the main and capacity-probe roots. After B10, execute A9, then return to
 B11 for cleanup. Return to A10 only after B11 passes.
 
+Before approving a clean acceptance plan, verify that the source includes the demonstrated
+external-scheduler invariants:
+
+- scheduler-to-CycleCloud API traffic uses private HTTPS TCP 443;
+- burst nodes can reach CycleCloud clusterlink on TCP 9443;
+- the scheduler has an A record in the private zone linked to both VNets;
+- Microsoft Slurm `26.05.4-1.el9` RPMs are installed directly;
+- `azure-slurm-pkg-4.0.11` is installed separately with Python 3.11 and `--no-jetpack`;
+- the validated transformed template has no scheduler/login nodes and pins registered Slurm
+  project `4.0.9` cluster-init references;
+- the vendor `hpc` nodearray is bound to the approved region, zone, subnet, identity, image, VM
+  size, external NFS endpoints, and maximum one node;
+- `/sched` and `/shared` use `no_root_squash` for the restricted burst CIDR;
+- `/sched/<cluster>/slurm.conf`, `/sched/azure.conf`, and `gres.conf` are readable by execute
+  nodes; and
+- autoscaler scripts use absolute paths and `autoscale.json` is mode `0600`, owned by `slurm`.
+
+Any plan or generated payload that regresses one of these properties is not the demonstrated
+configuration and must not be approved.
+
 ## B1. Prepare the protected demo inputs
 
 ```bash
@@ -4391,6 +4411,24 @@ Do not copy them directly into `/evidence`; stage, review, verify, and promote o
 secret-free receipts through the protected Windows jump-host handoff.
 
 ## B7. Verify private Windows administration
+
+Require the Windows VM to be running before opening a Bastion browser session:
+
+```bash
+az vm get-instance-view \
+  --resource-group "$RESOURCE_GROUP_NAME" \
+  --name "${ENVIRONMENT_NAME}-admin" \
+  --query 'instanceView.statuses[?starts_with(code, `PowerState/`)].displayStatus|[0]' \
+  --output tsv
+```
+
+If the result is `VM deallocated`, start only that VM and wait for `VM running`:
+
+```bash
+az vm start \
+  --resource-group "$RESOURCE_GROUP_NAME" \
+  --name "${ENVIRONMENT_NAME}-admin"
+```
 
 Connect to the Windows administration VM through a supported Bastion Standard browser or native
 RDP client. Attempt the Azure portal browser experience and record the Bastion resource ID,

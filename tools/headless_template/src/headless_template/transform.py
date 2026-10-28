@@ -40,6 +40,11 @@ REMOVED_SECTIONS = (
 ASSIGNMENT = re.compile(
     r"^(?P<indent>[ \t]*)(?P<key>[A-Za-z0-9_.-]+)[ \t]*=[ \t]*(?P<value>.*?)[ \t]*(?:\r?\n)?$"
 )
+CLUSTER_INIT = re.compile(
+    r"^(?P<prefix>[ \t]*\[\[\[cluster-init cyclecloud/slurm:"
+    r"(?P<spec>default|execute))(?::(?P<version>[0-9.]+))?"
+    r"(?P<suffix>\]\]\][ \t]*(?:\r?\n)?)$"
+)
 
 
 class TransformError(Exception):
@@ -95,7 +100,38 @@ def _apply_identities(lines: list[str], configuration: Section) -> bool:
     return True
 
 
-def transform_template(source: str) -> TransformResult:
+def _pin_cluster_init(lines: list[str], project_version: str) -> bool:
+    if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", project_version) is None:
+        raise TransformError("Invalid Slurm project version", 4)
+
+    found: dict[str, int] = {"default": 0, "execute": 0}
+    changed = False
+    for index, line in enumerate(lines):
+        match = CLUSTER_INIT.fullmatch(line)
+        if match is None:
+            continue
+        spec = match["spec"]
+        found[spec] += 1
+        if found[spec] > 1:
+            raise TransformError(f"Duplicate Slurm cluster-init spec: {spec}", 4)
+        if match["version"] != project_version:
+            lines[index] = (
+                f'{match["prefix"]}:{project_version}{match["suffix"]}'
+            )
+            changed = True
+
+    missing = [spec for spec, count in found.items() if count != 1]
+    if missing:
+        raise TransformError(
+            f"Missing Slurm cluster-init spec: {', '.join(missing)}",
+            4,
+        )
+    return changed
+
+
+def transform_template(
+    source: str, slurm_project_version: str = "4.0.9"
+) -> TransformResult:
     lines = source.splitlines(keepends=True)
     try:
         sections = parse_sections(lines)
@@ -142,9 +178,15 @@ def transform_template(source: str) -> TransformResult:
         raise TransformError(str(exc), 4) from exc
 
     identity_changed = _apply_identities(lines, updated_configurations[0])
+    cluster_init_changed = _pin_cluster_init(lines, slurm_project_version)
     if already_headless and identity_changed:
         raise TransformError(
             "Template is partially transformed: removable sections are absent but identities were incomplete",
+            4,
+        )
+    if already_headless and cluster_init_changed:
+        raise TransformError(
+            "Template is partially transformed: Slurm cluster-init versions were not pinned",
             4,
         )
 

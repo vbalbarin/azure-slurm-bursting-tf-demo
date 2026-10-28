@@ -1,10 +1,10 @@
 default['slurm']['version'] = nil
 default['slurm']['project_version'] = '4.0.11'
-default['slurm']['project_uri'] = 'https://github.com/Azure/cyclecloud-slurm/releases/download/4.0.11/azure-slurm-install-pkg-4.0.11.tar.gz'
-default['slurm']['project_sha256'] = 'a489f4c5ec2404dc02a09792af5f32f4683e164327d89c4c2dfc8d9a30402482'
+default['slurm']['integration_uri'] = 'https://github.com/Azure/cyclecloud-slurm/releases/download/4.0.11/azure-slurm-pkg-4.0.11.tar.gz'
+default['slurm']['integration_sha256'] = 'f85a1d016eca3786eb9845fcbffcefaf674bfcd4b59738597e90877047a23e36'
 default['slurm']['cluster_name'] = nil
-default['slurm']['partition'] = 'burst'
 default['slurm']['idle_timeout_minutes'] = 10
+default['slurm']['scheduler_private_name'] = nil
 default['slurm']['scheduler_private_address'] = nil
 default['slurm']['burst_cidr'] = nil
 default['slurm']['cyclecloud_url'] = nil

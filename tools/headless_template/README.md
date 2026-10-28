@@ -12,15 +12,18 @@ orchestration dependency.
 headless-template transform \
   --source /path/to/slurm.txt \
   --destination /path/to/slurm-headless.txt \
-  --validator '/usr/bin/env PYTHONPATH=/opt/slurm-demo/current/tools/headless_template/src python3 -m headless_template validate {candidate}'
+  --slurm-project-version 4.0.9 \
+  --validator '/usr/bin/env PYTHONPATH=/opt/slurm-demo/current/tools/headless_template/src python3 -m headless_template validate --slurm-project-version 4.0.9 {candidate}'
 ```
 
 The source and destination must differ. The processor parses headers by bracket depth, verifies
 the exact Slurm UID/GID `11100` and Munge UID/GID `11101`, and removes only the 13 sections named
-in the feature contract. The source is never modified. The `validate` subcommand rejects a
-candidate unless it is structurally complete and already transformed. CycleCloud 8.9.3 does not
-provide a separate template-validation CLI command, so `cyclecloud import_cluster` performs the
-authoritative CycleCloud parse when the validated destination is imported.
+in the feature contract. It also requires exactly one `default` and one `execute` Slurm
+cluster-init reference and pins both to the explicitly selected registered project version. The
+source is never modified. The `validate` subcommand rejects a candidate unless it is structurally
+complete, version-pinned, and already transformed. CycleCloud 8.9.3 does not provide a separate
+template-validation CLI command, so `cyclecloud import_cluster` performs the authoritative
+CycleCloud parse when the validated destination is imported.
 
 Standard output is one JSON object containing `status`, SHA-256 source and destination digests,
 `changed`, and removed section names. Exit codes are:

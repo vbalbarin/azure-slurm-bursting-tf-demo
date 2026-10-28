@@ -1,6 +1,6 @@
 {
   "name": "cyclecloud",
-  "revision_id": "e26f6f59b77fb4ecf14097d8457120c822e76d21ddf6ffede0023b0b89afab54",
+  "revision_id": "e69300cb2cd48800e4d69f5d706e6674d4b7da071cc2e890bf348a2ad52ffd30",
   "run_list": [
     "recipe[cyclecloud_node::default]"
   ],

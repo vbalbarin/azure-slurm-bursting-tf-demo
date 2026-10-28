@@ -180,7 +180,7 @@ run "scheduler_stages_without_converging" {
   }
 
   assert {
-    condition     = local.chef_node_specifications.scheduler.clusterName == "cross-region-demo" && local.chef_node_specifications.scheduler.slurmIdentity.uid == 11100 && local.chef_node_specifications.scheduler.mungeIdentity.uid == 11101 && local.chef_node_specifications.scheduler.hpcUser.uid == 11200
+    condition     = local.chef_node_specifications.scheduler.clusterName == "cross-region-demo" && local.chef_node_specifications.scheduler.slurmIdentity.uid == 11100 && local.chef_node_specifications.scheduler.mungeIdentity.uid == 11101 && local.chef_node_specifications.scheduler.hpcUser.uid == 11200 && local.chef_node_specifications.scheduler.slurmVersion == "26.05.4-1.el9" && local.chef_node_specifications.scheduler.schedulerPrivateName == "${var.environment_name}-scheduler.cyclecloud.internal" && local.chef_node_specifications.scheduler.burstVmSize == var.burst_vm_size && local.chef_node_specifications.scheduler.registeredSlurmProjectVersion == "4.0.9"
     error_message = "The scheduler node specification must retain the governed cluster and account identities."
   }
 

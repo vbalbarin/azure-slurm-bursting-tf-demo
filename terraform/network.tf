@@ -51,6 +51,17 @@ module "source_nsg" {
       source_address_prefix      = local.source_subnets.management
       source_port_range          = "*"
       destination_address_prefix = local.source_subnets.management
+      destination_port_range     = "443"
+    }
+    burst_cyclecloud_cluster = {
+      access                     = "Allow"
+      direction                  = "Inbound"
+      name                       = "AllowBurstCycleCloudCluster"
+      priority                   = 128
+      protocol                   = "Tcp"
+      source_address_prefix      = local.burst_subnets.compute
+      source_port_range          = "*"
+      destination_address_prefix = local.source_subnets.management
       destination_port_range     = "9443"
     }
     burst_nfs = {

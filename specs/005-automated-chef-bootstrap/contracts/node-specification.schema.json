@@ -14,7 +14,16 @@
     "sourceRegion",
     "burstRegion",
     "schedulerPrivateAddress",
+    "schedulerPrivateName",
     "burstCidr",
+    "burstSubnetId",
+    "burstZone",
+    "burstVmSize",
+    "burstImageName",
+    "lockerIdentityResourceId",
+    "slurmVersion",
+    "slurmTemplateVersion",
+    "registeredSlurmProjectVersion",
     "slurmIdentity",
     "mungeIdentity",
     "hpcUser",
@@ -59,9 +68,41 @@
       "type": "string",
       "format": "ipv4"
     },
+    "schedulerPrivateName": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+\\.cyclecloud\\.internal$"
+    },
     "burstCidr": {
       "type": "string",
       "pattern": "^[0-9.]+/[0-9]{1,2}$"
+    },
+    "burstSubnetId": {
+      "type": "string",
+      "pattern": "^rg-[a-z0-9-]+-slurm/vnet-burst/snet-compute$"
+    },
+    "burstZone": {
+      "type": "string",
+      "pattern": "^[1-3]$"
+    },
+    "burstVmSize": {
+      "type": "string",
+      "minLength": 1
+    },
+    "burstImageName": {
+      "const": "almalinux9"
+    },
+    "lockerIdentityResourceId": {
+      "type": "string",
+      "pattern": "^/subscriptions/[0-9a-f-]+/resourceGroups/[^/]+/providers/Microsoft\\.ManagedIdentity/userAssignedIdentities/[^/]+$"
+    },
+    "slurmVersion": {
+      "const": "26.05.4-1.el9"
+    },
+    "slurmTemplateVersion": {
+      "const": "26.05.4"
+    },
+    "registeredSlurmProjectVersion": {
+      "const": "4.0.9"
     },
     "slurmIdentity": {
       "$ref": "#/$defs/slurmIdentity"

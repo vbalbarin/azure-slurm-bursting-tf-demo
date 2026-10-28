@@ -16,8 +16,10 @@ def parser() -> argparse.ArgumentParser:
     transform.add_argument("--source", type=Path, required=True)
     transform.add_argument("--destination", type=Path, required=True)
     transform.add_argument("--validator", required=True)
+    transform.add_argument("--slurm-project-version", default="4.0.9")
     validate = commands.add_parser("validate")
     validate.add_argument("candidate", type=Path)
+    validate.add_argument("--slurm-project-version", default="4.0.9")
     return root
 
 
@@ -37,7 +39,10 @@ def run(arguments: list[str] | None = None) -> int:
         if namespace.command == "validate":
             candidate = namespace.candidate.resolve(strict=True)
             candidate_bytes = candidate.read_bytes()
-            result = transform_template(candidate_bytes.decode("utf-8"))
+            result = transform_template(
+                candidate_bytes.decode("utf-8"),
+                namespace.slurm_project_version,
+            )
             if result.removed_sections or result.content.encode("utf-8") != candidate_bytes:
                 raise TransformError(
                     "Candidate is not an already-transformed headless template", 4
@@ -54,7 +59,10 @@ def run(arguments: list[str] | None = None) -> int:
             return 0
 
         source, destination = _safe_paths(namespace.source, namespace.destination)
-        result = transform_template(source.read_bytes().decode("utf-8"))
+        result = transform_template(
+            source.read_bytes().decode("utf-8"),
+            namespace.slurm_project_version,
+        )
         write_result = write_validated(
             source=source,
             destination=destination,

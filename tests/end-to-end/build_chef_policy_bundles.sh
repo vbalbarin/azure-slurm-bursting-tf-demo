@@ -67,8 +67,8 @@ ROLES = {
     "scheduler": {
         "policy": "slurm",
         "cookbook": "slurm_scheduler",
-        "project_name": "azure-slurm-install-pkg-4.0.11.tar.gz",
-        "project_sha256": "a489f4c5ec2404dc02a09792af5f32f4683e164327d89c4c2dfc8d9a30402482",
+        "project_name": "azure-slurm-pkg-4.0.11.tar.gz",
+        "project_sha256": "f85a1d016eca3786eb9845fcbffcefaf674bfcd4b59738597e90877047a23e36",
     },
 }
 

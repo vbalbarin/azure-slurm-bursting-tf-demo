@@ -117,7 +117,7 @@ receipt, reject malformed UI attestations, and accept the exact supported UI-gat
 - [X] T037 [US2] Implement IMDS token acquisition and private Key Vault REST retrieval with protected temporary output, explicit failures, and no Azure CLI dependency in `chef/bin/retrieve-key-vault-secret.py`
 - [X] T038 [US2] Require a governed authorization receipt, retrieve `cyclecloud-admin-password` at runtime, invoke release-matched `azslurm initconfig` once under root-only trace-disabled controls, and clean every temporary credential path in `chef/bin/converge-scheduler.sh`
 - [X] T039 [US2] Replace `slurmdemo` with Chef-managed `hpcuser01` group/user UID/GID `11200`, home `/shared/home/hpcuser01`, and generate-or-preserve mode-`0600` Ed25519 keys without direct account-database edits in `chef/cookbooks/slurm_scheduler/recipes/demo_user.rb`
-- [X] T040 [US2] Download and verify `azure-slurm-install-pkg-4.0.11.tar.gz` SHA-256 `a489f4c5ec2404dc02a09792af5f32f4683e164327d89c4c2dfc8d9a30402482`, configure Slurm/Munge/NFS, and start services only after validation in `chef/cookbooks/slurm_scheduler/recipes/default.rb`
+- [X] T040 [US2] Install Microsoft Slurm RPMs, download and verify the separate `azure-slurm-pkg-4.0.11.tar.gz` integration runtime, configure Slurm/Munge/NFS, and start services only after validation in `chef/cookbooks/slurm_scheduler/recipes/default.rb`
 - [X] T041 [US2] Replace unsupported credential assumptions with release-matched generated configuration and protected modes in `chef/cookbooks/slurm_scheduler/templates/default/azslurm.conf.erb` and `chef/cookbooks/slurm_scheduler/templates/default/slurm.conf.erb`
 - [X] T042 [US2] Implement ordered dependency inspection, authorization receipt creation, Azure VM Run Command dispatch, bounded output collection, and nonzero downstream blocking in `tests/end-to-end/converge_linux_roles.sh`
 - [X] T043 [US2] Validate `hpcuser01` name exactly, UID/GID exactly `11200`, home exactly `/shared/home/hpcuser01`, one Ed25519 public key, derived SHA-256 fingerprint, source revision, and specification digest before emitting a canonical value-free receipt with its own SHA-256 digest in `chef/bin/publish-hpc-user-receipt.sh`
@@ -178,6 +178,22 @@ rebuilds, execute the supported manual UI gate, and capture bounded burst/no-cha
 
 ---
 
+## Phase 7: Demonstration Remediation Hardening
+
+**Purpose**: Convert the bounded live-remediation chain proven by job 6 into deterministic source
+and regression tests before any new governed acceptance run.
+
+- [X] T067 Add failing regression tests for scheduler-to-CycleCloud HTTPS on TCP 443, burst-to-CycleCloud cluster traffic on TCP 9443, and scheduler private DNS resolution from both VNets in `tests/policy/test_network_security.py`
+- [X] T068 [P] Add failing ChefSpec and InSpec expectations for Microsoft Slurm 26.05.4 RPM installation, separate `azure-slurm-pkg` no-Jetpack integration, Python 3.11, external NFS `no_root_squash`, client-readable Slurm configuration, shared execute-node configuration publication, and `slurm:slurm` autoscale ownership in `chef/cookbooks/slurm_scheduler/spec/unit/recipes/default_spec.rb` and `chef/test/integration/scheduler/controls/default.rb`
+- [X] T069 [P] Add failing CycleCloud ChefSpec and contract expectations for the transformed headless template, complete external NFS/provider/subnet/identity/placement parameter bindings, vendor `hpc` nodearray maximum one, and explicit registered cluster-init project compatibility in `chef/cookbooks/cyclecloud_node/spec/unit/recipes/default_spec.rb` and `tests/end-to-end/test_chef_bootstrap_contracts.py`
+- [X] T070 Extend the node-specification contract and Terraform rendering with the exact Slurm release, CycleCloud compute placement, burst subnet, locker identity, scheduler private DNS name, and registered cluster-init project version in `specs/005-automated-chef-bootstrap/contracts/node-specification.schema.json`, `terraform/locals.tf`, and `terraform/tests/chef-bootstrap.tftest.hcl`
+- [X] T071 Correct the source and burst NSG rules and publish the scheduler A record in the existing cross-VNet private DNS zone in `terraform/network.tf`, `terraform/security.tf`, and `tests/policy/test_network_security.py`
+- [X] T072 Replace external-scheduler Jetpack installation with direct Microsoft Slurm RPM installation plus separate Python 3.11 `azure-slurm-pkg --no-jetpack` integration; publish the shared Slurm configuration, use absolute autoscaler paths, and enforce required ownership/permissions in `chef/cookbooks/slurm_scheduler/`
+- [X] T073 Replace the ignored custom nodearray override with complete vendor `hpc` parameter defaults, require exactly one provider account, import only the validated transformed template, and pin the registered cluster-init project version in `chef/cookbooks/cyclecloud_node/`
+- [X] T074 Refresh deterministic Policyfile locks and bundle expectations, document the demonstrated recovery and clean-rebuild requirements, run targeted Terraform/Python/Chef validation, and mark T067-T074 complete only after all changed surfaces pass in `chef/policyfiles/`, `tests/end-to-end/build_chef_policy_bundles.sh`, `docs/quickstart-evidence-runbook.md`, and `specs/005-automated-chef-bootstrap/quickstart.md`
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -189,6 +205,9 @@ rebuilds, execute the supported manual UI gate, and capture bounded burst/no-cha
   receipt and imported cluster.
 - **Phase 5 (US3)**: Depends on US1 and US2 because it verifies both completed role workflows.
 - **Phase 6 (Acceptance)**: Depends on all source implementation and explicit deployment approvals.
+- **Phase 7 (Remediation hardening)**: T067-T069 start from the preserved job-6 evidence; T070-T073
+  depend on those failing tests, and T074 depends on all remediation source changes. Phase 7 must
+  complete before T059-T066 resume.
 
 ### User Story Dependency Graph
 

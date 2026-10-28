@@ -414,7 +414,9 @@ def test_cyclecloud_project_uses_tagged_source_and_supported_cli_contract() -> N
     assert "cyclecloud project upload" in recipe
     assert "cyclecloud project upload '#{node['cyclecloud']['project_archive']}'" not in recipe
     assert "cyclecloud project validate" not in recipe
-    assert '"-c Slurm -f ' in recipe
+    assert "test \"$credential_count\" -eq 1" in recipe
+    assert "-c Slurm -f '#{node['cyclecloud']['headless_template']}'" in recipe
+    assert '-P Credentials="$credentials"' in recipe
     assert "slurm-cluster.properties" not in recipe
 
 
