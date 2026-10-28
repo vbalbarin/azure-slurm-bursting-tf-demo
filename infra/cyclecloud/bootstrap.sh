@@ -84,28 +84,23 @@ dnf install -y \
   https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm
 dnf install -y azure-cli jq unzip
 
-az login --identity --allow-no-subscriptions --output none
-account_name="$(
-  az account show \
-    --subscription "$AZURE_SUBSCRIPTION_ID" \
-    --query name \
-    --output tsv
-)"
-[[ -n "$account_name" ]]
-readonly account_name
-
 authorization_retry() {
   local label="$1"
   shift
   local deadline=$((SECONDS + 1800))
   local error_file="$secret_dir/${label}.stderr"
   while ((SECONDS < deadline)); do
-    if "$@" 2>"$error_file"; then
+    : >"$error_file"
+    if az login \
+      --identity \
+      --allow-no-subscriptions \
+      --output none 2>>"$error_file" &&
+      "$@" 2>>"$error_file"; then
       rm -f "$error_file"
       return 0
     fi
     if ! grep -Eqi \
-      'AuthorizationFailed|AuthorizationFailure|AuthorizationPermissionMismatch|Forbidden|ForbiddenByRbac|InsufficientAccountPermissions|403|TooManyRequests|429|InternalServerError|ServiceUnavailable|GatewayTimeout|ConnectionError|Connection reset|timed out|Temporary failure in name resolution|5[0-9]{2}' \
+      'Subscription .* not found|AuthorizationFailed|AuthorizationFailure|AuthorizationPermissionMismatch|Forbidden|ForbiddenByRbac|InsufficientAccountPermissions|403|TooManyRequests|429|InternalServerError|ServiceUnavailable|GatewayTimeout|ConnectionError|Connection reset|timed out|Temporary failure in name resolution|5[0-9]{2}' \
       "$error_file"; then
       rm -f "$error_file"
       echo "CycleCloud authorization check failed with a non-retryable response: $label" >&2
@@ -123,6 +118,15 @@ authorization_retry management-access \
   --subscription "$AZURE_SUBSCRIPTION_ID" \
   --name "$CYCLECLOUD_COMPUTE_RESOURCE_GROUP" \
   --output none
+
+account_name="$(
+  az account show \
+    --subscription "$AZURE_SUBSCRIPTION_ID" \
+    --query name \
+    --output tsv
+)"
+[[ -n "$account_name" ]]
+readonly account_name
 
 sas_file="$secret_dir/locker-user-delegation.sas"
 authorization_retry user-delegation \

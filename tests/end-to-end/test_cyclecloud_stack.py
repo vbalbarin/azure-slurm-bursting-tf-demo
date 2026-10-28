@@ -55,7 +55,15 @@ def test_cyclecloud_first_run_cleans_protected_material_and_is_reboot_safe() -> 
 
 def test_cyclecloud_first_run_waits_for_system_identity_authorization() -> None:
     script = FIRST_RUN.read_text(encoding="utf-8")
-    assert "az login --identity --allow-no-subscriptions" in script
+    retry_start = script.index("authorization_retry()")
+    management_check = script.index("authorization_retry management-access")
+    account_lookup = script.index('account_name="$(')
+    login = script.index("az login", retry_start)
+    assert retry_start < login < management_check
+    assert "--identity" in script[login:management_check]
+    assert "--allow-no-subscriptions" in script[login:management_check]
+    assert management_check < account_lookup
+    assert "Subscription .* not found" in script
     assert "--client-id" not in script
     assert "SECONDS + 1800" in script
     assert "generate-sas" in script
